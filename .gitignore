@@ -1,0 +1,26 @@
+# Python compilation
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables (CRITICAL)
+.env
+.env.local
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# IDE settings
+.vscode/
+.idea/
+
+# Local databases or logs
+*.log
+*.sqlite3
+client_data_local.json
+
+# OS generated files
+.DS_Store
+Thumbs.db
