@@ -6,12 +6,6 @@
 ![License](https://img.shields.io/github/license/denv3rr/clear)
 ![Website](https://img.shields.io/website?url=https%3A%2F%2Fseperet.com&label=seperet.com)
 
-> [!NOTE]
->
-> Work in progress.
-
----
-
 ```
 ╭───────────────────────────────────── CLEAR ─────────────────────────────────────╮
 │                                                                                 │
@@ -26,3 +20,14 @@
 ╰─────────────────────────── Secure Advisory Terminal ────────────────────────────╯
                                 https://seperet.com
 ```
+---
+
+> [!NOTE]
+>
+> Work in progress.
+
+<div>
+  <a href="https://seperet.com">
+    <img width="100" src=https://github.com/denv3rr/denv3rr/blob/main/IMG_4225.gif/>    
+  </a>
+</div>
