@@ -1,21 +1,51 @@
+import time
+import os
+os.environ["TTE_DEBUG"] = "0"
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich import box
 from rich.align import Align
+
 from utils.system import SystemHost
 
+from terminaltexteffects.effects.effect_blackhole import Blackhole
+
 class StartupScreen:
-    def __init__(self):
+    def __init__(self, movement_speed: float = 200):
         self.console = Console()
-    
+        self.speed = movement_speed  # frames per second
+
+    def _panel_to_text(self, panel):
+        """Render a Rich panel to plain, non-ANSI text."""
+        from rich.console import Console
+
+        # Create a plain text console (no ANSI) so animation receives clean characters
+        plain = Console(
+            color_system=None,
+            width=self.console.width,
+            height=self.console.height,
+            record=False
+        )
+
+        with plain.capture() as cap:
+            plain.print(panel)
+
+        return cap.get()
+
+    def _play_blackhole(self, text: str):
+
+        effect = Blackhole(text)
+        with effect.terminal_output() as terminal:
+            for frame in effect: terminal.print(frame)
+
+
     def render(self):
-        """Fetches system data and renders the boot screen."""
         try:
-            sys_data = SystemHost.get_info()
-        except Exception as e:
-            # Fallback if system.py fails
-            sys_data = {
+            data = SystemHost.get_info()
+        except:
+            data = {
                 "hostname": "Unknown",
                 "user": "User",
                 "os": "Unknown",
@@ -24,37 +54,37 @@ class StartupScreen:
                 "finnhub_status": False
             }
 
-        # Create the inner table for layout
+        # Build table with system information
         grid = Table.grid(expand=True)
-        grid.add_column(justify="left", ratio=1)
+        grid.add_column(justify="left")
 
-        # Left Side Data
-        grid.add_row(f"[bold cyan][+] HOSTNAME:[/bold cyan] {sys_data['hostname']}")
-        grid.add_row(f"[bold cyan][+] USER:[/bold cyan]     {sys_data['user']}")
-        grid.add_row(f"[bold cyan][+] OS:[/bold cyan]       {sys_data['os']}")
-        grid.add_row(f"[bold cyan][+] LOCAL IP:[/bold cyan] {sys_data['ip']}")
-        
-        # Status Checks (Right Side)
-        api_color = "green" if sys_data['finnhub_status'] else "red"
-        api_text = "DETECTED" if sys_data['finnhub_status'] else "MISSING"
-        
-        grid.add_row(" ") # Spacer
-        grid.add_row(f"[bold white]SYSTEM TIME:[/bold white] {sys_data['login_time']}")
-        grid.add_row(f"[bold white]FINNHUB KEY:[/bold white] [{api_color}]{api_text}[/{api_color}]")
+        grid.add_row(f"[bold cyan][+] HOSTNAME:[/bold cyan] {data['hostname']}")
+        grid.add_row(f"[bold cyan][+] USER:[/bold cyan]     {data['user']}")
+        grid.add_row(f"[bold cyan][+] OS:[/bold cyan]       {data['os']}")
+        grid.add_row(f"[bold cyan][+] LOCAL IP:[/bold cyan] {data['ip']}")
 
-        # The Main Panel
+        color = "green" if data["finnhub_status"] else "red"
+        status = "DETECTED" if data["finnhub_status"] else "MISSING"
+
+        grid.add_row("")
+        grid.add_row(f"[bold white]SYSTEM TIME:[/bold white] {data['login_time']}")
+        grid.add_row(f"[bold white]FINNHUB KEY:[/bold white] [{color}]{status}[/{color}]")
+
+        # Encapsulate in a Rich panel
         panel = Panel(
             Align.center(grid, vertical="middle"),
             box=box.ROUNDED,
+            border_style="blue",
             title="[bold gold1]CLEAR[/bold gold1]",
             subtitle="[italic grey70]Secure Advisory Terminal[/italic grey70]",
-            border_style="blue",
             padding=(1, 2)
         )
 
+        # Convert Rich panel to plain text for effect
+        panel_text = self._panel_to_text(panel)
         self.console.clear()
-        self.console.print(panel)
-        self.console.print("[italic grey70]https://seperet.com[/italic grey70]\n\n[dim]Initializing Modules...[/dim]", justify="center")
-        
-        # Pause for effect
+
+        # -------- INTRO ANIMATION --------
+        self._play_blackhole(panel_text)
+
         input("\n   >>> Press ENTER")
