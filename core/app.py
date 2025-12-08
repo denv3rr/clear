@@ -1,9 +1,10 @@
 import sys
 from rich.console import Console
 
-# Import Interfaces
+# Import internal modudles
 from interfaces.menus import MainMenu
 from utils.input import InputSafe
+from modules.market_data.feed import MarketFeed
 
 class ClearApp:
     """
@@ -35,7 +36,9 @@ class ClearApp:
             self.placeholder_module("Client Management")
             
         elif action == "market_data":
-            self.placeholder_module("Market Data & Futures")
+            # NEW LOGIC HERE
+            feed = MarketFeed()
+            feed.run()
             
         elif action == "fin_tools":
             self.placeholder_module("Financial Math Toolkit")
@@ -44,13 +47,11 @@ class ClearApp:
             self.placeholder_module("System Settings")
 
     def placeholder_module(self, name: str):
-        """Temporary stub for modules we haven't built yet."""
         self.console.print(f"\n[bold green]>> LOADING MODULE: {name}...[/bold green]")
-        self.console.print("[italic]... Module logic to be implemented soon ...[/italic]")
+        self.console.print("[italic]   Module logic to be implemented soon ...[/italic]")
         InputSafe.pause()
 
     def shutdown(self):
-        """Clean exit procedure."""
         self.console.print("\n[bold red]>> Closing Secure Session...[/bold red]")
         self.console.print("[dim]   Data saved. Connections terminated.[/dim]\n")
         sys.exit(0)
