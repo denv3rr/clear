@@ -69,13 +69,16 @@ if __name__ == "__main__":
     # C. Start App (Lazy import so it only happens after checks pass)
     try:
         from interfaces.welcome import StartupScreen
-        app = StartupScreen()
-        app.render()
+        welcome = StartupScreen()
+        welcome.render()
         
-        # Future: MainMenu.run() will go here
+        # 2. Launch Main Core
+        from core.app import ClearApp
+        session = ClearApp()
+        session.run()
         
     except KeyboardInterrupt:
-        print("\n\n>> Force Exit Detected. Goodbye.")
+        print("\n\n>> Force Exit. Goodbye.")
         sys.exit(0)
     except Exception as e:
         print(f"\n>> CRITICAL ERROR: {e}")
