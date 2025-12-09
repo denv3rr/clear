@@ -20,7 +20,6 @@ class InputSafe:
         
         while True:
             try:
-                # We use specific styling for the input prompt
                 selection = Prompt.ask(f"[bold gold1]{prompt_text}[/bold gold1]", choices=None)
                 
                 # Check against valid list
@@ -48,6 +47,23 @@ class InputSafe:
                 return val
             except ValueError:
                 console.print("[red]Please enter a valid number (e.g. 10.50)[/red]")
+
+    @staticmethod
+    def get_yes_no(prompt_text: str, default: Optional[bool] = None) -> bool:
+        """
+        Prompts the user for a Yes/No input.
+        Returns True for Yes, False for No.
+        """
+        console = Console()
+        while True:
+            # Append [y/n] to the prompt for clarity
+            response = console.input(f"{prompt_text} [bold yellow](y/n):[/bold yellow] ").strip().lower()
+            if response in ['y', 'yes']:
+                return True
+            elif response in ['n', 'no']:
+                return False
+            else:
+                console.print("[red]Invalid input. Please enter 'y' or 'n'.[/red]")
 
     @staticmethod
     def pause(message: str = "Press Enter to continue..."):

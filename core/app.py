@@ -5,6 +5,8 @@ from rich.console import Console
 from interfaces.menus import MainMenu
 from utils.input import InputSafe
 from modules.market_data.feed import MarketFeed
+from modules.client_mgr.manager import ClientManager
+from interfaces.settings import SettingsModule
 
 class ClearApp:
     """
@@ -20,7 +22,7 @@ class ClearApp:
         """The Main Event Loop."""
         
         while self.running:
-            # 1. Display Menu & Get Action
+            # 1. Display Menu & Get Action (Let's fuckin go)
             action = self.menu.display()
 
             # 2. Route Action
@@ -33,10 +35,10 @@ class ClearApp:
             self.shutdown()
         
         elif action == "client_mgr":
-            self.placeholder_module("Client Management")
+            mgr = ClientManager()
+            mgr.run()
             
         elif action == "market_data":
-            # NEW LOGIC HERE
             feed = MarketFeed()
             feed.run()
             
@@ -44,7 +46,8 @@ class ClearApp:
             self.placeholder_module("Financial Math Toolkit")
             
         elif action == "settings":
-            self.placeholder_module("System Settings")
+            settings = SettingsModule()
+            settings.display_settings()
 
     def placeholder_module(self, name: str):
         self.console.print(f"\n[bold green]>> LOADING MODULE: {name}...[/bold green]")
@@ -52,6 +55,6 @@ class ClearApp:
         InputSafe.pause()
 
     def shutdown(self):
-        self.console.print("\n[bold red]>> Closing Secure Session...[/bold red]")
+        self.console.print("\n[bold red]>> Closing Session...[/bold red]")
         self.console.print("[dim]   Data saved. Connections terminated.[/dim]\n")
         sys.exit(0)

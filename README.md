@@ -5,20 +5,23 @@
 ![Issues](https://img.shields.io/github/issues/denv3rr/clear)
 ![Website](https://img.shields.io/website?url=https%3A%2F%2Fseperet.com&label=seperet.com)
 
+```pwsh
+
+>> All Dependencies Verified.
+╭────▒▒▒▒▒▓▓▓▓▓▓▓▓▓▒▒▒▒▒▒▒░░░░───────────────────── CLEAR ──────────────────────────────────────────────────╮
+│    ▒▒▒▒▒▒▓▓▓▒▓▓▓▒▒▒▒▒▒▒░░░░░░                                                                             │
+│   ▒▒▒▒▒▒▒▒▓▓▓▓▓▓▒▒▒▒▒▒░▒░░░░░       [+] HOSTNAME: dc1                                                     │
+│  ░▒░░░░▒▒▒▒▓▒▒▓▒▒▒▒▒▒▒░░░░░░        [+] USER:     denver                                                  │
+│ ░░░░░░░░▒▒▒▒▓▓▓▓▒▒▒▒░░░░░░ ░        [+] OS:                                                               │
+│  ░░░░░░▒▒▒▒▒▒▓▓▓▓▓▒▒▒▒░░▒           [+] LOCAL IP: 000.000.000.000                                           │
+│   ░░░░░▒▒▒▒▒▓▓▓▓▓▒▒▒▒▒░▒▒                                                                                 │
+│ ░  ░░░░░▒▒▒▓▓▓▓▓▓▒▒▒▒▒▓▒▒           SYSTEM TIME: 2025-12-00 00:00:00                                      │
+│░░░░░░░░░░▒░░▓▒▓▓▒▒▒▒▒▒▓▓            FINNHUB KEY: DETECTED                                                 │
+│ ░░░░░░░░░░▒▒▒▒▒▒▒▒▒▒▒▒▓▓▓▓                                                                                │
+╰──░░░░░░░░░▒▒▒▒▒▒▒▓▓▒▒▒▓▓▓▓▓───────────────────────────────────────────────────────────────────────────────╯
+
 ```
-╭───────────────────────────────────── CLEAR ─────────────────────────────────────╮
-│                                                                                 │
-│                        [+] HOSTNAME: host1                                      │
-│                        [+] USER:     username                                   │
-│                        [+] OS:       xxx                                        │
-│                        [+] LOCAL IP: xxx.xxx.xxx.xxx                            │
-│                                                                                 │
-│                        SYSTEM TIME: 2025-00-00 00:00:00                         │
-│                        FINNHUB KEY: DETECTED                                    │
-│                                                                                 │
-╰─────────────────────────── Secure Advisory Terminal ────────────────────────────╯
-                                https://seperet.com
-```
+
 ---
 
 > [!NOTE]
@@ -27,6 +30,6 @@
 
 <div>
   <a href="https://seperet.com">
-    <img width="100" src=https://github.com/denv3rr/denv3rr/blob/main/IMG_4225.gif/>    
+    <img width="100" src=https://github.com/denv3rr/denv3rr/blob/main/IMG_4225.gif/>
   </a>
 </div>

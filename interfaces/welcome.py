@@ -9,37 +9,13 @@ from rich import box
 from rich.align import Align
 
 from utils.system import SystemHost
-
-from terminaltexteffects.effects.effect_blackhole import Blackhole
+from utils.text_fx import TextEffectManager
 
 class StartupScreen:
     def __init__(self, movement_speed: float = 200):
         self.console = Console()
-        self.speed = movement_speed  # frames per second
-
-    def _panel_to_text(self, panel):
-        """Render a Rich panel to plain, non-ANSI text."""
-        from rich.console import Console
-
-        # Create a plain text console (no ANSI) so animation receives clean characters
-        plain = Console(
-            color_system=None,
-            width=self.console.width,
-            height=self.console.height,
-            record=False
-        )
-
-        with plain.capture() as cap:
-            plain.print(panel)
-
-        return cap.get()
-
-    def _play_blackhole(self, text: str):
-
-        effect = Blackhole(text)
-        with effect.terminal_output() as terminal:
-            for frame in effect: terminal.print(frame)
-
+        self.speed = movement_speed  # Frames per second
+        self.text_fx_manager = TextEffectManager(movement_speed) # Manager initialized
 
     def render(self):
         try:
@@ -76,15 +52,10 @@ class StartupScreen:
             box=box.ROUNDED,
             border_style="blue",
             title="[bold gold1]CLEAR[/bold gold1]",
-            subtitle="[italic grey70]Secure Advisory Terminal[/italic grey70]",
             padding=(1, 2)
         )
 
-        # Convert Rich panel to plain text for effect
-        panel_text = self._panel_to_text(panel)
         self.console.clear()
 
-        # -------- INTRO ANIMATION --------
-        self._play_blackhole(panel_text)
-
-        input("\n   >>> Press ENTER")
+        # -------- INTRO --------
+        self.text_fx_manager.play_smoke(panel)

@@ -20,14 +20,15 @@ class MarketFeed:
             self.console.clear()
             self.display_futures()
 
-            self.console.print("\n[bold gold1]MARKET ACTIONS:[/bold gold1]")
+            self.console.print("\n[bold gold1]MARKET ACTIONS MENU:[/bold gold1]")
             self.console.print("[1] 🔍 Quick Stock Lookup (Finnhub)")
             self.console.print("[2] 🔄 Force Refresh Macro Data")
             self.console.print("[0] 🔙 Return to Main Menu")
             
-            choice = InputSafe.get_option(["1", "2", "0"], prompt_text="SELECT OPTION >")
+            choice = InputSafe.get_option(["1", "2", "0"], prompt_text="[>]")
             
             if choice == "0":
+                self.console.clear()
                 break
             elif choice == "1":
                 self.stock_lookup_loop()
@@ -35,7 +36,7 @@ class MarketFeed:
                 continue 
 
     def display_futures(self):
-        """Renders Categorized Futures and Macro data into a organized table."""
+        """Renders Categorized Futures and Macro data into an organized table with full intraday stats."""
         self.console.print("[dim]Fetching live global snapshot...[/dim]")
         raw_data = self.yahoo.get_macro_snapshot()
 
@@ -43,27 +44,29 @@ class MarketFeed:
             self.console.print("[red]Critical Error: Data stream unavailable.[/red]")
             return
 
-        # Sort data based on custom category order to keep the UI consistent
         order = ["Commodities", "Indices", "FX", "Rates", "Crypto", "Macro ETFs"]
         raw_data.sort(key=lambda x: (order.index(x["category"]), x["ticker"]))
 
         table = Table(title="[bold blue]GLOBAL MACRO DASHBOARD[/bold blue]", 
-                      expand=True, box=box.MINIMAL_DOUBLE_HEAD)
+                    expand=True, box=box.MINIMAL_DOUBLE_HEAD)
         
+        # Column Layout
         table.add_column("Ticker", style="cyan")
-        table.add_column("Security", style="white")
         table.add_column("Price", justify="right")
-        table.add_column("Net Change", justify="right")
-        table.add_column("% Change", justify="right")
+        table.add_column("Change", justify="right")
+        table.add_column("% Chg", justify="right")
+        table.add_column("Day High", justify="right", style="green")
+        table.add_column("Day Low", justify="right", style="red")
+        table.add_column("Volume", justify="right", style="dim")
+        table.add_column("Security", style="white", min_width=20)
 
         current_cat = None
         for item in raw_data:
-            # Inject Category Header when a new category is reached
             if item["category"] != current_cat:
-                table.add_row("", "", "", "", "") # Spacer
+                table.add_row("", "", "", "", "", "", "", "") # Spacer
                 table.add_row(
                     f"[bold underline gold1]{item['category'].upper()}[/bold underline gold1]", 
-                    "", "", "", ""
+                    "", "", "", "", "", "", ""
                 )
                 current_cat = item["category"]
 
@@ -71,10 +74,13 @@ class MarketFeed:
             
             table.add_row(
                 item["ticker"],
-                item["name"],
                 f"{item['price']:,.2f}",
                 f"[{c_color}]{item['change']:+.2f}[/{c_color}]",
-                f"[{c_color}]{item['pct']:+.2f}%[/{c_color}]"
+                f"[{c_color}]{item['pct']:+.2f}%[/{c_color}]",
+                f"{item['high']:,.2f}",
+                f"{item['low']:,.2f}",
+                f"{item['volume']:,.0f}",
+                item["name"]
             )
 
         self.console.print(table)
@@ -86,14 +92,24 @@ class MarketFeed:
             
             if ticker == 'B' or not ticker:
                 break
-                
+
             quote = self.finnhub.get_quote(ticker)
-            
-            if not quote or "error" in quote:
-                self.console.print(f"[red]Lookup Failed: Invalid ticker or API limitation.[/red]")
+
+            # Check if quote is None or contains an error before proceeding
+            if not quote or isinstance(quote, dict) and "error" in quote:
+                if isinstance(quote, dict) and "error" in quote:
+                    self.console.print(f"[red]{quote['error']}[/red]")
+                else:
+                    self.console.print(f"[red]Lookup Failed: Invalid ticker or data unavailable.[/red]")
+                continue
+
+            # Ensure the essential data for color calculation is present and not None
+            if quote.get('change') is None:
+                self.console.print(f"[red]Lookup Failed: Data unavailable for '{ticker}'.[/red]")
                 continue
 
             color = "green" if quote['change'] >= 0 else "red"
+
             p = Panel(
                 f"[bold white]Price:[/bold white] ${quote['price']:,.2f}\n"
                 f"[bold white]Change:[/bold white] [{color}]{quote['change']:+.2f} ({quote['percent']:+.2f}%) [/{color}]\n"

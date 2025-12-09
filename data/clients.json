@@ -1,0 +1,17 @@
+[
+    {
+        "client_id": "517ab6ca-c565-4460-bd89-c3e3b2cf6a12",
+        "name": "Test Account 2",
+        "risk_profile": "conservative",
+        "calculated_risk": "N/A",
+        "accounts": [
+            {
+                "account_id": "6772bd07-9af4-4586-ac0c-d6641679a4fd",
+                "account_name": "Test Account 1's Primary Brokerage",
+                "account_type": "Taxable",
+                "current_value": 0.0,
+                "holdings": {}
+            }
+        ]
+    }
+]
