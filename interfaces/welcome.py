@@ -131,7 +131,7 @@ class StartupScreen:
             box=box.ROUNDED,
             border_style="blue",
             title="[bold gold1]https://seperet.com[/bold gold1]",
-            padding=(1, 1)
+            padding=(1, 2),
         )
 
         text_content = self.text_fx_manager._panel_to_text(panel)

@@ -85,7 +85,13 @@ if __name__ == "__main__":
         session.run()
         
     except KeyboardInterrupt:
-        print("\n\n>> Force Exit. Goodbye.")
+        # Windows
+        if os.name == 'nt':
+            _ = os.system('cls')
+        # macOS and Linux
+        else:
+            _ = os.system('clear')
+        print("\n>> Goodbye.\n")
         sys.exit(0)
     except Exception as e:
         print(f"\n>> CRITICAL ERROR: {e}")
