@@ -1,3 +1,11 @@
+> [!WARNING]
+>
+> Work in progress. Issues still present.
+</center>
+<br>
+
+<div align="center">
+  
 ![Python](https://img.shields.io/badge/python-3.10+-blue)
 ![Repo Size](https://img.shields.io/github/repo-size/denv3rr/clear)
 ![GitHub Created At](https://img.shields.io/github/created-at/denv3rr/clear)
@@ -5,17 +13,12 @@
 ![Issues](https://img.shields.io/github/issues/denv3rr/clear)
 ![Website](https://img.shields.io/website?url=https%3A%2F%2Fseperet.com&label=seperet.com)
 
-<div>
-  <a align="center">
-    <img src="assets/screenshot1.png" alt="Screenshot" width="500px">
+  <a>
+    <img src="assets/clear_screenshot_welcome_1.png" alt="Screenshot" style="width=50%">
   </a>
 </div>
 
 ---
-
-> [!NOTE]
->
-> Work in progress. Issues still present. (Type sh)
 
 <div>
   <a href="https://seperet.com">
