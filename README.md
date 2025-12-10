@@ -56,10 +56,18 @@
 
 > [!NOTE]
 >
-> Work in progress.
+> Work in progress. Issues still present. (Type sh)
 
 <div>
   <a href="https://seperet.com">
     <img width="100" src=https://github.com/denv3rr/denv3rr/blob/main/IMG_4225.gif/>
   </a>
 </div>
+
+## Usage
+
+```pwsh
+git clone git@github.com:denv3rr/clear.git --depth 1
+cd clear
+python run.py
+```
