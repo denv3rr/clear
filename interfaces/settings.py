@@ -56,8 +56,7 @@ class SettingsModule:
             
             # 1. Build and Animate the top info panel (Thunderstorm)
             info_panel = self._build_info_panel()
-            self.text_fx.play_thunderstorm(info_panel)
-            # self.console.print(info_panel)
+            self.console.print(info_panel)
 
             # 2. Display Settings Options (Placeholders)
             self.console.print("\n[bold gold1]SETTINGS:[/bold gold1]")
@@ -68,6 +67,7 @@ class SettingsModule:
             choice = InputSafe.get_option(["1", "2", "0"], prompt_text="SELECT OPTION >")
             
             if choice == "0":
+                self.console.clear()
                 break
             elif choice == "1":
                 self.console.print("[dim]Not yet implemented: API Key Update...[/dim]")

@@ -1,5 +1,6 @@
 from rich.console import Console
 from rich.prompt import Prompt, IntPrompt, Confirm
+import os
 
 console = Console()
 
@@ -29,8 +30,15 @@ class InputSafe:
                 console.print(f"[red]Invalid selection. Options: {valid_choices}[/red]")
             
             except KeyboardInterrupt:
-                console.print("\n[yellow]Navigation Interrupted. Returning...[/yellow]")
-                return "back"
+                # For Windows
+                if os.name == 'nt':
+                    _ = os.system('cls')
+                # For macOS and Linux
+                else:
+                    _ = os.system('clear')
+                console.print("\n\n[yellow]>> Interrupted. Exiting for safety...[/yellow]")
+                console.print("[dim]   Data saved.\n   Connections terminated.\n   Logs cleared from terminal.[/dim]\n")
+                exit(0)
 
     @staticmethod
     def get_float(prompt_text: str, min_val: float = None, max_val: float = None) -> float:

@@ -44,16 +44,17 @@ class ClientManager:
             self.console.clear()
             self.display_client_list()
 
-            self.console.print("\n[bold gold1]CLIENT ACTIONS:[/bold gold1]")
+            self.console.print("\n")
             self.console.print("[1] ➕ Add New Client")
             self.console.print("[2] 📝 Select Client (by ID)")
-            self.console.print("[3] 🗑️ Delete Client (by ID) [bold red]![/bold red]") # NEW: Delete Client
+            self.console.print("[3] 🗑️ Delete Client (by ID) [bold red]![/bold red]")
             self.console.print("[0] 🔙 Return to Main Menu")
             
-            choice = InputSafe.get_option(["1", "2", "3", "0"], prompt_text="SELECT OPTION >") # UPDATED options
+            choice = InputSafe.get_option(["1", "2", "3", "0"], prompt_text="[>]")
             
             if choice == "0":
                 DataHandler.save_clients(self.clients)
+                self.console.clear()
                 break
             elif choice == "1":
                 self.add_client_workflow()
@@ -66,7 +67,7 @@ class ClientManager:
     
     def display_client_list(self):
         """Renders the list of current clients with summary data."""
-        table = Table(title="[bold gold1]Client List[/bold gold1]", box=box.ROUNDED)
+        table = Table(title="[bold gold1]Clients[/bold gold1]", box=box.ROUNDED, width=100, )
         table.add_column("Client ID", style="dim", width=10)
         table.add_column("Name", style="bold white")
         table.add_column("Risk Profile", style="yellow")
@@ -207,8 +208,7 @@ class ClientManager:
         )
 
         new_client = Client(name=name, risk_profile=risk_profile)
-        # Give the new client a default account immediately
-        new_client.accounts.append(Account(account_name=f"{name}'s Primary Brokerage"))
+        new_client.accounts.append(Account(account_name=f"Primary"))
         self.clients.append(new_client)
         
         self.console.print(f"\n[green]Client '{name}' added with ID: {new_client.client_id[:8]}[/green]")
@@ -247,12 +247,12 @@ class ClientManager:
             self.console.clear()
             self.display_client_dashboard(client)
             
-            self.console.print("\n[bold gold1]DASHBOARD ACTIONS:[/bold gold1]")
+            self.console.print(f"\n[bold gold1]CLIENT | {client.name}[/bold gold1]")
             self.console.print("[1] 📝 Edit Client Details (Name, Risk Profile)")
             self.console.print("[2] 💰 Manage Accounts (Select/Add/Edit Holdings)")
-            self.console.print("[0] 🔙 Return to Client List")
+            self.console.print("[0] 🔙 Return to Clients")
             
-            choice = InputSafe.get_option(["1", "2", "0"], prompt_text="SELECT ACTION >")
+            choice = InputSafe.get_option(["1", "2", "0"], prompt_text="[>]")
             
             if choice == "0":
                 DataHandler.save_clients(self.clients)
@@ -268,7 +268,7 @@ class ClientManager:
         """Helper to display accounts and prompt for selection/account list actions."""
         options = []
         
-        self.console.print(f"\n[bold gold1]ACCOUNTS FOR: {client.name}[/bold gold1]")
+        self.console.print(f"\n[bold gold1]ALL ACCOUNTS | {client.name}[/bold gold1]")
         
         account_table = Table(box=box.SIMPLE, show_header=True)
         account_table.add_column("#", style="bold yellow")
@@ -290,24 +290,29 @@ class ClientManager:
             )
             
         self.console.print(Align.center(account_table))
-        
-        self.console.print("\n[bold gold1]ACCOUNT MANAGEMENT ACTIONS:[/bold gold1]")
-        self.console.print(f"[A] ➕ Add New Account")
-        self.console.print(f"[R] ➖ Remove Account [bold red]![/bold red]")
-        self.console.print("[0] 🔙 Return to Dashboard")
 
-        valid_options = options + ["A", "R", "0"]
-        choice = InputSafe.get_option(valid_options, prompt_text="SELECT OPTION (1-N to manage holdings) >").upper()
+        self.console.print("\n\n[bold gold1]MENU[/bold gold1]")
+        self.console.print(f"[1] 📝 Select Account")
+        self.console.print(f"[2] ➕ Add Account")
+        self.console.print(f"[3] ➖ Remove Account [bold red]![/bold red]")
+        self.console.print("[0] 🔙 Return to Client Dashboard")
+
+        valid_options = options + ["1", "2", "3", "0"]
+        choice = InputSafe.get_option(valid_options, prompt_text="[>]").upper()
         
         InputSafe.set_last_choice(choice) # Store choice for manage_accounts_workflow to check
 
-        if choice == "0":
+        if choice == "1":
+            self.console.print("[yellow][ TO ADD | SELECT ACCOUNT TO MANAGE BY NAME OR CLIENT ACCOUNT INDEX [1-accounts] ][/yellow]")
             return None
-        elif choice == "A":
+        elif choice == "2":
             self.add_account_workflow(client)
             return None
-        elif choice == "R":
+        elif choice == "3":
             self.remove_account_workflow(client)
+            return None
+        elif choice == "0":
+            self.console.print("[yellow][ TO ADD | RETURN TO DASHBOARD ][/yellow]")
             return None
         else: # Selected an account index
             try:

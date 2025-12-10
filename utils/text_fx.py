@@ -17,7 +17,7 @@ from terminaltexteffects.effects import (
 class TextEffectManager:
     """Manages Terminal Text Effects for application screens."""
     
-    def __init__(self, movement_speed: float = 200):
+    def __init__(self, movement_speed: float = 1):
         self.console = Console()
         self.speed = movement_speed
 

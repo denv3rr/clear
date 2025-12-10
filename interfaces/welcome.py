@@ -7,15 +7,16 @@ from rich.panel import Panel
 from rich.table import Table
 from rich import box
 from rich.align import Align
+from rich.rule import Rule
 
 from utils.system import SystemHost
 from utils.text_fx import TextEffectManager
 
 class StartupScreen:
-    def __init__(self, movement_speed: float = 200):
+    def __init__(self, movement_speed: float = 1):
         self.console = Console()
-        self.speed = movement_speed  # Frames per second
-        self.text_fx_manager = TextEffectManager(movement_speed) # Manager initialized
+        self.speed = movement_speed
+        self.text_fx_manager = TextEffectManager(movement_speed)
 
     def render(self):
         try:
@@ -30,32 +31,108 @@ class StartupScreen:
                 "finnhub_status": False
             }
 
-        # Build table with system information
-        grid = Table.grid(expand=True)
-        grid.add_column(justify="left")
+        # --- 1. ASCII Art Content (Raw String) ---
+        # Extracted directly from the snippet's content
+        ascii_art_clear = r"""
+ ██████╗██╗     ███████╗ █████╗ ██████╗ 
+██╔════╝██║     ██╔════╝██╔══██╗██╔══██╗
+██║     ██║     █████╗  ███████║██████╔╝
+██║     ██║     ██╔══╝  ██╔══██║██╔══██╗
+╚██████╗███████╗███████╗██║  ██║██║  ██║
+ ╚═════╝╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝
+"""
 
-        grid.add_row(f"[bold cyan][+] HOSTNAME:[/bold cyan] {data['hostname']}")
-        grid.add_row(f"[bold cyan][+] USER:[/bold cyan]     {data['user']}")
-        grid.add_row(f"[bold cyan][+] OS:[/bold cyan]       {data['os']}")
-        grid.add_row(f"[bold cyan][+] LOCAL IP:[/bold cyan] {data['ip']}")
+        ascii_art_divider = r"""
+█████╗█████╗█████╗█████╗█████╗█████╗█████╗█████╗█████╗█████╗█████╗█████╗
+╚════╝╚════╝╚════╝╚════╝╚════╝╚════╝╚════╝╚════╝╚════╝╚════╝╚════╝╚════╝
+"""
+
+        ascii_art_dash = r"""
+█████╗
+╚════╝
+"""
+        
+        # --- 2. Info Panel Content (Centered, with outline) ---
+        info_panel_content = Table.grid(expand=True, padding=(0, 0))
+        info_panel_content.add_column(justify="center")
+
+        info_panel_content.add_row(f"[bold white]Welcome, {data['user']}.[/bold white]")
+        info_panel_content.add_row("")
+        info_panel_content.add_row(Align.center(Rule()))
+        info_panel_content.add_row("")
+
+        # LINKS IN GRID
+        links_grid = Table.grid(expand=False, padding=(0, 1))
+        links_grid.add_column(justify="left", ratio=1)
+        links_grid.add_column(justify="left", ratio=1)
+
+        links_grid.add_row("[bold yellow]PROJECT REPO:[/bold yellow]", 
+                           "https://github.com/denv3rr/clear")
+        links_grid.add_row("[bold yellow]DOCUMENTATION:[/bold yellow]", 
+                           "https://github.com/denv3rr/clear/blob/main/README.md")
+        links_grid.add_row("[bold yellow]FINNHUB REGISTER:[/bold yellow]", 
+                           "https://finnhub.io/register")
+        links_grid.add_row("[bold yellow]FINNHUB DASHBOARD:[/bold yellow]", 
+                           "https://finnhub.io/dashboard")
+
+        info_panel_content.add_row(links_grid)
+
+        info_panel = Panel(
+            info_panel_content,
+            box=box.ROUNDED,
+            border_style="yellow",
+            padding=(1, 3),
+        )
+
+        # --- 3. System Info Grid (Left justified content inside the column) ---
+        sys_info_grid_content = Table.grid(expand=True, padding=(0, 0))
+        # This column is left-justified, as required:
+        sys_info_grid_content.add_column(justify="left") 
+
+        sys_info_grid_content.add_row(f"[bold cyan][+] HOSTNAME:[/bold cyan] {data['hostname']}")
+        sys_info_grid_content.add_row(f"[bold cyan][+] USER:[/bold cyan]     {data['user']}")
+        sys_info_grid_content.add_row(f"[bold cyan][+] OS:[/bold cyan]       {data['os']}")
+        sys_info_grid_content.add_row(f"[bold cyan][+] LOCAL IP:[/bold cyan] {data['ip']}")
 
         color = "green" if data["finnhub_status"] else "red"
         status = "DETECTED" if data["finnhub_status"] else "MISSING"
 
-        grid.add_row("")
-        grid.add_row(f"[bold white]SYSTEM TIME:[/bold white] {data['login_time']}")
-        grid.add_row(f"[bold white]FINNHUB KEY:[/bold white] [{color}]{status}[/{color}]")
+        sys_info_grid_content.add_row("")
+        sys_info_grid_content.add_row(f"[bold white]SYSTEM TIME:[/bold white]  {data['login_time']}")
+        sys_info_grid_content.add_row(f"[bold white]FINNHUB KEY:[/bold white]  [{color}]{status}[/{color}]")
 
-        # Encapsulate in a Rich panel
-        panel = Panel(
-            Align.center(grid, vertical="middle"),
+        sys_info_grid = Panel(
+            sys_info_grid_content,
             box=box.ROUNDED,
-            border_style="blue",
-            title="[bold gold1]CLEAR[/bold gold1]",
-            padding=(1, 2)
+            border_style="yellow",
+            padding=(1, 3),
         )
 
-        self.console.clear()
+        # --- 4. Main Layout Grid (Three Rows for vertical arrangement) ---
+        # This grid ensures all components are centered horizontally.
+        main_layout_grid = Table.grid(expand=True)
+        main_layout_grid.add_column(justify="center", ratio=1) 
 
-        # -------- INTRO --------
-        self.text_fx_manager.play_smoke(panel)
+        # Row 1: Centered ASCII Art
+        main_layout_grid.add_row(Align.center(ascii_art_clear))
+        main_layout_grid.add_row(Align.center("[dim]Lightweight books. Work in progress.[/dim]"))
+        
+        main_layout_grid.add_row(Align.center(ascii_art_divider))
+        # Row 2: NEW Centered Info Panel
+        main_layout_grid.add_row(Align.center(info_panel)) 
+
+        # Row 3: Centered System Info Grid (which contains left-justified text)
+        main_layout_grid.add_row(Align.center(sys_info_grid))
+        main_layout_grid.add_row(Align.center(ascii_art_divider))
+
+        # --- 5. Encapsulate in a Rich panel with fixed width 200 ---
+        panel = Panel(
+            main_layout_grid, 
+            box=box.ROUNDED,
+            border_style="blue",
+            title="[bold gold1]https://seperet.com[/bold gold1]",
+            padding=(1, 1)
+        )
+
+        text_content = self.text_fx_manager._panel_to_text(panel)
+        self.text_fx_manager.play_smoke(text_content)

@@ -3,6 +3,11 @@ import subprocess
 import importlib.util
 import os
 
+from rich.console import Console
+
+console = Console()
+console.clear()
+
 # --- 1. Dependency Manager ---
 def check_and_install_packages():
     """
@@ -10,6 +15,8 @@ def check_and_install_packages():
     """
     req_file = "requirements.txt"
     
+    print("\n>> Running...")
+    print(">> Verifying Required Libraries...")
     if not os.path.exists(req_file):
         print(f"Error: {req_file} not found.")
         sys.exit(1)
@@ -47,7 +54,7 @@ def check_and_install_packages():
             print(">> Error installing packages. Please check your internet connection.")
             sys.exit(1)
     else:
-        print(">> All Dependencies Verified.\n")
+        print(">> All Dependencies Verified.\n\n")
 
 # --- 2. Environment Loader ---
 def load_environment():

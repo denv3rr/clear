@@ -1,4 +1,5 @@
 import sys
+import os
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -31,7 +32,7 @@ class MainMenu:
         # Build Rich Table
         table = Table(box=None, padding=(0, 2), collapse_padding=True, show_header=False)
         table.add_column("Key", style="bold gold1", width=4, justify="right")
-        table.add_column("Module", style="bold white", width=25)
+        table.add_column("Module", style="bold white", width=20)
         table.add_column("Description", style="italic grey70")
 
         for key, name, desc in menu_options:
@@ -40,12 +41,20 @@ class MainMenu:
         # Wrap in a Panel
         panel = Panel(
             Align.center(table),
-            subtitle="[dim]Select a module number[/dim]",
             box=box.ROUNDED,
-            padding=(1, 2),
-            border_style="blue"
+            padding=(1, 5),
+            border_style="white"
         )
         return panel
+
+    @staticmethod
+    def clear_console():
+        # Windows
+        if os.name == 'nt':
+            _ = os.system('cls')
+        # macOS and Linux
+        else:
+            _ = os.system('clear')
 
     def display(self) -> str:
         """
@@ -70,9 +79,6 @@ class MainMenu:
         if action == "exit":
             # Apply Burn animation to the main menu frame before exiting
             self.text_fx.play_burn(main_panel)
-            self.console.clear()
-        elif action == "settings":
-            # Run the settings module
-            self.settings_module.run()
-            
+            self.clear_console()
+
         return action

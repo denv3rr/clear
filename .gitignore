@@ -19,7 +19,7 @@ env/
 # Local databases or logs
 *.log
 *.sqlite3
-client_data_local.json
+data/clients.json
 
 # OS generated files
 .DS_Store

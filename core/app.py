@@ -47,14 +47,14 @@ class ClearApp:
             
         elif action == "settings":
             settings = SettingsModule()
-            settings.display_settings()
+            settings.run()
 
     def placeholder_module(self, name: str):
-        self.console.print(f"\n[bold green]>> LOADING MODULE: {name}...[/bold green]")
+        self.console.print(f"\n[bold green]>> LOADING {name}...[/bold green]")
         self.console.print("[italic]   Module logic to be implemented soon ...[/italic]")
         InputSafe.pause()
 
     def shutdown(self):
         self.console.print("\n[bold red]>> Closing Session...[/bold red]")
-        self.console.print("[dim]   Data saved. Connections terminated.[/dim]\n")
+        self.console.print("[dim]   Data saved.\n   Connections terminated.\n   Logs cleared from terminal.[/dim]\n")
         sys.exit(0)

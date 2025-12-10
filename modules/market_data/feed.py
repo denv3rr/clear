@@ -21,8 +21,8 @@ class MarketFeed:
             self.display_futures()
 
             self.console.print("\n[bold gold1]MARKET ACTIONS MENU:[/bold gold1]")
-            self.console.print("[1] 🔍 Quick Stock Lookup (Finnhub)")
-            self.console.print("[2] 🔄 Force Refresh Macro Data")
+            self.console.print("[1] 🔍 Ticker Search")
+            self.console.print("[2] 🔄 Force Refresh")
             self.console.print("[0] 🔙 Return to Main Menu")
             
             choice = InputSafe.get_option(["1", "2", "0"], prompt_text="[>]")
@@ -36,21 +36,20 @@ class MarketFeed:
                 continue 
 
     def display_futures(self):
-        """Renders Categorized Futures and Macro data into an organized table with full intraday stats."""
-        self.console.print("[dim]Fetching live global snapshot...[/dim]")
+        """Renders categorized macro data inside a clean panel."""
+        self.console.print("[dim]Fetching...[/dim]")
         raw_data = self.yahoo.get_macro_snapshot()
 
         if not raw_data:
             self.console.print("[red]Critical Error: Data stream unavailable.[/red]")
             return
 
+        # Order categories
         order = ["Commodities", "Indices", "FX", "Rates", "Crypto", "Macro ETFs"]
         raw_data.sort(key=lambda x: (order.index(x["category"]), x["ticker"]))
 
-        table = Table(title="[bold blue]GLOBAL MACRO DASHBOARD[/bold blue]", 
-                    expand=True, box=box.MINIMAL_DOUBLE_HEAD)
-        
-        # Column Layout
+        # Build table
+        table = Table(expand=True, box=box.MINIMAL_DOUBLE_HEAD)
         table.add_column("Ticker", style="cyan")
         table.add_column("Price", justify="right")
         table.add_column("Change", justify="right")
@@ -58,20 +57,22 @@ class MarketFeed:
         table.add_column("Day High", justify="right", style="green")
         table.add_column("Day Low", justify="right", style="red")
         table.add_column("Volume", justify="right", style="dim")
-        table.add_column("Security", style="white", min_width=20)
+        table.add_column("Security", min_width=20)
 
         current_cat = None
         for item in raw_data:
+
+            # Category Header
             if item["category"] != current_cat:
-                table.add_row("", "", "", "", "", "", "", "") # Spacer
+                table.add_row("", "", "", "", "", "", "", "")
                 table.add_row(
-                    f"[bold underline gold1]{item['category'].upper()}[/bold underline gold1]", 
+                    f"[bold underline gold1]{item['category'].upper()}[/bold underline gold1]",
                     "", "", "", "", "", "", ""
                 )
                 current_cat = item["category"]
 
             c_color = "green" if item["change"] >= 0 else "red"
-            
+
             table.add_row(
                 item["ticker"],
                 f"{item['price']:,.2f}",
@@ -83,7 +84,18 @@ class MarketFeed:
                 item["name"]
             )
 
-        self.console.print(table)
+        # Wrap the table in a panel
+        ticker_panel = Panel(
+            Align.center(table),
+            title="[bold gold1]MACRO DASHBOARD[/bold gold1]",
+            border_style="yellow",
+            box=box.ROUNDED,
+            padding=(1, 2)
+        )
+
+        # Display panel
+        self.console.print(ticker_panel)
+
 
     def stock_lookup_loop(self):
         """Sub-loop for isolated real-time stock ticker analysis."""
