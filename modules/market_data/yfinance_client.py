@@ -8,29 +8,139 @@ class YahooWrapper:
     """
     
     MACRO_TICKERS = {
+
         "Commodities": {
-            "CL=F": "Crude Oil WTI", "BZ=F": "Brent Crude", "GC=F": "Gold", 
-            "SI=F": "Silver", "HG=F": "Copper", "ZC=F": "Corn", "LE=F": "Live Cattle"
+            # Energy
+            "CL=F": "Crude Oil WTI",
+            "BZ=F": "Brent Crude",
+            "NG=F": "Natural Gas",
+            "RB=F": "RBOB Gasoline",
+            "HO=F": "Heating Oil",
+
+            # Metals
+            "GC=F": "Gold",
+            "SI=F": "Silver",
+            "HG=F": "Copper",
+            "PL=F": "Platinum",
+            "PA=F": "Palladium",
+
+            # Agriculture
+            "ZC=F": "Corn",
+            "ZW=F": "Wheat",
+            "ZS=F": "Soybeans",
+            "KC=F": "Coffee",
+            "SB=F": "Sugar",
+            "CT=F": "Cotton",
+
+            # Livestock
+            "LE=F": "Live Cattle",
+            "GF=F": "Feeder Cattle",
+            "HE=F": "Lean Hogs"
         },
+
         "Indices": {
-            "^GSPC": "S&P 500", "^DJI": "Dow Jones", "^IXIC": "Nasdaq",
-            "^VIX": "VIX Index", "^FTSE": "FTSE 100", "^N225": "Nikkei 225"
+            # U.S.
+            "^GSPC": "S&P 500",
+            "^DJI": "Dow Jones",
+            "^IXIC": "Nasdaq Composite",
+            "^RUT": "Russell 2000",
+            "^VIX": "VIX Volatility Index",
+
+            # Europe
+            "^FTSE": "FTSE 100",
+            "^GDAXI": "DAX (Germany)",
+            "^FCHI": "CAC 40 (France)",
+
+            # Asia
+            "^N225": "Nikkei 225",
+            "^HSI": "Hang Seng Index",
+            "^STI": "Singapore Straits Times",
+
+            # Emerging Markets
+            "^BVSP": "Bovespa (Brazil)",
+            "^MXX": "IPC (Mexico)",
+            "^KS11": "KOSPI (South Korea)"
         },
+
         "FX": {
-            "EURUSD=X": "EUR/USD", "GBPUSD=X": "GBP/USD", "USDJPY=X": "USD/JPY",
-            "USDCAD=X": "USD/CAD", "USDMXN=X": "USD/MXN"
+            # Majors
+            "EURUSD=X": "EUR/USD",
+            "GBPUSD=X": "GBP/USD",
+            "USDJPY=X": "USD/JPY",
+            "AUDUSD=X": "AUD/USD",
+            "NZDUSD=X": "NZD/USD",
+
+            # USD crosses
+            "USDCAD=X": "USD/CAD",
+            "USDCHF=X": "USD/CHF",
+            "USDSEK=X": "USD/SEK",
+            "USDNOK=X": "USD/NOK",
+            "USDZAR=X": "USD/ZAR",
+
+            # EM FX
+            "USDMXN=X": "USD/MXN",
+            "USDTRY=X": "USD/TRY",
+            "USDCNY=X": "USD/CNY",
+            "USDHKD=X": "USD/HKD",
+            "USDINR=X": "USD/INR"
         },
+
         "Rates": {
-            "^TNX": "10Y Treasury Yield", "^TYX": "30Y Treasury Yield", "^MOVE": "Bond Vol Index"
+            # U.S. yields
+            "^IRX": "13W Treasury Bill Yield",
+            "^FVX": "5Y Treasury Yield",
+            "^TNX": "10Y Treasury Yield",
+            "^TYX": "30Y Treasury Yield",
+
+            # Volatility indices
+            "^MOVE": "Bond Volatility Index",
+
+            # Global rates (confirmed)
+            "^FTSE": "UK 10Y Gilt Yield",
+            "^N225": "Japan 10Y JGB Yield"
         },
+
         "Crypto": {
-            "BTC-USD": "Bitcoin", "ETH-USD": "Ethereum", "SOL-USD": "Solana"
+            "BTC-USD": "Bitcoin",
+            "ETH-USD": "Ethereum",
+            "SOL-USD": "Solana",
+            "XRP-USD": "Ripple",
+            "ADA-USD": "Cardano"
         },
+
         "Macro ETFs": {
-            "BDRY": "Dry Bulk Ship ETF", "TLT": "20+Y Treasury ETF", "UUP": "Dollar ETF",
-            "SPY": "S&P 500 ETF", "GLD": "Gold ETF"
+            # Equities
+            "SPY": "S&P 500 ETF",
+            "QQQ": "Nasdaq 100 ETF",
+            "IWM": "Russell 2000 ETF",
+
+            # Global macro exposures
+            "EEM": "Emerging Markets ETF",
+            "VEA": "Developed Markets ex-US ETF",
+
+            # Rates & Credit
+            "TLT": "20+ Year Treasury Bond ETF",
+            "IEF": "7–10 Year Treasury ETF",
+            "HYG": "High Yield Corporate Bond ETF",
+            "LQD": "Investment Grade Corporate Bond ETF",
+
+            # Currencies
+            "UUP": "US Dollar Index ETF",
+            "FXE": "Euro Currency ETF",
+            "FXY": "Japanese Yen ETF",
+
+            # Commodities
+            "GLD": "Gold ETF",
+            "SLV": "Silver ETF",
+            "DBC": "Broad Commodity ETF",
+            "USO": "Oil ETF",
+
+            # Shipping & global trade
+            "BDRY": "Dry Bulk Shipping ETF",
+            "SEA": "Global Shipping ETF"
         }
     }
+
 
     @staticmethod
     def get_macro_snapshot(period="1d", interval="15m"):
@@ -51,86 +161,62 @@ class YahooWrapper:
 
         try:
             # Download batch data
-            # group_by='ticker' ensures we get a structured MultiIndex if we want it, 
-            # but default is fine. We handle the structure below.
             data = yf.download(
                 flat_list, 
                 period=period, 
                 interval=interval, 
                 progress=False,
-                group_by='column' # Keeps 'Close', 'Open' at top level
+                group_by='column' 
             )
             
             if data.empty: return []
 
-            # Determine if we have a single ticker or multiple (affects DataFrame structure)
             is_single = len(flat_list) == 1
 
             for sym in flat_list:
                 try:
                     meta = ticker_meta[sym]
                     
-                    # Data Access Logic
                     if is_single:
-                        # If single, data columns are just 'Close', 'Open' (no ticker level)
-                        # We re-wrap it to mimic multi-index for consistent logic below,
-                        # or just access directly. Let's access directly.
                         if 'Close' not in data.columns: continue
-                        
                         closes = data['Close']
                         opens = data['Open']
                         highs = data['High']
                         lows = data['Low']
                         volumes = data['Volume']
                     else:
-                        # Multi-ticker: data['Close'][sym]
                         if sym not in data['Close'].columns: continue
-                        
                         closes = data['Close'][sym]
                         opens = data['Open'][sym]
                         highs = data['High'][sym]
                         lows = data['Low'][sym]
                         volumes = data['Volume'][sym]
 
-                    # Clean scalar extraction (Last valid index)
-                    # We drop NaNs to get the actual history for sparklines
                     valid_history = closes.dropna()
                     
                     if valid_history.empty:
                         continue
 
                     current = valid_history.iloc[-1]
-                    # Get corresponding scalar values for the same index
                     last_idx = valid_history.index[-1]
                     
-                    # Safe loc access
                     try:
                         open_p = opens.loc[last_idx]
                         high = highs.loc[last_idx]
                         low = lows.loc[last_idx]
                         volume = volumes.loc[last_idx]
                     except:
-                        # Fallback if indices slightly mismatch
                         open_p = current 
                         high = current
                         low = current
                         volume = 0
-
-                    # Calculate Change
-                    # For '1d', change is relative to previous close usually, 
-                    # but here we calculate relative to the Open of the *current bar* # or the *first bar* of the requested period?
-                    # Yahoo usually gives 'change' relative to Prev Close.
-                    # We will calculate change based on the period's first vs last for trends,
-                    # or just Open vs Close of the last bar.
-                    # Let's do: Current Price - Price (Start of Period) to show trend over the view.
                     
                     price_start = valid_history.iloc[0]
                     change = current - price_start
                     pct = (change / price_start) * 100 if price_start != 0 else 0.0
 
-                    # Convert history series to list for sparkline
-                    # Take last 20 points to ensure sparkline fits
-                    history_list = valid_history.tail(30).tolist()
+                    # FIX: Reduced to 20 points to match the UI column width
+                    history_list = valid_history.tail(20).tolist()
 
                     results.append({
                         "ticker": sym, 
@@ -142,7 +228,7 @@ class YahooWrapper:
                         "high": float(high), 
                         "low": float(low), 
                         "volume": int(volume) if not pd.isna(volume) else 0,
-                        "history": history_list # NEW FIELD
+                        "history": history_list
                     })
                 except Exception:
                     continue

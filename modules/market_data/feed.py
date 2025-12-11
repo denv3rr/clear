@@ -19,7 +19,7 @@ class MarketFeed:
         self.current_period = "1d"
         self.current_interval = "15m"
         
-        # Preset Intervals for the "Less Clicky" toggle
+        # Preset Intervals
         self.interval_options = [
             ("1D", "1d", "15m"),   # Label, Period, Interval
             ("5D", "5d", "60m"),
@@ -35,11 +35,9 @@ class MarketFeed:
         Uses blocks:  ▂▃▄▅▆▇█
         """
         if not data or len(data) < 2:
-            return "─" * 10
+            return "─" * len(data) if data else "─" * 20
         
-        # Sparkline characters (lowest to highest)
         bars = u" ▂▃▄▅▆▇█"
-        
         min_val = min(data)
         max_val = max(data)
         spread = max_val - min_val
@@ -49,7 +47,6 @@ class MarketFeed:
             
         sparkline = ""
         for val in data:
-            # Normalize value between 0 and 7 (indices of bars)
             norm = (val - min_val) / spread
             idx = int(norm * (len(bars) - 1))
             sparkline += bars[idx]
@@ -100,7 +97,6 @@ class MarketFeed:
                 continue 
             elif choice == "3":
                 new_label = self.toggle_interval()
-                # Auto-refresh loop happens naturally
 
     def display_futures(self, view_label="1D"):
         """Renders categorized macro data inside a clean panel with Sparklines."""
@@ -115,27 +111,25 @@ class MarketFeed:
             self.console.print("[red]Critical Error: Data stream unavailable.[/red]")
             return
 
-        # Order categories
         order = ["Commodities", "Indices", "FX", "Rates", "Crypto", "Macro ETFs"]
         raw_data.sort(key=lambda x: (order.index(x["category"]), x["ticker"]))
 
-        # Build table
         table = Table(expand=True, box=box.MINIMAL_DOUBLE_HEAD)
         
         # Define Columns
-        table.add_column("Trend", justify="center", width=5) # NEW
+        table.add_column("Trend", justify="center", width=5)
         table.add_column("Ticker", style="cyan")
         table.add_column("Price", justify="right")
         table.add_column("Change", justify="right")
         table.add_column("% Chg", justify="right")
-        table.add_column(f"Chart ({view_label})", justify="center", width=15) # NEW
+        # Increased width to 20 and added no_wrap to prevent ellipsis
+        table.add_column(f"Chart ({view_label})", justify="center", width=20, no_wrap=True)
         table.add_column("Vol", justify="right", style="dim")
         table.add_column("Security", min_width=20)
 
         current_cat = None
         for item in raw_data:
 
-            # Category Header
             if item["category"] != current_cat:
                 table.add_row("", "", "", "", "", "", "", "")
                 table.add_row(
@@ -147,11 +141,9 @@ class MarketFeed:
 
             c_color = "green" if item["change"] >= 0 else "red"
             
-            # Generate new assets
             trend_arrow = self._get_trend_arrow(item["change"])
             sparkline = self._generate_sparkline(item["history"])
             
-            # Sparkline color coding (Green if ending higher than starting)
             spark_color = "green" if item["history"][-1] >= item["history"][0] else "red"
 
             table.add_row(
@@ -165,7 +157,6 @@ class MarketFeed:
                 item["name"]
             )
 
-        # Wrap the table in a panel
         ticker_panel = Panel(
             Align.center(table),
             title=f"[bold gold1]MACRO DASHBOARD ({view_label})[/bold gold1]",
@@ -174,7 +165,6 @@ class MarketFeed:
             padding=(0, 2)
         )
 
-        # Display panel
         self.console.print(ticker_panel)
 
     def stock_lookup_loop(self):

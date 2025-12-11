@@ -114,8 +114,9 @@ class StartupScreen:
         main_layout_grid.add_column(justify="center", ratio=1) 
 
         # Row 1: Centered ASCII Art
+        main_layout_grid.add_row(Align.center("[bold gold1]⚠[/bold gold1]  [dim]Work in progress.[/dim]  [bold gold1]⚠[bold gold1]"))
         main_layout_grid.add_row(Align.center(ascii_art_clear))
-        main_layout_grid.add_row(Align.center("[dim]Lightweight books. Work in progress.[/dim]"))
+        main_layout_grid.add_row(Align.center("[dim]Prices. Books. Analysis.[/dim]"))
         
         main_layout_grid.add_row(Align.center(ascii_art_divider))
         # Row 2: NEW Centered Info Panel
