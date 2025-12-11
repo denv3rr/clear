@@ -1,13 +1,12 @@
 import yfinance as yf
 import pandas as pd
+import numpy as np
 
 class YahooWrapper:
     """
     Handles fetching batch data for global macro assets using nested categorization.
     """
     
-    # Nested mapping for UI categorization and ticker lookup (Expanded List)
-    # Manually curate this main dashboard list per your needs...
     MACRO_TICKERS = {
         "Commodities": {
             "CL=F": "Crude Oil WTI", "BZ=F": "Brent Crude", "GC=F": "Gold", 
@@ -34,9 +33,13 @@ class YahooWrapper:
     }
 
     @staticmethod
-    def get_macro_snapshot():
+    def get_macro_snapshot(period="1d", interval="15m"):
         """
-        Fetches full intraday data (Open, Close, High, Low, Volume) for all categorized assets.
+        Fetches intraday data and history for sparklines.
+        
+        Args:
+            period (str): Yahoo finance period (1d, 5d, 1mo, etc.)
+            interval (str): Yahoo finance interval (15m, 1h, 1d, etc.)
         """
         ticker_meta = {}
         for cat, symbols in YahooWrapper.MACRO_TICKERS.items():
@@ -47,56 +50,101 @@ class YahooWrapper:
         results = []
 
         try:
-            # Setting progress=False to reduce terminal clutter
-            data = yf.download(flat_list, period="1d", interval="1d", progress=False)
+            # Download batch data
+            # group_by='ticker' ensures we get a structured MultiIndex if we want it, 
+            # but default is fine. We handle the structure below.
+            data = yf.download(
+                flat_list, 
+                period=period, 
+                interval=interval, 
+                progress=False,
+                group_by='column' # Keeps 'Close', 'Open' at top level
+            )
             
             if data.empty: return []
 
-            # Check if yfinance returned a simple DataFrame (e.g., if only one ticker was requested)
-            # which changes the column indexing from MultiIndex to simple keys.
-            is_single_ticker_data = len(flat_list) == 1
+            # Determine if we have a single ticker or multiple (affects DataFrame structure)
+            is_single = len(flat_list) == 1
 
             for sym in flat_list:
                 try:
                     meta = ticker_meta[sym]
                     
-                    # Robust check for data presence
-                    if is_single_ticker_data:
-                        # For single ticker, columns are just 'Open', 'Close', etc.
-                        if 'Close' not in data.columns or pd.isna(data['Close'].iloc[-1]):
-                            continue
-                        current = data['Close'].iloc[-1]
-                        open_p = data['Open'].iloc[-1]
-                        high = data['High'].iloc[-1]
-                        low = data['Low'].iloc[-1]
-                        volume = data['Volume'].iloc[-1]
+                    # Data Access Logic
+                    if is_single:
+                        # If single, data columns are just 'Close', 'Open' (no ticker level)
+                        # We re-wrap it to mimic multi-index for consistent logic below,
+                        # or just access directly. Let's access directly.
+                        if 'Close' not in data.columns: continue
+                        
+                        closes = data['Close']
+                        opens = data['Open']
+                        highs = data['High']
+                        lows = data['Low']
+                        volumes = data['Volume']
                     else:
-                        # For multiple tickers (MultiIndex DataFrame)
-                        if sym not in data['Close'].columns or pd.isna(data['Close'][sym].iloc[-1]):
-                            continue
-                        current = data['Close'][sym].iloc[-1]
-                        open_p = data['Open'][sym].iloc[-1]
-                        high = data['High'][sym].iloc[-1]
-                        low = data['Low'][sym].iloc[-1]
-                        volume = data['Volume'][sym].iloc[-1]
+                        # Multi-ticker: data['Close'][sym]
+                        if sym not in data['Close'].columns: continue
+                        
+                        closes = data['Close'][sym]
+                        opens = data['Open'][sym]
+                        highs = data['High'][sym]
+                        lows = data['Low'][sym]
+                        volumes = data['Volume'][sym]
+
+                    # Clean scalar extraction (Last valid index)
+                    # We drop NaNs to get the actual history for sparklines
+                    valid_history = closes.dropna()
                     
-                    # Ensure price and open are valid numbers for calculation
-                    if current == 0.0 or open_p == 0.0:
-                        # This handles cases where data is valid but the market is closed 
-                        # and the last known price is the same as open, but volume is 0
-                        change = 0.0
-                        pct = 0.0
-                    else:
-                        change = current - open_p
-                        pct = (change / open_p) * 100
+                    if valid_history.empty:
+                        continue
+
+                    current = valid_history.iloc[-1]
+                    # Get corresponding scalar values for the same index
+                    last_idx = valid_history.index[-1]
                     
+                    # Safe loc access
+                    try:
+                        open_p = opens.loc[last_idx]
+                        high = highs.loc[last_idx]
+                        low = lows.loc[last_idx]
+                        volume = volumes.loc[last_idx]
+                    except:
+                        # Fallback if indices slightly mismatch
+                        open_p = current 
+                        high = current
+                        low = current
+                        volume = 0
+
+                    # Calculate Change
+                    # For '1d', change is relative to previous close usually, 
+                    # but here we calculate relative to the Open of the *current bar* # or the *first bar* of the requested period?
+                    # Yahoo usually gives 'change' relative to Prev Close.
+                    # We will calculate change based on the period's first vs last for trends,
+                    # or just Open vs Close of the last bar.
+                    # Let's do: Current Price - Price (Start of Period) to show trend over the view.
+                    
+                    price_start = valid_history.iloc[0]
+                    change = current - price_start
+                    pct = (change / price_start) * 100 if price_start != 0 else 0.0
+
+                    # Convert history series to list for sparkline
+                    # Take last 20 points to ensure sparkline fits
+                    history_list = valid_history.tail(30).tolist()
+
                     results.append({
-                        "ticker": sym, "name": meta["name"], "category": meta["category"],
-                        "price": float(current), "change": float(change), "pct": float(pct),
-                        "high": float(high), "low": float(low), "volume": int(volume)
+                        "ticker": sym, 
+                        "name": meta["name"], 
+                        "category": meta["category"],
+                        "price": float(current), 
+                        "change": float(change), 
+                        "pct": float(pct),
+                        "high": float(high), 
+                        "low": float(low), 
+                        "volume": int(volume) if not pd.isna(volume) else 0,
+                        "history": history_list # NEW FIELD
                     })
                 except Exception:
-                    # Skip assets that fail to parse (e.g., delisted or problematic tickers)
                     continue
                     
         except Exception:

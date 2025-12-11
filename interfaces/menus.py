@@ -77,8 +77,12 @@ class MainMenu:
         action = action_map[choice]
 
         if action == "exit":
-            # Apply Burn animation to the main menu frame before exiting
-            self.text_fx.play_burn(main_panel)
+            # To apply Burn animation to the main menu frame before exiting
+            # (or just import/change as needed)
+            # UNCOMMENT:
+            # self.text_fx.play_burn(main_panel)
+
+            #clear the console after animation
             self.clear_console()
 
         return action
