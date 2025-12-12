@@ -268,7 +268,6 @@ class YahooWrapper:
                     change = current - price_start
                     pct = (change / price_start) * 100 if price_start != 0 else 0.0
 
-                    # FIX: Reduced to 20 points to match the UI column width
                     history_list = valid_history.tail(20).tolist()
 
                     results.append({
