@@ -30,18 +30,50 @@
   </a>
 </div>
 
----
-
-<div>
+<div align="center">
   <a href="https://seperet.com">
     <img width="100" src=https://github.com/denv3rr/denv3rr/blob/main/IMG_4225.gif/>
   </a>
 </div>
 
+---
+
 ## Usage
+
+### Quick Start
 
 ```pwsh
 git clone git@github.com:denv3rr/clear.git --depth 1
 cd clear
 python run.py
 ```
+
+### Set Up Finnhub.io API Key
+
+> [!NOTE]
+>
+> Although the basic Finnhub.io service is currently free,
+> some international exchanges require a paid plan.
+
+#### To use stock symbol data from [Finnhub](https://finnhub.io):
+
+1. Create a free account at: [https://finnhub.io/register](https://finnhub.io/register)
+   
+2. Then go to your [API dashboard](https://finnhub.io/dashboard) to get your API key/token.
+
+#### Update your `.env.example` file and add your API key
+
+3. Change the file name from `.env.example` to just `.env`
+   
+4. Add your API key to that `.env` file:
+   
+    ```bash
+    # API KEYS
+    FINNHUB_API_KEY=your_api_key_here
+    ```
+
+> [!WARNING]
+>
+> Remember not to commit this file if you clone this.
+
+---
