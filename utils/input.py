@@ -1,6 +1,7 @@
 from rich.console import Console
 from rich.prompt import Prompt, IntPrompt, Confirm
 import os
+from typing import Optional # <-- Added missing import
 
 console = Console()
 
@@ -39,6 +40,17 @@ class InputSafe:
                 console.print("\n\n[yellow]>> Interrupted. Exiting for safety...[/yellow]")
                 console.print("[dim]   Data saved.\n   Connections terminated.\n   Logs cleared from terminal.[/dim]\n")
                 exit(0)
+
+    @staticmethod
+    def get_string(prompt_text: str = "") -> str: # <-- New method added
+        """Gets a safe, free-form string input from the user."""
+        try:
+            # Using Prompt.ask for Rich formatting consistency
+            return Prompt.ask(f"[cyan]{prompt_text}[/cyan]")
+        except KeyboardInterrupt:
+            console.print("\nInput cancelled.")
+            return ""
+
 
     @staticmethod
     def get_float(prompt_text: str, min_val: float = None, max_val: float = None) -> float:

@@ -22,17 +22,17 @@ class MainMenu:
     def _build_main_menu_frame(self) -> Panel:
         """Helper to build the main menu Rich panel."""
         menu_options = [
-            ("1", "👥 Client Manager", "View portfolios, add clients, manage accounts"),
-            ("2", "📈 Market Data", "Live Tickers, Futures, Commodities (Finnhub/Yahoo)"),
-            ("3", "🧮 Financial Toolkit", "Monte Carlo, Valuations, P&L Calculator"),
-            ("4", "⚙️ Settings", "API Config, User Preferences"),
-            ("0", "🚪 Exit", "Securely close the session")
+            ("1", "Client Manager", "View portfolios, add clients, manage accounts"),
+            ("2", "Market Data", "Live Tickers, Futures, Commodities (Finnhub/Yahoo)"),
+            ("3", "Financial Toolkit", "Monte Carlo, Valuations, P&L Calculator"),
+            ("4", "Settings", "API Config, User Preferences"),
+            ("0", "Exit", "Securely close the session")
         ]
 
         # Build Rich Table
         table = Table(box=None, padding=(0, 2), collapse_padding=True, show_header=False)
         table.add_column("Key", style="bold gold1", width=4, justify="right")
-        table.add_column("Module", style="bold white", width=20)
+        table.add_column("Module", style="bold white")
         table.add_column("Description", style="italic grey70")
 
         for key, name, desc in menu_options:
@@ -43,7 +43,8 @@ class MainMenu:
             Align.center(table),
             box=box.ROUNDED,
             padding=(1, 5),
-            border_style="white"
+            border_style="blue",
+            width=200
         )
         return panel
 
@@ -62,7 +63,7 @@ class MainMenu:
         """
         
         main_panel = self._build_main_menu_frame()
-        self.console.print(main_panel)
+        self.console.print(Align.center(main_panel))
         
         # Map input keys to logical action codes
         action_map = {

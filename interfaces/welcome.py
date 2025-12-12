@@ -57,22 +57,20 @@ class StartupScreen:
         info_panel_content.add_column(justify="center")
 
         info_panel_content.add_row(f"[bold white]Welcome, {data['user']}.[/bold white]")
-        info_panel_content.add_row("")
-        info_panel_content.add_row(Align.center(Rule()))
-        info_panel_content.add_row("")
+        info_panel_content.add_row(f"[yellow]{ascii_art_dash}[/yellow]")
 
         # LINKS IN GRID
         links_grid = Table.grid(expand=False, padding=(0, 1))
         links_grid.add_column(justify="left", ratio=1)
         links_grid.add_column(justify="left", ratio=1)
 
-        links_grid.add_row("[bold yellow]PROJECT REPO:[/bold yellow]", 
+        links_grid.add_row("[yellow]PROJECT REPO:[/yellow]", 
                            "https://github.com/denv3rr/clear")
-        links_grid.add_row("[bold yellow]DOCUMENTATION:[/bold yellow]", 
+        links_grid.add_row("[yellow]DOCUMENTATION:[/yellow]", 
                            "https://github.com/denv3rr/clear/blob/main/README.md")
-        links_grid.add_row("[bold yellow]FINNHUB REGISTER:[/bold yellow]", 
+        links_grid.add_row("[yellow]FINNHUB REGISTER:[/yellow]", 
                            "https://finnhub.io/register")
-        links_grid.add_row("[bold yellow]FINNHUB DASHBOARD:[/bold yellow]", 
+        links_grid.add_row("[yellow]FINNHUB DASHBOARD:[/yellow]", 
                            "https://finnhub.io/dashboard")
 
         info_panel_content.add_row(links_grid)
@@ -114,9 +112,9 @@ class StartupScreen:
         main_layout_grid.add_column(justify="center", ratio=1) 
 
         # Row 1: Centered ASCII Art
-        main_layout_grid.add_row(Align.center("[bold gold1]⚠[/bold gold1]  [dim]Work in progress.[/dim]  [bold gold1]⚠[bold gold1]"))
+        main_layout_grid.add_row(Align.center("[warning]⚠  WORK IN PROGRESS ⚠[/warning]"))
         main_layout_grid.add_row(Align.center(ascii_art_clear))
-        main_layout_grid.add_row(Align.center("[dim]Prices. Books. Analysis.[/dim]"))
+        main_layout_grid.add_row(Align.center("[blue]Prices. Books. Analysis.[/blue]"))
         
         main_layout_grid.add_row(Align.center(ascii_art_divider))
         # Row 2: NEW Centered Info Panel
@@ -132,12 +130,13 @@ class StartupScreen:
             box=box.ROUNDED,
             border_style="blue",
             title="[bold gold1]https://seperet.com[/bold gold1]",
-            padding=(1, 2),
+            padding=(1, 3),
+            width=200
         )
 
         # UNCOMMENT THESE 2 LINES TO ENABLE TEXT EFFECTS AT OPENING:
-        # text_content = self.text_fx_manager._panel_to_text(panel)
+        # text_content = self.text_fx_manager._panel_to_text(Align.center(panel))
         # self.text_fx_manager.play_smoke(text_content)
 
         # THEN COMMENT THIS OUT (OR YOU WILL GET DOUBLE OUTPUT):
-        self.console.print(panel)
+        self.console.print(Align.center(panel))
