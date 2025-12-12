@@ -47,8 +47,9 @@ git clone git@github.com:denv3rr/clear.git --depth 1
 cd clear
 python run.py
 ```
+---
 
-### Set Up Finnhub.io API Key
+## Set Up Finnhub.io API Key
 
 > [!NOTE]
 >
