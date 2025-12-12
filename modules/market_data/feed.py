@@ -4,6 +4,8 @@ from rich.panel import Panel
 from rich.align import Align
 from rich import box
 from rich.text import Text
+from rich.console import Group
+from rich.layout import Layout
 
 from utils.input import InputSafe
 from modules.market_data.finnhub_client import FinnhubWrapper
@@ -29,24 +31,28 @@ class MarketFeed:
         ]
         self.interval_idx = 0
 
-    def _generate_sparkline(self, data: list) -> str:
+    def _generate_sparkline(self, data: list, length: int = 40) -> str:
         """
         Converts a list of numerical values into a sparkline string.
         Uses blocks:  ▂▃▄▅▆▇█
         """
         if not data or len(data) < 2:
-            return "─" * len(data) if data else "─" * 20
+            return "─" * length
         
+        # Slice data to fit desired length if necessary, or just use it all
+        # For the detailed view, we might pass more data points
+        display_data = data[-length:] if len(data) > length else data
+
         bars = u" ▂▃▄▅▆▇█"
-        min_val = min(data)
-        max_val = max(data)
+        min_val = min(display_data)
+        max_val = max(display_data)
         spread = max_val - min_val
         
         if spread == 0:
-            return "─" * len(data)
+            return "─" * len(display_data)
             
         sparkline = ""
-        for val in data:
+        for val in display_data:
             norm = (val - min_val) / spread
             idx = int(norm * (len(bars) - 1))
             sparkline += bars[idx]
@@ -122,7 +128,6 @@ class MarketFeed:
         table.add_column("Price", justify="right")
         table.add_column("Change", justify="right")
         table.add_column("% Chg", justify="right")
-        # Increased width to 20 and added no_wrap to prevent ellipsis
         table.add_column(f"Chart ({view_label})", justify="center", width=20, no_wrap=True)
         table.add_column("Vol", justify="right", style="dim")
         table.add_column("Security", min_width=20)
@@ -142,7 +147,8 @@ class MarketFeed:
             c_color = "green" if item["change"] >= 0 else "red"
             
             trend_arrow = self._get_trend_arrow(item["change"])
-            sparkline = self._generate_sparkline(item["history"])
+            # Generate sparkline with default length 20 for table
+            sparkline = self._generate_sparkline(item["history"], length=20)
             
             spark_color = "green" if item["history"][-1] >= item["history"][0] else "red"
 
@@ -168,33 +174,101 @@ class MarketFeed:
         self.console.print(ticker_panel)
 
     def stock_lookup_loop(self):
-        """Sub-loop for isolated real-time stock ticker analysis."""
+        """
+        Isolated loop for real-time stock ticker analysis.
+        Allows interval switching specifically for the viewed ticker.
+        """
         while True:
-            ticker = self.console.input("\n[bold cyan]ENTER TICKER (or 'b' to go back):[/bold cyan] ").strip().upper()
+            # 1. Get Ticker
+            ticker_input = self.console.input("\n[bold cyan]ENTER TICKER (or '0' to go back):[/bold cyan] ").strip().upper()
             
-            if ticker == 'B' or not ticker:
+            if ticker_input == '0' or not ticker_input:
                 break
+            
+            # Local state for this specific lookup
+            local_interval_idx = 0 
+            
+            # Inner Loop for interaction with THIS ticker
+            while True:
+                label, p, i = self.interval_options[local_interval_idx]
+                
+                self.console.print(f"[dim]Fetching {ticker_input} ({label})...[/dim]")
+                
+                # Fetch detailed data
+                data = self.yahoo.get_detailed_quote(ticker_input, period=p, interval=i)
 
-            quote = self.finnhub.get_quote(ticker)
+                if "error" in data:
+                    self.console.print(f"[red]Error fetching {ticker_input}: {data['error']}[/red]")
+                    break # Break inner loop to ask for ticker again
 
-            if not quote or isinstance(quote, dict) and "error" in quote:
-                if isinstance(quote, dict) and "error" in quote:
-                    self.console.print(f"[red]{quote['error']}[/red]")
-                else:
-                    self.console.print(f"[red]Lookup Failed: Invalid ticker or data unavailable.[/red]")
-                continue
+                # 2. Construct Robust Display
+                color = "green" if data['change'] >= 0 else "red"
+                spark_color = color
+                
+                # Create a grid for the layout
+                grid = Table.grid(expand=True, padding=(0, 2))
+                grid.add_column(ratio=1)
+                grid.add_column(ratio=2)
+                
+                # Left Side: Stats
+                stats_table = Table.grid(padding=(0, 2))
+                stats_table.add_column(style="dim white")
+                stats_table.add_column(style="bold white", justify="right")
+                
+                stats_table.add_row("Open", f"{data['history'][0]:,.2f}") # Approx open of period
+                stats_table.add_row("High", f"{data['high']:,.2f}")
+                stats_table.add_row("Low", f"{data['low']:,.2f}")
+                stats_table.add_row("Volume", f"{data['volume']:,}")
+                if data.get('mkt_cap'):
+                    stats_table.add_row("Mkt Cap", f"{data['mkt_cap'] / 1e9:,.2f}B")
+                stats_table.add_row("Sector", f"{data['sector']}")
 
-            if quote.get('change') is None:
-                self.console.print(f"[red]Lookup Failed: Data unavailable for '{ticker}'.[/red]")
-                continue
+                # Right Side: Price & Chart
+                # Generate a longer sparkline for detail view (e.g., 40 chars)
+                sparkline = self._generate_sparkline(data['history'], length=40)
+                
+                price_text = Text.assemble(
+                    (f"${data['price']:,.2f}", "bold white"),
+                    (f"  {data['change']:+.2f} ({data['pct']:+.2f}%)", f"bold {color}")
+                )
+                
+                chart_panel = Panel(
+                    Align.center(f"[{spark_color}]{sparkline}[/{spark_color}]"),
+                    title=f"Trend ({label})",
+                    border_style="dim"
+                )
 
-            color = "green" if quote['change'] >= 0 else "red"
+                grid.add_row(
+                    stats_table,
+                    Align.right(
+                        Group(
+                            Align.right(price_text), 
+                            chart_panel
+                        )
+                    )
+                )
 
-            p = Panel(
-                f"[bold white]Price:[/bold white] ${quote['price']:,.2f}\n"
-                f"[bold white]Change:[/bold white] [{color}]{quote['change']:+.2f} ({quote['percent']:+.2f}%) [/{color}]\n"
-                f"[dim]Range: {quote['low']:,.2f} - {quote['high']:,.2f}[/dim]",
-                title=f"[bold gold1]{ticker}[/bold gold1]",
-                border_style="blue"
-            )
-            self.console.print(p)
+                # Assemble Main Panel              
+                main_panel = Panel(
+                    grid,
+                    title=f"[bold gold1]{data['name']} ({ticker_input})[/bold gold1]",
+                    subtitle=f"[dim]Interval: {label}[/dim]",
+                    border_style="blue",
+                    box=box.ROUNDED
+                )
+                
+                self.console.clear()
+                self.console.print(main_panel)
+                
+                # 3. Lookup Menu
+                self.console.print("[bold cyan]OPTIONS:[/bold cyan] [I] Change Interval | [N] New Search | [0] Back")
+                action = InputSafe.get_option(["i", "n", "0"], prompt_text="[>]").lower()
+
+                if action == "i":
+                    # Toggle local interval only
+                    local_interval_idx = (local_interval_idx + 1) % len(self.interval_options)
+                    continue # Re-fetch with new interval
+                elif action == "n":
+                    break # Break inner loop, goes back to 'ENTER TICKER'
+                elif action == "0":
+                    return # Returns to MAIN MENU entirely

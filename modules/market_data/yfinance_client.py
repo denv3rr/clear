@@ -141,6 +141,59 @@ class YahooWrapper:
         }
     }
 
+    def get_detailed_quote(self, ticker: str, period="1d", interval="15m"):
+        """
+        Fetches detailed history for a SINGLE ticker to support robust views.
+        Returns a dict with price, change, volume, history list, and basic metadata.
+        """
+        try:
+            # Fetch history
+            stock = yf.Ticker(ticker)
+            hist = stock.history(period=period, interval=interval)
+            
+            if hist.empty:
+                return {"error": f"No data found for {ticker}"}
+
+            # Get Metadata (try/except as some fields might be missing)
+            try:
+                info = stock.info
+                name = info.get("longName") or info.get("shortName") or ticker
+                sector = info.get("sector", "Unknown Sector")
+                mkt_cap = info.get("marketCap", None)
+            except:
+                name = ticker
+                sector = "N/A"
+                mkt_cap = None
+
+            # Calculate Price Stats
+            current = hist["Close"].iloc[-1]
+            start_price = hist["Close"].iloc[0]
+            change = current - start_price
+            pct = (change / start_price) * 100 if start_price != 0 else 0
+            
+            high = hist["High"].max()
+            low = hist["Low"].min()
+            volume = hist["Volume"].sum() # Volume for the fetched period
+
+            # Prepare Sparkline Data (last 40 points for higher res single view)
+            history_list = hist["Close"].tolist()
+            
+            return {
+                "ticker": ticker.upper(),
+                "name": name,
+                "sector": sector,
+                "mkt_cap": mkt_cap,
+                "price": float(current),
+                "change": float(change),
+                "pct": float(pct),
+                "high": float(high),
+                "low": float(low),
+                "volume": int(volume),
+                "history": history_list
+            }
+
+        except Exception as e:
+            return {"error": str(e)}
 
     @staticmethod
     def get_macro_snapshot(period="1d", interval="15m"):

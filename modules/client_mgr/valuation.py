@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Any
 from rich.console import Console
 
 # Import the data wrappers
@@ -17,58 +17,84 @@ class ValuationEngine:
         self.finnhub = FinnhubWrapper()
         self.yahoo = YahooWrapper()
 
-    def get_price(self, ticker: str) -> Optional[float]:
+    def get_quote_data(self, ticker: str) -> Dict[str, float]:
         """
-        Attempts to get the current price for a ticker.
-        Priority: Finnhub (best quote) -> Yahoo (macro list) -> Yahoo (general lookup).
-        
-        Returns: current price as float or None.
+        Fetches detailed quote data including Price and Day Change %.
+        Returns: {'price': float, 'change_pct': float}
         """
-        # 1. Check Finnhub first (best for stocks/ETFs if API key is valid)
+        # 1. Check Finnhub first
         fh_quote = self.finnhub.get_quote(ticker)
         if fh_quote and 'price' in fh_quote and fh_quote['price'] > 0:
-            return fh_quote['price']
+            return {
+                "price": float(fh_quote['price']),
+                "change_pct": float(fh_quote.get('percent', 0.0))
+            }
         
-        # 2. Fallback to Yahoo (Check macro list first to avoid general lookup overhead)
+        # 2. Fallback to Yahoo
         try:
-            # We assume a direct ticker exists in the macro list if it's there
+            # Check macro list first
             data = self.yahoo.get_macro_snapshot()
-            price_data = next((item for item in data if item['ticker'] == ticker), None)
+            macro_item = next((item for item in data if item['ticker'] == ticker), None)
             
-            if price_data:
-                return price_data['price']
+            if macro_item:
+                return {
+                    "price": macro_item['price'],
+                    "change_pct": macro_item['pct']
+                }
             
-            # 3. Final Fallback: General Yahoo Finance lookup
+            # General Yahoo Lookup
             import yfinance as yf
             stock = yf.Ticker(ticker)
-            # Use safe lookup for last close price
-            price = stock.history(period="1d")['Close'].iloc[-1]
-            return float(price)
+            hist = stock.history(period="1d")
+            
+            if not hist.empty:
+                price = float(hist['Close'].iloc[-1])
+                # Calculate change manually if needed, or assume 0 if open is missing
+                try:
+                    open_p = float(hist['Open'].iloc[-1])
+                    change_pct = ((price - open_p) / open_p) * 100
+                except:
+                    change_pct = 0.0
+                    
+                return {"price": price, "change_pct": change_pct}
 
         except Exception:
-            # Ticker not found, data unavailable, or network error
-            return None
+            pass
 
-    def calculate_portfolio_value(self, holdings: Dict[str, float]) -> Tuple[float, Dict[str, float]]:
+        return {"price": 0.0, "change_pct": 0.0}
+
+    def get_price(self, ticker: str) -> Optional[float]:
+        """Legacy wrapper for simple price fetching."""
+        data = self.get_quote_data(ticker)
+        return data['price'] if data['price'] > 0 else None
+
+    def calculate_portfolio_value(self, holdings: Dict[str, float]) -> Tuple[float, Dict[str, Dict[str, float]]]:
         """
-        Calculates the total market value of a dictionary of holdings {ticker: quantity}.
-        
-        Returns: (total_value, {ticker: market_value})
+        Calculates total value and returns detailed enrichment data.
+        Returns: (total_value, {ticker: {'market_value': float, 'price': float, 'change_pct': float}})
         """
         total_value = 0.0
-        valued_holdings = {}
-        
-        # console.print("[dim]Valuing portfolio holdings...[/dim]")
+        enriched_holdings = {}
         
         for ticker, quantity in holdings.items():
-            price = self.get_price(ticker)
+            data = self.get_quote_data(ticker)
+            price = data['price']
             
-            if price is not None:
+            if price > 0:
                 market_value = price * quantity
                 total_value += market_value
-                valued_holdings[ticker] = market_value
-            else:
-                valued_holdings[ticker] = 0.0
-                console.print(f"[red]Warning: Could not price {ticker}. Value set to $0.00.[/red]")
                 
-        return total_value, valued_holdings
+                enriched_holdings[ticker] = {
+                    "market_value": market_value,
+                    "price": price,
+                    "change_pct": data['change_pct']
+                }
+            else:
+                enriched_holdings[ticker] = {
+                    "market_value": 0.0,
+                    "price": 0.0,
+                    "change_pct": 0.0
+                }
+                # console.print(f"[red]Warning: Could not price {ticker}.[/red]")
+                
+        return total_value, enriched_holdings

@@ -135,5 +135,9 @@ class StartupScreen:
             padding=(1, 2),
         )
 
-        text_content = self.text_fx_manager._panel_to_text(panel)
-        self.text_fx_manager.play_smoke(text_content)
+        # UNCOMMENT THESE 2 LINES TO ENABLE TEXT EFFECTS AT OPENING:
+        # text_content = self.text_fx_manager._panel_to_text(panel)
+        # self.text_fx_manager.play_smoke(text_content)
+
+        # THEN COMMENT THIS OUT (OR YOU WILL GET DOUBLE OUTPUT):
+        self.console.print(panel)
