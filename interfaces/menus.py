@@ -24,8 +24,7 @@ class MainMenu:
         menu_options = [
             ("1", "Client Manager", "View portfolios, add clients, manage accounts"),
             ("2", "Market Data", "Live Tickers, Futures, Commodities (Finnhub/Yahoo)"),
-            ("3", "Financial Toolkit", "Monte Carlo, Valuations, P&L Calculator"),
-            ("4", "Settings", "API Config, User Preferences"),
+            ("3", "Settings", "API Config, User Preferences"),
             ("0", "Exit", "Securely close the session")
         ]
 
@@ -65,12 +64,10 @@ class MainMenu:
         main_panel = self._build_main_menu_frame()
         self.console.print(Align.center(main_panel))
         
-        # Map input keys to logical action codes
         action_map = {
             "1": "client_mgr",
             "2": "market_data",
-            "3": "financial_toolkit",
-            "4": "settings",
+            "3": "settings",
             "0": "exit"
         }
         

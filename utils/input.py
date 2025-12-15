@@ -1,7 +1,7 @@
 from rich.console import Console
 from rich.prompt import Prompt, IntPrompt, Confirm
 import os
-from typing import Optional # <-- Added missing import
+from typing import Optional, Tuple, Dict, Any, List
 
 console = Console()
 
@@ -90,3 +90,79 @@ class InputSafe:
         """Standard 'Wait' block."""
         console.print(f"\n[dim]{message}[/dim]")
         input("")
+
+    @staticmethod
+    def get_asset_input() -> Optional[Dict[str, Any]]:
+        """
+        Prompts user for robust asset input with flexible formats.
+        
+        Supported Formats:
+        1. Ticker <Quantity> (e.g., 'NVDA 10', 'TSLA -5')
+        2. Ticker (Asks for Quantity next - fulfilling user request)
+        3. Custom:<Label> <Value> (e.g., 'Custom:GoldBar 50000', 'Custom:House 500000')
+        
+        Returns: {ticker, quantity, asset_type, manual_value} or None (if cancelled)
+        """
+        asset_input = Prompt.ask(
+            "[bold cyan]Enter Ticker alone, 'Ticker Quantity', or 'Custom:Label Value'[/bold cyan] (Press Enter to Cancel)"
+        ).strip()
+        
+        if not asset_input:
+            return None
+
+        # --- 1. Custom Asset Parsing ---
+        if asset_input.lower().startswith("custom:"):
+            try:
+                # Format: Custom:Label Value (e.g. 'Custom:House 500000')
+                parts = asset_input.split(":", 1)[1].strip().split()
+                label = parts[0]
+                value = InputSafe.get_float(f"Enter Manual Value for '{label}' (USD):", min_val=0.01)
+                
+                return {
+                    "ticker": label.upper(),
+                    "quantity": 1.0, 
+                    "asset_type": "Custom",
+                    "manual_value": value
+                }
+            except Exception:
+                console.print("[red]Invalid custom asset format. Use 'Custom:Label'.[/red]")
+                return InputSafe.get_asset_input()
+        
+        # --- 2. Ticker & Quantity Parsing ---
+        parts = asset_input.split()
+        
+        if len(parts) == 2:
+            ticker = parts[0].strip().upper()
+            try:
+                quantity = float(parts[1].strip())
+            except ValueError:
+                console.print("[red]Invalid quantity entered. Must be a number.[/red]")
+                return InputSafe.get_asset_input()
+        
+        elif len(parts) == 1:
+            # User entered Ticker alone (Request: Ticker alone)
+            ticker = parts[0].strip().upper()
+            console.print(f"[dim]You entered Ticker: {ticker}[/dim]")
+            
+            # Prompt for quantity
+            quantity = InputSafe.get_float("Enter Quantity (e.g. 10 or -5 for short):", min_val=None)
+            
+        else:
+            console.print("[red]Invalid format. Try 'NVDA 10' or 'Custom:House'.[/red]")
+            return InputSafe.get_asset_input()
+
+        # Determine Asset Type (Basic logic)
+        asset_type = "Equity"
+        if ticker.endswith(('P', 'C', 'p', 'c')) and len(ticker) > 2:
+             asset_type = "Derivative:Option"
+        
+        # Handle Shorting (Request: Shorts)
+        if quantity < 0 and asset_type == "Equity": 
+            asset_type = "Equity:Short" 
+            
+        return {
+            "ticker": ticker,
+            "quantity": quantity,
+            "asset_type": asset_type,
+            "manual_value": None
+        }

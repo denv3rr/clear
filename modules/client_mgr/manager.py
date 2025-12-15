@@ -7,9 +7,11 @@ from rich.text import Text
 from typing import Optional, Tuple, List, Union
 
 from utils.input import InputSafe
+from utils.charts import ChartRenderer
 from modules.client_mgr.client_model import Client, Account
 from modules.client_mgr.data_handler import DataHandler
 from modules.client_mgr.valuation import ValuationEngine
+from modules.client_mgr.toolkit import FinancialToolkit
 
 class ClientManager:
     """
@@ -130,30 +132,117 @@ class ClientManager:
         return summary_table, total_portfolio_value
 
     def display_client_dashboard(self, client: Client):
-        """Composes and displays the client's main dashboard."""
+        """Composes and displays the client's main dashboard with CHARTS."""
         
-        # 1. Title
-        title = Text(f"CLIENT DASHBOARD:", style="bold yellow")
-        self.console.print(Align.center(title))
-        self.console.print(Text(f"{client.name}", style="bold white underline"), "\n", justify="center")
-        
-        # 2. Details
-        info_panel = self._build_client_details_panel(client)
-        self.console.print(Align.center(info_panel))
+        # 1. Aggregate Holdings for Global View
+        all_holdings = {}
+        for acc in client.accounts:
+            for t, q in acc.holdings.items():
+                all_holdings[t] = all_holdings.get(t, 0) + q
 
-        # 3. Accounts & Totals
-        account_summary_table, total_portfolio_value = self._build_account_summary_table(client)
+        # 2. Fetch Data (Threaded)
+        total_val, enriched_data = self.valuation_engine.calculate_portfolio_value(all_holdings)
         
-        total_panel = Panel(
-            Align.center(f"[bold white]Total Assets Under Management (AUM):[/bold white] [bold green]${total_portfolio_value:,.2f}[/bold green]"), 
-            border_style="green",
-            box=box.ROUNDED,
-            width=100
+        # 3. Generate Portfolio History Chart
+        port_history = self.valuation_engine.generate_synthetic_portfolio_history(enriched_data, all_holdings)
+        port_sparkline = ChartRenderer.generate_sparkline(port_history, length=60)
+        
+        # --- RENDER UI ---
+        
+        # Header Area
+        title_grid = Table.grid(expand=True)
+        title_grid.add_column(justify="left")
+        title_grid.add_column(justify="right")
+        title_grid.add_row(
+            f"[bold gold1]CLIENT DASHBOARD: {client.name}[/bold gold1]",
+            f"[dim]ID: {client.client_id[:8]}[/dim]"
         )
-        self.console.print(Align.center(total_panel))
-        self.console.print(account_summary_table)
-        self.console.print("\n\n\n")
+        self.console.print(Panel(title_grid, style="on black", box=box.SQUARE))
+
+        # AUM & Chart Panel
+        aum_text = Text(f"${total_val:,.2f}", style="bold green" if total_val > 0 else "white")
+        aum_panel = Panel(
+            Align.center(
+                Text.assemble("TOTAL AUM\n", aum_text, "\n\n", port_sparkline)
+            ),
+            box=box.ROUNDED,
+            border_style="green",
+            title="[bold]Portfolio Performance (1M)[/bold]"
+        )
+        self.console.print(aum_panel)
+
+        # Account Breakdown Table
+        self.console.print("\n[bold]ACCOUNT BREAKDOWN[/bold]")
+        acc_table = Table(box=box.SIMPLE_HEAD, expand=True)
+        acc_table.add_column("Account")
+        acc_table.add_column("Type")
+        acc_table.add_column("Holdings")
+        acc_table.add_column("Est. Value", justify="right")
+        
+        for acc in client.accounts:
+            # We do a quick local calc here based on the enriched data we already have
+            acc_val = sum(enriched_data.get(t, {}).get('price', 0) * q for t, q in acc.holdings.items())
+            acc_table.add_row(
+                acc.account_name,
+                acc.account_type,
+                str(len(acc.holdings)),
+                f"[bold green]${acc_val:,.2f}[/bold green]"
+            )
+        self.console.print(acc_table)
         self.console.rule("[dim]ACTIONS[/dim]")
+    
+    def display_account_holdings(self, account: Account):
+        """Renders holdings with Trend Sparklines."""
+        
+        total_val, enriched_data = self.valuation_engine.calculate_portfolio_value(account.holdings)
+        
+        table = Table(
+            title=f"[bold gold1]Holdings: {account.account_name}[/bold gold1]", 
+            box=box.MINIMAL_DOUBLE_HEAD, 
+            expand=True
+        )
+        table.add_column("Ticker", style="bold cyan")
+        table.add_column("Trend (1M)", justify="center", width=25) # Chart Column
+        table.add_column("Price", justify="right")
+        table.add_column("Day Chg", justify="right")
+        table.add_column("Qty", justify="right")
+        table.add_column("Mkt Value", style="green", justify="right")
+
+        # Sort by Market Value
+        sorted_items = sorted(
+            account.holdings.items(),
+            key=lambda x: enriched_data.get(x[0], {}).get('market_value', 0),
+            reverse=True
+        )
+
+        for ticker, qty in sorted_items:
+            data = enriched_data.get(ticker, {})
+            history = data.get('history', [])
+            
+            # Generate Visuals
+            sparkline = ChartRenderer.generate_sparkline(history, length=20)
+            trend_arrow = ChartRenderer.get_trend_arrow(data.get('change', 0))
+            
+            price_str = f"${data.get('price', 0):,.2f}"
+            
+            chg = data.get('change', 0)
+            pct = data.get('pct', 0)
+            chg_color = "green" if chg >= 0 else "red"
+            chg_str = f"[{chg_color}]{chg:+.2f} ({pct:+.1f}%)[/{chg_color}]"
+            
+            mkt_val = data.get('market_value', 0)
+
+            table.add_row(
+                ticker,
+                sparkline,
+                price_str,
+                chg_str,
+                f"{qty:,.2f}",
+                f"${mkt_val:,.2f}"
+            )
+
+        self.console.print(table)
+        self.console.print(Align.right(f"[bold white]Total Value: ${total_val:,.2f}[/bold white]"))
 
     # --- WORKFLOWS ---
 
@@ -176,9 +265,10 @@ class ClientManager:
             self.console.print(f"\n[bold gold1]CLIENT OPTIONS | {client.name}[/bold gold1]")
             self.console.print("[1] 📝 Edit Client Profile")
             self.console.print("[2] 💰 Manage Accounts & Holdings")
+            self.console.print("[3] 🛠️ Financial Toolkit (Models & Analysis)")
             self.console.print("[0] 🔙 Return to Client List")
             
-            choice = InputSafe.get_option(["1", "2", "0"], prompt_text="[>]")
+            choice = InputSafe.get_option(["1", "2", "3", "0"], prompt_text="[>]")
             
             if choice == "0":
                 DataHandler.save_clients(self.clients)
@@ -187,6 +277,10 @@ class ClientManager:
                 self.edit_client_workflow(client)
             elif choice == "2":
                 self.manage_accounts_workflow(client)
+            elif choice == "3":
+                # LAUNCH TOOLKIT
+                toolkit = FinancialToolkit(client)
+                toolkit.run()
                 
     # --- ACCOUNT MANAGEMENT ---
     

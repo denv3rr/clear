@@ -10,6 +10,7 @@ from rich.layout import Layout
 from utils.input import InputSafe
 from modules.market_data.finnhub_client import FinnhubWrapper
 from modules.market_data.yfinance_client import YahooWrapper
+from utils.charts import ChartRenderer
 
 class MarketFeed:
     def __init__(self):
@@ -30,34 +31,6 @@ class MarketFeed:
             ("1Y", "1y", "1wk")
         ]
         self.interval_idx = 0
-
-    def _generate_sparkline(self, data: list, length: int = 40) -> str:
-        """
-        Converts a list of numerical values into a sparkline string.
-        Uses blocks:  ▂▃▄▅▆▇█
-        """
-        if not data or len(data) < 2:
-            return "─" * length
-        
-        # Slice data to fit desired length if necessary, or just use it all
-        # For the detailed view, we might pass more data points
-        display_data = data[-length:] if len(data) > length else data
-
-        bars = u" ▂▃▄▅▆▇█"
-        min_val = min(display_data)
-        max_val = max(display_data)
-        spread = max_val - min_val
-        
-        if spread == 0:
-            return "─" * len(display_data)
-            
-        sparkline = ""
-        for val in display_data:
-            norm = (val - min_val) / spread
-            idx = int(norm * (len(bars) - 1))
-            sparkline += bars[idx]
-            
-        return sparkline
 
     def _get_trend_arrow(self, change: float) -> Text:
         """Returns a colored trend arrow based on change value."""
@@ -148,7 +121,7 @@ class MarketFeed:
             
             trend_arrow = self._get_trend_arrow(item["change"])
             # Generate sparkline with default length 20 for table
-            sparkline = self._generate_sparkline(item["history"], length=20)
+            sparkline = ChartRenderer.generate_sparkline(item["history"], length=20)
             
             spark_color = "green" if item["history"][-1] >= item["history"][0] else "red"
 
@@ -225,7 +198,7 @@ class MarketFeed:
 
                 # Right Side: Price & Chart
                 # Generate a longer sparkline for detail view (e.g., 40 chars)
-                sparkline = self._generate_sparkline(data['history'], length=40)
+                sparkline = ChartRenderer.generate_sparkline(data['history'], length=40)
                 
                 price_text = Text.assemble(
                     (f"${data['price']:,.2f}", "bold white"),
