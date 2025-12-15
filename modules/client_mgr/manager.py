@@ -162,7 +162,7 @@ class ClientManager:
         # AUM & Chart Panel
         aum_text = Text(f"${total_val:,.2f}", style="bold green" if total_val > 0 else "white")
         aum_panel = Panel(
-            Align.center(
+            (
                 Text.assemble("TOTAL AUM\n", aum_text, "\n\n", port_sparkline)
             ),
             box=box.ROUNDED,
@@ -170,6 +170,49 @@ class ClientManager:
             title="[bold]Portfolio Performance (1M)[/bold]"
         )
         self.console.print(aum_panel)
+
+        # --- Manual / Off-Market totals (estimated) ---
+        manual_total = 0.0
+        manual_count = 0
+        for acc in client.accounts:
+            mh = getattr(acc, "manual_holdings", []) or []
+            manual_count += len(mh)
+            mt, _ = self.valuation_engine.calculate_manual_holdings_value(mh)
+            manual_total += mt
+
+        combined_total = float(total_val) + float(manual_total)
+
+        note = "[dim]Note: Market valuation and CAPM metrics use live global market data. Manual/off-market assets are estimated and not auto-marked to market.[/dim]"
+
+        aum_grid = Table.grid(padding=(0, 2))
+        aum_grid.add_column(style="dim")
+        aum_grid.add_column(justify="right", style="bold white")
+        aum_grid.add_row("Market-Priced AUM", f"[bold green]${total_val:,.2f}[/bold green]")
+        if manual_count > 0:
+            aum_grid.add_row("Manual / Off-Market (Est.)", f"[bold magenta]${manual_total:,.2f}[/bold magenta]")
+            aum_grid.add_row("Combined (Est.)", f"[bold white]${combined_total:,.2f}[/bold white]")
+
+        self.console.print(Panel(Align.left(aum_grid), title="[bold]AUM Snapshot[/bold]", box=box.HEAVY))
+
+        # --- CAPM Snapshot (market holdings only) ---
+        capm = FinancialToolkit.compute_capm_metrics_from_holdings(all_holdings, benchmark_ticker="SPY", period="1y")
+
+        capm_table = Table(box=box.SIMPLE_HEAD, expand=True)
+        capm_table.add_column("Metric", style="bold")
+        capm_table.add_column("Value", justify="right")
+        capm_table.add_column("Notes", style="dim")
+
+        if capm.get("error"):
+            capm_table.add_row("CAPM", "[yellow]N/A[/yellow]", str(capm.get("error")))
+        else:
+            capm_table.add_row("Beta", f"{capm.get('beta', 0.0):.2f}", f"vs {capm.get('benchmark','SPY')}")
+            capm_table.add_row("Alpha (Annual)", f"{capm.get('alpha_annual', 0.0):+.2%}", "Excess return vs. risk taken")
+            capm_table.add_row("R-Squared", f"{capm.get('r_squared', 0.0):.2f}", "Correlation strength to benchmark")
+            capm_table.add_row("Sharpe (Est.)", f"{capm.get('sharpe', 0.0):.2f}", "Risk-adjusted return (approx.)")
+            capm_table.add_row("Volatility (Annual)", f"{capm.get('vol_annual', 0.0):.2%}", "Annualized stdev of portfolio returns")
+
+        self.console.print(Panel(capm_table, title="[bold]CAPM & Risk Snapshot (Market Holdings Only)[/bold]", box=box.HEAVY))
+        self.console.print(note)
 
         # Account Breakdown Table
         self.console.print("\n[bold]ACCOUNT BREAKDOWN[/bold]")
@@ -192,57 +235,109 @@ class ClientManager:
         self.console.rule("[dim]ACTIONS[/dim]")
     
     def display_account_holdings(self, account: Account):
-        """Renders holdings with Trend Sparklines."""
-        
-        total_val, enriched_data = self.valuation_engine.calculate_portfolio_value(account.holdings)
-        
+        """Renders the detailed holdings with robust pricing + separate manual valuation."""
+
+        # Market-priced holdings
+        market_total, enriched_data = self.valuation_engine.calculate_portfolio_value(account.holdings)
+
         table = Table(
-            title=f"[bold gold1]Holdings: {account.account_name}[/bold gold1]", 
-            box=box.MINIMAL_DOUBLE_HEAD, 
+            title=f"[bold gold1]Current Holdings[/bold gold1]",
+            box=box.SIMPLE_HEAD,
             expand=True
         )
         table.add_column("Ticker", style="bold cyan")
-        table.add_column("Trend (1M)", justify="center", width=25) # Chart Column
-        table.add_column("Price", justify="right")
-        table.add_column("Day Chg", justify="right")
+        table.add_column("Trend", justify="center", width=5)
         table.add_column("Qty", justify="right")
+        table.add_column("Price", justify="right")
         table.add_column("Mkt Value", style="green", justify="right")
+        table.add_column("Alloc %", justify="right", style="dim")
+        table.add_column("Spark", justify="left", width=24)
 
-        # Sort by Market Value
-        sorted_items = sorted(
+        # Sort by value desc for readability
+        sorted_holdings = sorted(
             account.holdings.items(),
-            key=lambda x: enriched_data.get(x[0], {}).get('market_value', 0),
+            key=lambda item: enriched_data.get(str(item[0]).strip().upper(), {}).get("market_value", 0.0),
             reverse=True
         )
 
-        for ticker, qty in sorted_items:
+        for raw_ticker, raw_qty in sorted_holdings:
+            ticker = str(raw_ticker).strip().upper()
             data = enriched_data.get(ticker, {})
-            history = data.get('history', [])
-            
-            # Generate Visuals
-            sparkline = ChartRenderer.generate_sparkline(history, length=20)
-            trend_arrow = ChartRenderer.get_trend_arrow(data.get('change', 0))
-            
-            price_str = f"${data.get('price', 0):,.2f}"
-            
-            chg = data.get('change', 0)
-            pct = data.get('pct', 0)
-            chg_color = "green" if chg >= 0 else "red"
-            chg_str = f"[{chg_color}]{chg:+.2f} ({pct:+.1f}%)[/{chg_color}]"
-            
-            mkt_val = data.get('market_value', 0)
+            qty = float(raw_qty or 0.0)
+            mkt_val = float(data.get("market_value", 0.0) or 0.0)
+            price = float(data.get("price", 0.0) or 0.0)
+            change_pct = float(data.get("change_pct", data.get("pct", 0.0)) or 0.0)
+
+            # Trend glyph
+            if change_pct > 0:
+                trend = Text("▲", style="bold green")
+            elif change_pct < 0:
+                trend = Text("▼", style="bold red")
+            else:
+                trend = Text("-", style="dim")
+
+            alloc_pct = (mkt_val / market_total * 100.0) if market_total > 0 else 0.0
+
+            history = data.get("history", []) or []
+            sparkline = ChartRenderer.generate_sparkline(history, length=20) if history else ""
+            spark_color = "green" if change_pct > 0 else ("red" if change_pct < 0 else "dim white")
 
             table.add_row(
                 ticker,
-                sparkline,
-                price_str,
-                chg_str,
-                f"{qty:,.2f}",
-                f"${mkt_val:,.2f}"
+                trend,
+                f"{qty:,.4f}",
+                f"${price:,.2f}",
+                f"${mkt_val:,.2f}",
+                f"{alloc_pct:>.1f}%",
+                f"[{spark_color}]{sparkline}[/{spark_color}]"
             )
 
         self.console.print(table)
-        self.console.print(Align.right(f"[bold white]Total Value: ${total_val:,.2f}[/bold white]"))
+
+        # Manual/off-market holdings (estimated)
+        manual_total, manual_norm = self.valuation_engine.calculate_manual_holdings_value(
+            getattr(account, "manual_holdings", []) or []
+        )
+
+        if manual_norm:
+            manual_table = Table(
+                title="[bold magenta]Manual / Off-Market Assets (Estimated)[/bold magenta]",
+                box=box.SIMPLE_HEAD,
+                expand=True
+            )
+            manual_table.add_column("#", style="dim", width=4, justify="right")
+            manual_table.add_column("Asset", style="bold magenta")
+            manual_table.add_column("Qty", justify="right")
+            manual_table.add_column("Unit", justify="right")
+            manual_table.add_column("Est. Value", justify="right", style="magenta")
+            manual_table.add_column("Notes", style="dim")
+
+            idx = 1
+            for entry in manual_norm:
+                manual_table.add_row(
+                    str(idx),
+                    str(entry.get("name", "")),
+                    f"{float(entry.get('quantity', 0.0) or 0.0):,.4f}",
+                    f"${float(entry.get('unit_price', 0.0) or 0.0):,.2f}",
+                    f"${float(entry.get('total_value', 0.0) or 0.0):,.2f}",
+                    str(entry.get("notes", ""))[:60]
+                )
+                idx += 1
+
+            self.console.print(manual_table)
+
+        # Summary footer (two-track valuation)
+        combined = market_total + manual_total
+        summary = Table.grid(padding=(0, 2))
+        summary.add_column(style="dim white")
+        summary.add_column(style="bold white", justify="right")
+
+        summary.add_row("Market-Priced AUM", f"[bold green]${market_total:,.2f}[/bold green]")
+        if manual_total > 0:
+            summary.add_row("Manual / Off-Market (Est.)", f"[bold magenta]${manual_total:,.2f}[/bold magenta]")
+            summary.add_row("Combined (Est.)", f"[bold white]${combined:,.2f}[/bold white]")
+
+        self.console.print(Align.right(summary))
 
     # --- WORKFLOWS ---
 
@@ -367,6 +462,32 @@ class ClientManager:
                 border_style="blue"
             )
             self.console.print(header)
+
+            # --- Account Snapshot (Market + Manual + CAPM) ---
+            market_total, _ = self.valuation_engine.calculate_portfolio_value(account.holdings)
+            manual_total, _ = self.valuation_engine.calculate_manual_holdings_value(getattr(account, "manual_holdings", []) or [])
+            combined = market_total + manual_total
+
+            acct_capm = FinancialToolkit.compute_capm_metrics_from_holdings(account.holdings, benchmark_ticker="SPY", period="1y")
+
+            snap = Table.grid(padding=(0, 2))
+            snap.add_column(style="dim")
+            snap.add_column(justify="right", style="bold white")
+
+            snap.add_row("Market Value", f"[bold green]${market_total:,.2f}[/bold green]")
+            if manual_total > 0:
+                snap.add_row("Manual (Est.)", f"[bold magenta]${manual_total:,.2f}[/bold magenta]")
+                snap.add_row("Combined (Est.)", f"${combined:,.2f}")
+
+            if acct_capm.get("error"):
+                snap.add_row("CAPM", "[yellow]N/A[/yellow]")
+            else:
+                snap.add_row("Beta", f"{acct_capm.get('beta', 0.0):.2f}")
+                snap.add_row("Alpha (Ann.)", f"{acct_capm.get('alpha_annual', 0.0):+.2%}")
+                snap.add_row("R²", f"{acct_capm.get('r_squared', 0.0):.2f}")
+
+            self.console.print(Panel(snap, title="[bold]Account Snapshot[/bold]", box=box.SIMPLE_HEAD))
+            self.console.print("[dim]Note: Market valuation & CAPM exclude manual/off-market assets.[/dim]")
             
             # Data Display
             self.display_account_holdings(account)
@@ -438,6 +559,52 @@ class ClientManager:
             )
 
         self.console.print(table)
+
+        # --- Manual holdings list (estimated) ---
+        manual_total, manual_norm = self.valuation_engine.calculate_manual_holdings_value(
+            getattr(account, "manual_holdings", []) or []
+        )
+
+        if manual_norm:
+            mtable = Table(
+                title="[bold magenta]Manual / Off-Market Holdings (Estimated)[/bold magenta]",
+                box=box.SIMPLE_HEAD,
+                expand=True
+            )
+            mtable.add_column("#", style="dim", justify="right", width=4)
+            mtable.add_column("Asset", style="bold magenta")
+            mtable.add_column("Qty", justify="right")
+            mtable.add_column("Unit", justify="right")
+            mtable.add_column("Est. Value", justify="right", style="magenta")
+            mtable.add_column("Notes", style="dim")
+
+            i = 1
+            for e in manual_norm:
+                mtable.add_row(
+                    str(i),
+                    str(e.get("name", "")),
+                    f"{float(e.get('quantity', 0.0) or 0.0):,.4f}",
+                    f"${float(e.get('unit_price', 0.0) or 0.0):,.2f}",
+                    f"${float(e.get('total_value', 0.0) or 0.0):,.2f}",
+                    str(e.get("notes", ""))[:60],
+                )
+                i += 1
+
+            self.console.print(mtable)
+
+        combined_total = total_val + manual_total
+
+        # Summary footer (two-track valuation)
+        summary = Table.grid(padding=(0, 2))
+        summary.add_column(style="dim")
+        summary.add_column(justify="right", style="bold white")
+        summary.add_row("Market-Priced Total", f"[bold green]${total_val:,.2f}[/bold green]")
+        if manual_total > 0:
+            summary.add_row("Manual / Off-Market (Est.)", f"[bold magenta]${manual_total:,.2f}[/bold magenta]")
+            summary.add_row("Combined (Est.)", f"${combined_total:,.2f}")
+
+        self.console.print(Align.right(summary))
+        self.console.print("[dim]Note: Market totals exclude manual assets. Manual values are user-entered estimates.[/dim]")
         
         # Summary footer
         self.console.print(Align.right(
@@ -445,63 +612,258 @@ class ClientManager:
         ))
 
     def add_holding_workflow(self, account: Account):
-        self.console.print("\n[dim]Enter Ticker alone OR 'Ticker Quantity' (e.g. 'NVDA 10')[/dim]")
-        
+        """Adds or updates a priced holding OR a manual/off-market asset without terminating the program."""
+
+        self.console.print("\n[dim]Enter Ticker alone OR 'Ticker Quantity' (e.g. 'NVDA 10').[/dim]")
+        self.console.print("[dim]Type 'MANUAL' to add an off-market asset (estimated value).[/dim]")
+
+        raw_input = ""
         try:
-            # Step 1: Input handling for space-separated values
-            raw_input = self.console.input("[bold cyan]Ticker Input:[/bold cyan] ").strip()
-            if not raw_input: return
+            raw_input = (self.console.input("[bold cyan]Ticker Input:[/bold cyan] ") or "").strip()
+        except Exception:
+            raw_input = ""
 
-            parts = raw_input.split()
-            ticker = parts[0].upper()
-            quantity = None
+        if not raw_input:
+            InputSafe.pause()
+            return
 
-            if len(parts) >= 2:
-                # User provided "TICKER QUANTITY"
-                try:
-                    quantity = float(parts[1])
-                except ValueError:
-                    self.console.print(f"[red]Could not parse quantity '{parts[1]}'.[/red]")
-                    InputSafe.pause()
-                    return
-            
-            # Step 2: Check current price (Feedback)
-            quote = self.valuation_engine.get_quote_data(ticker)
-            price = quote.get('price', 0.0)
-            
-            if price > 0:
-                self.console.print(f"   [dim]Price: ${price:,.2f} | Trend: {quote.get('change_pct', 0):+.2f}%[/dim]")
-            else:
-                self.console.print(f"   [yellow]Warning: Could not fetch live price for '{ticker}'.[/yellow]")
+        if raw_input.strip().lower() in ("manual", "m", "off", "offmarket", "off-market"):
+            self._add_manual_holding_workflow(account)
+            InputSafe.pause()
+            return
 
-            # Step 3: Prompt for quantity only if not already provided
-            if quantity is None:
-                qty_str = self.console.input(f"[bold cyan]Quantity for {ticker}:[/bold cyan] ").strip()
-                if not qty_str: return 
-                quantity = float(qty_str)
-            
-            if quantity < 0:
-                self.console.print("[red]Quantity cannot be negative.[/red]")
+        # Parse "TICKER [QTY]"
+        parts = raw_input.split()
+        ticker = parts[0].strip().upper()
+        quantity = None
+
+        if len(parts) >= 2:
+            try:
+                quantity = float(parts[1])
+            except Exception:
+                self.console.print(f"[red]Could not parse quantity '{parts[1]}'.[/red]")
                 InputSafe.pause()
                 return
-            
-            account.holdings[ticker] = quantity
-            self.console.print(f"[green]Successfully set {ticker} to {quantity:,.4f} shares.[/green]")
-            DataHandler.save_clients(self.clients) # Auto-save
 
-        except ValueError:
-            self.console.print("[red]Invalid input format.[/red]")
-        
+        # Quote feedback (never raises; always returns dict)
+        quote = self.valuation_engine.get_quote_data(ticker)
+        price = float(quote.get("price", 0.0) or 0.0)
+        trend = float(quote.get("change_pct", quote.get("pct", 0.0)) or 0.0)
+        if price > 0:
+            self.console.print(f"   [dim]Price: ${price:,.2f} | Trend: {trend:+.2f}% | Source: {quote.get('source','N/A')}[/dim]")
+        else:
+            err = quote.get("error", "") or "Could not fetch live price."
+            self.console.print(f"   [yellow]Warning: {err}[/yellow]")
+            self.console.print("   [dim]You can still store the ticker + qty; valuation will show $0 until pricing is available.[/dim]")
+
+        # Prompt for quantity if needed
+        if quantity is None:
+            qty_str = ""
+            try:
+                qty_str = (self.console.input(f"[bold cyan]Quantity for {ticker}:[/bold cyan] ") or "").strip()
+            except Exception:
+                qty_str = ""
+
+            if not qty_str:
+                InputSafe.pause()
+                return
+
+            try:
+                quantity = float(qty_str)
+            except Exception:
+                self.console.print("[red]Invalid quantity.[/red]")
+                InputSafe.pause()
+                return
+
+        if quantity < 0:
+            self.console.print("[red]Quantity cannot be negative.[/red]")
+            InputSafe.pause()
+            return
+
+        account.holdings[ticker] = float(quantity)
+        self.console.print(f"[green]Successfully set {ticker} to {quantity:,.4f} shares.[/green]")
+
+        try:
+            DataHandler.save_clients(self.clients)  # Auto-save
+        except Exception as ex:
+            self.console.print(f"[red]Warning: Could not auto-save client data: {ex}[/red]")
+
         InputSafe.pause()
 
+    def _add_manual_holding_workflow(self, account: Account):
+        """Adds or updates an off-market/manual asset (estimated value)."""
+
+        try:
+            name = (self.console.input("\n[bold magenta]Manual Asset Name:[/bold magenta] ") or "").strip()
+        except Exception:
+            name = ""
+
+        if not name:
+            self.console.print("[yellow]No name entered; cancelled.[/yellow]")
+            return
+
+        # Quantity (optional; defaults to 1.0)
+        qty = 1.0
+        try:
+            qty_raw = (self.console.input("[bold magenta]Quantity/Units (default 1):[/bold magenta] ") or "").strip()
+            if qty_raw:
+                qty = float(qty_raw)
+        except Exception:
+            qty = 1.0
+
+        if qty < 0:
+            self.console.print("[red]Quantity cannot be negative.[/red]")
+            return
+
+        # Choose valuation input method
+        self.console.print("\n[bold magenta]Valuation Input:[/bold magenta]")
+        self.console.print("[1] Enter Unit Price (qty × unit)")
+        self.console.print("[2] Enter Total Value (override)")
+        self.console.print("[0] Cancel")
+
+        choice = InputSafe.get_option(["1", "2", "0"], prompt_text="[>]")
+        if choice == "0":
+            return
+
+        unit_price = 0.0
+        total_value = 0.0
+
+        if choice == "1":
+            try:
+                unit_raw = (self.console.input("[bold magenta]Unit Price ($):[/bold magenta] ") or "").strip()
+                unit_price = float(unit_raw) if unit_raw else 0.0
+            except Exception:
+                unit_price = 0.0
+            total_value = unit_price * qty
+        else:
+            try:
+                tot_raw = (self.console.input("[bold magenta]Total Estimated Value ($):[/bold magenta] ") or "").strip()
+                total_value = float(tot_raw) if tot_raw else 0.0
+            except Exception:
+                total_value = 0.0
+            unit_price = (total_value / qty) if qty > 0 else 0.0
+
+        try:
+            notes = (self.console.input("[dim]Notes (optional): [/dim]") or "").strip()
+        except Exception:
+            notes = ""
+
+        entry = {
+            "name": name,
+            "quantity": float(qty),
+            "unit_price": float(unit_price),
+            "total_value": float(total_value),
+            "currency": "USD",
+            "notes": notes,
+        }
+
+        # Upsert by name (case-insensitive)
+        manual_list = getattr(account, "manual_holdings", None)
+        if manual_list is None:
+            account.manual_holdings = []
+            manual_list = account.manual_holdings
+
+        idx = 0
+        found = -1
+        while idx < len(manual_list):
+            try:
+                if str(manual_list[idx].get("name", "")).strip().lower() == name.strip().lower():
+                    found = idx
+                    break
+            except Exception:
+                pass
+            idx += 1
+
+        if found >= 0:
+            manual_list[found] = entry
+            self.console.print(f"[green]Updated manual asset '{name}'.[/green]")
+        else:
+            manual_list.append(entry)
+            self.console.print(f"[green]Added manual asset '{name}'.[/green]")
+
+        try:
+            DataHandler.save_clients(self.clients)
+        except Exception as ex:
+            self.console.print(f"[red]Warning: Could not auto-save client data: {ex}[/red]")
+
     def remove_holding_workflow(self, account: Account):
-        ticker = self.console.input("\n[bold cyan]Enter Ticker to Remove:[/bold cyan] ").strip().upper()
+        """Removes a priced holding, or a manual/off-market asset."""
+
+        self.console.print("\n[dim]Enter a ticker to remove, or type 'MANUAL' to remove an off-market asset.[/dim]")
+        try:
+            raw = (self.console.input("[bold cyan]Remove:[/bold cyan] ") or "").strip()
+        except Exception:
+            raw = ""
+
+        if not raw:
+            InputSafe.pause()
+            return
+
+        if raw.strip().lower() in ("manual", "m"):
+            manual_list = getattr(account, "manual_holdings", []) or []
+            if not manual_list:
+                self.console.print("[yellow]No manual assets on this account.[/yellow]")
+                InputSafe.pause()
+                return
+
+            manual_total, manual_norm = self.valuation_engine.calculate_manual_holdings_value(manual_list)
+
+            table = Table(title="[bold magenta]Manual Assets[/bold magenta]", box=box.SIMPLE_HEAD, expand=True)
+            table.add_column("#", style="dim", width=4, justify="right")
+            table.add_column("Asset", style="bold magenta")
+            table.add_column("Est. Value", justify="right", style="magenta")
+
+            idx = 1
+            for entry in manual_norm:
+                table.add_row(str(idx), str(entry.get("name", "")), f"${float(entry.get('total_value', 0.0) or 0.0):,.2f}")
+                idx += 1
+
+            self.console.print(table)
+            pick = InputSafe.get_option(
+                [str(i) for i in range(1, len(manual_norm) + 1)] + ["0"],
+                prompt_text="[bold cyan]Select # to remove (0 cancel):[/bold cyan] "
+            )
+            if pick == "0":
+                InputSafe.pause()
+                return
+
+            # Remove by name match (manual_norm is sorted view)
+            try:
+                target_name = str(manual_norm[int(pick) - 1].get("name", "")).strip().lower()
+                kept = []
+                removed = False
+                for entry in manual_list:
+                    if not removed and str(entry.get("name", "")).strip().lower() == target_name:
+                        removed = True
+                        continue
+                    kept.append(entry)
+                account.manual_holdings = kept
+                if removed:
+                    self.console.print("[green]Removed manual asset.[/green]")
+                else:
+                    self.console.print("[yellow]Manual asset not found.[/yellow]")
+            except Exception:
+                self.console.print("[red]Invalid selection.[/red]")
+
+            try:
+                DataHandler.save_clients(self.clients)
+            except Exception as ex:
+                self.console.print(f"[red]Warning: Could not auto-save client data: {ex}[/red]")
+
+            InputSafe.pause()
+            return
+
+        ticker = raw.strip().upper()
         if ticker in account.holdings:
             del account.holdings[ticker]
             self.console.print(f"[green]Removed {ticker}.[/green]")
-            DataHandler.save_clients(self.clients)
+            try:
+                DataHandler.save_clients(self.clients)
+            except Exception as ex:
+                self.console.print(f"[red]Warning: Could not auto-save client data: {ex}[/red]")
         else:
             self.console.print(f"[red]Ticker '{ticker}' not found.[/red]")
+
         InputSafe.pause()
 
     # --- ACCOUNT CRUD (Create/Update/Delete) ---

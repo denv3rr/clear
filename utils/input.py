@@ -94,11 +94,11 @@ class InputSafe:
     @staticmethod
     def get_asset_input() -> Optional[Dict[str, Any]]:
         """
-        Prompts user for robust asset input with flexible formats.
+        Prompts user for asset input with more flexible formats.
         
         Supported Formats:
         1. Ticker <Quantity> (e.g., 'NVDA 10', 'TSLA -5')
-        2. Ticker (Asks for Quantity next - fulfilling user request)
+        2. Ticker (Asks for Quantity explicitly next)
         3. Custom:<Label> <Value> (e.g., 'Custom:GoldBar 50000', 'Custom:House 500000')
         
         Returns: {ticker, quantity, asset_type, manual_value} or None (if cancelled)
@@ -154,7 +154,7 @@ class InputSafe:
         # Determine Asset Type (Basic logic)
         asset_type = "Equity"
         if ticker.endswith(('P', 'C', 'p', 'c')) and len(ticker) > 2:
-             asset_type = "Derivative:Option"
+                asset_type = "Derivative:Option"
         
         # Handle Shorting (Request: Shorts)
         if quantity < 0 and asset_type == "Equity": 

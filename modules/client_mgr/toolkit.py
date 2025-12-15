@@ -2,7 +2,8 @@ import math
 import numpy as np
 import pandas as pd
 import yfinance as yf
-from typing import List, Dict, Any
+import time
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 
 from rich.console import Console
@@ -15,6 +16,9 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from utils.input import InputSafe
 from modules.client_mgr.client_model import Client, Account
 from modules.client_mgr.valuation import ValuationEngine
+
+_CAPM_CACHE = {}  # key -> {"ts": int, "data": dict}
+_CAPM_TTL_SECONDS = 900  # 15 minutes
 
 class ModelSelector:
     """
@@ -296,3 +300,137 @@ class FinancialToolkit:
         self.console.print("\n")
         self.console.print(Align.center(results))
         InputSafe.pause()
+    
+    @staticmethod
+    def compute_capm_metrics_from_holdings(
+        holdings: Dict[str, float],
+        benchmark_ticker: str = "SPY",
+        risk_free_annual: float = 0.04,
+        period: str = "1y",
+    ) -> Dict[str, Any]:
+        """
+        Computes CAPM + basic risk metrics for a portfolio represented by {ticker: qty}.
+        Returns a dict; never raises in normal flows.
+
+        Output keys:
+        - beta, alpha_annual, r_squared, sharpe, vol_annual, points, error
+        """
+        ts = int(time.time())
+
+        if not holdings:
+            return {"error": "No holdings", "beta": None, "alpha_annual": None, "r_squared": None, "sharpe": None, "vol_annual": None, "points": 0}
+
+        # Cache key includes tickers+qty, benchmark, period, rf
+        fp = tuple(sorted((str(k).upper(), round(float(v or 0.0), 6)) for k, v in holdings.items() if str(k).strip()))
+        key = (fp, str(benchmark_ticker).upper(), period, float(risk_free_annual))
+
+        cached = _CAPM_CACHE.get(key)
+        if cached and (ts - int(cached.get("ts", 0))) <= _CAPM_TTL_SECONDS:
+            return cached["data"]
+
+        try:
+            tickers = [t for t, q in fp if q != 0.0]
+            if not tickers:
+                data = {"error": "No non-zero holdings", "beta": None, "alpha_annual": None, "r_squared": None, "sharpe": None, "vol_annual": None, "points": 0}
+                _CAPM_CACHE[key] = {"ts": ts, "data": data}
+                return data
+
+            download_list = sorted(set(tickers + [str(benchmark_ticker).upper()]))
+
+            df = yf.download(download_list, period=period, interval="1d", progress=False, group_by="column")
+            if df is None or df.empty:
+                data = {"error": "No market data returned", "beta": None, "alpha_annual": None, "r_squared": None, "sharpe": None, "vol_annual": None, "points": 0}
+                _CAPM_CACHE[key] = {"ts": ts, "data": data}
+                return data
+
+            # Handle possible MultiIndex: prefer "Close"
+            if isinstance(df.columns, pd.MultiIndex):
+                if ("Close" in df.columns.levels[0]):
+                    close = df["Close"].copy()
+                elif ("Adj Close" in df.columns.levels[0]):
+                    close = df["Adj Close"].copy()
+                else:
+                    data = {"error": "Close price not available", "beta": None, "alpha_annual": None, "r_squared": None, "sharpe": None, "vol_annual": None, "points": 0}
+                    _CAPM_CACHE[key] = {"ts": ts, "data": data}
+                    return data
+            else:
+                close = df.get("Close") or df.get("Adj Close")
+                if close is None:
+                    data = {"error": "Close price not available", "beta": None, "alpha_annual": None, "r_squared": None, "sharpe": None, "vol_annual": None, "points": 0}
+                    _CAPM_CACHE[key] = {"ts": ts, "data": data}
+                    return data
+
+            bench = str(benchmark_ticker).upper()
+            if bench not in close.columns:
+                data = {"error": f"Benchmark '{bench}' missing", "beta": None, "alpha_annual": None, "r_squared": None, "sharpe": None, "vol_annual": None, "points": 0}
+                _CAPM_CACHE[key] = {"ts": ts, "data": data}
+                return data
+
+            # Portfolio value series: sum(close[t] * qty)
+            port_val = None
+            for t, q in fp:
+                if t == bench or q == 0.0:
+                    continue
+                if t not in close.columns:
+                    continue
+                series = close[t] * float(q)
+                port_val = series if port_val is None else (port_val + series)
+
+            if port_val is None:
+                data = {"error": "No overlapping price series for holdings", "beta": None, "alpha_annual": None, "r_squared": None, "sharpe": None, "vol_annual": None, "points": 0}
+                _CAPM_CACHE[key] = {"ts": ts, "data": data}
+                return data
+
+            port_ret = port_val.pct_change().dropna()
+            mkt_ret = close[bench].pct_change().dropna()
+
+            joined = pd.concat([port_ret.rename("p"), mkt_ret.rename("m")], axis=1).dropna()
+            if joined.empty or len(joined) < 30:
+                data = {"error": "Insufficient return history", "beta": None, "alpha_annual": None, "r_squared": None, "sharpe": None, "vol_annual": None, "points": int(len(joined))}
+                _CAPM_CACHE[key] = {"ts": ts, "data": data}
+                return data
+
+            p = joined["p"].values
+            m = joined["m"].values
+
+            var_m = float(np.var(m, ddof=1))
+            cov_pm = float(np.cov(p, m, ddof=1)[0][1])
+            beta = (cov_pm / var_m) if var_m > 0 else None
+
+            rf_daily = float(risk_free_annual) / 252.0
+            avg_p = float(np.mean(p))
+            avg_m = float(np.mean(m))
+
+            alpha_daily = None
+            alpha_annual = None
+            if beta is not None:
+                alpha_daily = avg_p - (rf_daily + beta * (avg_m - rf_daily))
+                alpha_annual = alpha_daily * 252.0
+
+            corr = float(np.corrcoef(p, m)[0][1])
+            r_squared = corr * corr
+
+            std_p = float(np.std(p, ddof=1))
+            sharpe = ((avg_p - rf_daily) / std_p * (252.0 ** 0.5)) if std_p > 0 else None
+            vol_annual = std_p * (252.0 ** 0.5)
+
+            data = {
+                "error": "",
+                "beta": beta,
+                "alpha_annual": alpha_annual,
+                "r_squared": r_squared,
+                "sharpe": sharpe,
+                "vol_annual": vol_annual,
+                "points": int(len(joined)),
+                "benchmark": bench,
+                "period": period,
+                "risk_free_annual": float(risk_free_annual),
+            }
+
+            _CAPM_CACHE[key] = {"ts": ts, "data": data}
+            return data
+
+        except Exception as ex:
+            data = {"error": f"CAPM compute error: {ex}", "beta": None, "alpha_annual": None, "r_squared": None, "sharpe": None, "vol_annual": None, "points": 0}
+            _CAPM_CACHE[key] = {"ts": ts, "data": data}
+            return data
