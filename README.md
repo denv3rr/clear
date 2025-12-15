@@ -1,21 +1,3 @@
-> [!WARNING]
->
-> Work in progress. Issues still present.
-
-<br>
-
-> [!NOTE]
->
-> Also, don't say anything about the typo in the username.
-> <br>
-> I made that years ago and didn't notice until later.
-> <br><br>
-> <a>
->  <img src="https://media1.tenor.com/m/W3Mmj2Dzm-AAAAAC/screaming-internally-spongebob.gif" alt="Screaming inside :(" width=100>
-> </a>
-
-<br>
-
 <div align="center">
   
 ![Python](https://img.shields.io/badge/python-3.10+-blue)
@@ -37,6 +19,24 @@
 </div>
 
 ---
+
+> [!WARNING]
+>
+> Work in progress. Issues still present.
+
+<br>
+
+> [!NOTE]
+>
+> Also, don't say anything about the typo in the username.
+> <br>
+> I made that years ago and didn't notice until later.
+> <br><br>
+> <a>
+>  <img src="https://media1.tenor.com/m/W3Mmj2Dzm-AAAAAC/screaming-internally-spongebob.gif" alt="Screaming inside :(" width=100>
+> </a>
+
+<br>
 
 ## Usage
 
@@ -78,3 +78,18 @@ python run.py
 > Remember not to commit this file if you clone this.
 
 ---
+
+<div align="center">
+  
+```
+ ██████╗██╗     ███████╗ █████╗ ██████╗ 
+██╔════╝██║     ██╔════╝██╔══██╗██╔══██╗
+██║     ██║     █████╗  ███████║██████╔╝
+██║     ██║     ██╔══╝  ██╔══██║██╔══██╗
+╚██████╗███████╗███████╗██║  ██║██║  ██║
+ ╚═════╝╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝
+
+█████╗█████╗█████╗█████╗█████╗█████╗█████╗█████╗█████╗█████╗█████╗█████╗
+╚════╝╚════╝╚════╝╚════╝╚════╝╚════╝╚════╝╚════╝╚════╝╚════╝╚════╝╚════╝
+```
+</div>
