@@ -52,6 +52,7 @@ class ValuationEngine:
 
         Always returns a dict with at least:
             - ticker, price, change, pct, change_pct, source, timestamp, error
+        Never raises.
         """
         t = self._normalize_ticker(ticker)
         ts = int(time.time())
@@ -69,10 +70,10 @@ class ValuationEngine:
                 "error": "Empty ticker",
             }
 
-        # 1) Finnhub (fast, requires API key)
+        # 1) Finnhub (fast)
         try:
             fh = self.finnhub.get_quote(t)
-            if isinstance(fh, dict) and fh.get("error") is None and fh.get("price"):
+            if isinstance(fh, dict) and fh.get("price"):
                 pct = float(fh.get("percent", 0.0) or 0.0)
                 chg = float(fh.get("change", 0.0) or 0.0)
                 price = float(fh.get("price", 0.0) or 0.0)
@@ -87,13 +88,13 @@ class ValuationEngine:
                     "source": "Finnhub",
                     "error": "",
                 }
-        except Exception as ex:
-            self._log("warning", f"Finnhub quote failed for {t}: {ex}")
+        except Exception:
+            pass
 
-        # 2) Yahoo (no key, heavier)
+        # 2) Yahoo (fallback)
         try:
             yd = self.yahoo.get_detailed_quote(t, period="1d", interval="15m")
-            if isinstance(yd, dict) and "error" not in yd:
+            if isinstance(yd, dict) and not yd.get("error") and float(yd.get("price", 0.0) or 0.0) > 0:
                 pct = float(yd.get("pct", 0.0) or 0.0)
                 chg = float(yd.get("change", 0.0) or 0.0)
                 price = float(yd.get("price", 0.0) or 0.0)
@@ -102,25 +103,25 @@ class ValuationEngine:
                     "price": price,
                     "change": chg,
                     "pct": pct,
-                    "change_pct": pct,  # alias for UI compatibility
+                    "change_pct": pct,
                     "currency": "USD",
                     "timestamp": ts,
                     "source": "Yahoo",
                     "error": "",
                 }
-        except Exception as ex:
-            self._log("warning", f"Yahoo quote failed for {t}: {ex}")
+        except Exception:
+            pass
 
         return {
-            "ticker": t,
-            "price": 0.0,
-            "change": 0.0,
-            "pct": 0.0,
-            "change_pct": 0.0,
-            "currency": "USD",
-            "timestamp": ts,
-            "source": "N/A",
-            "error": "No quote available (check ticker or API key).",
+        "ticker": t,
+        "price": 0.0,
+        "change": 0.0,
+        "pct": 0.0,
+        "change_pct": 0.0,
+        "currency": "USD",
+        "timestamp": ts,
+        "source": "N/A",
+        "error": f"Could not fetch live price for {t}",
         }
 
     def get_detailed_data(self, ticker: str) -> Dict[str, Any]:

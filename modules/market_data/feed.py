@@ -80,22 +80,37 @@ class MarketFeed:
     def display_futures(self, view_label="1D"):
         """Renders categorized macro data inside a clean panel with Sparklines."""
         self.console.print(f"[dim]Fetching Global Data ({view_label})...[/dim]")
-        
+
         raw_data = self.yahoo.get_macro_snapshot(
-            period=self.current_period, 
+            period=self.current_period,
             interval=self.current_interval
         )
 
         if not raw_data:
-            self.console.print("[red]Critical Error: Data stream unavailable.[/red]")
+            missing = []
+            try:
+                missing = self.yahoo.get_last_missing_symbols()
+            except Exception:
+                pass
+
+            msg = Text("Market data provider returned no rows. ", style="bold yellow")
+            msg.append("This is usually a transient Yahoo/yfinance issue.\n", style="yellow")
+            if missing:
+                msg.append(f"\nSkipped symbols (no data): {', '.join(missing[:20])}", style="dim")
+                if len(missing) > 20:
+                    msg.append(f" (+{len(missing) - 20} more)", style="dim")
+
+            self.console.print(Panel(msg, border_style="yellow", title="[bold]Macro Dashboard[/bold]"))
             return
 
         order = ["Commodities", "Indices", "FX", "Rates", "Crypto", "Macro ETFs"]
-        raw_data.sort(key=lambda x: (order.index(x["category"]), x["ticker"]))
+
+        def _cat_rank(cat: str) -> int:
+            return order.index(cat) if cat in order else len(order)
+
+        raw_data.sort(key=lambda x: (_cat_rank(x.get("category", "")), x.get("ticker", "")))
 
         table = Table(expand=True, box=box.MINIMAL_DOUBLE_HEAD)
-        
-        # Define Columns
         table.add_column("Trend", justify="center", width=5)
         table.add_column("Ticker", style="cyan")
         table.add_column("Price", justify="right")
@@ -107,43 +122,53 @@ class MarketFeed:
 
         current_cat = None
         for item in raw_data:
-
-            if item["category"] != current_cat:
+            cat = item.get("category", "Other")
+            if cat != current_cat:
                 table.add_row("", "", "", "", "", "", "", "")
-                table.add_row(
-                    "",
-                    f"[bold underline gold1]{item['category'].upper()}[/bold underline gold1]",
-                    "", "", "", "", "", ""
-                )
-                current_cat = item["category"]
+                table.add_row("", f"[bold underline gold1]{cat.upper()}[/bold underline gold1]", "", "", "", "", "", "")
+                current_cat = cat
 
-            c_color = "green" if item["change"] >= 0 else "red"
-            
-            trend_arrow = self._get_trend_arrow(item["change"])
-            # Generate sparkline with default length 20 for table
-            sparkline = ChartRenderer.generate_sparkline(item["history"], length=20)
-            
-            spark_color = "green" if item["history"][-1] >= item["history"][0] else "red"
+            change = float(item.get("change", 0.0) or 0.0)
+            pct = float(item.get("pct", 0.0) or 0.0)
+            c_color = "green" if change >= 0 else "red"
+
+            trend_arrow = self._get_trend_arrow(change)
+            history = item.get("history", []) or []
+            sparkline = ChartRenderer.generate_sparkline(history, length=20)
+            spark_color = "green" if (history and history[-1] >= history[0]) else ("red" if history else "dim")
 
             table.add_row(
                 trend_arrow,
-                item["ticker"],
-                f"{item['price']:,.2f}",
-                f"[{c_color}]{item['change']:+.2f}[/{c_color}]",
-                f"[{c_color}]{item['pct']:+.2f}%[/{c_color}]",
+                item.get("ticker", ""),
+                f"{float(item.get('price', 0.0) or 0.0):,.2f}",
+                f"[{c_color}]{change:+.2f}[/{c_color}]",
+                f"[{c_color}]{pct:+.2f}%[/{c_color}]",
                 f"[{spark_color}]{sparkline}[/{spark_color}]",
-                f"{item['volume']:,.0f}",
-                item["name"]
+                f"{int(item.get('volume', 0) or 0):,}",
+                item.get("name", "")
             )
+
+        missing = []
+        try:
+            missing = self.yahoo.get_last_missing_symbols()
+        except Exception:
+            pass
+
+        footer = ""
+        if missing:
+            shown = ", ".join(missing[:12])
+            footer = f"[dim]Skipped symbols (no data): {shown}" + ("…[/dim]" if len(missing) > 12 else "[/dim]")
 
         ticker_panel = Panel(
             Align.center(table),
             title=f"[bold gold1]MACRO DASHBOARD ({view_label})[/bold gold1]",
             border_style="yellow",
             box=box.ROUNDED,
-            padding=(0, 2)
+            padding=(0, 2),
+            subtitle=footer
         )
 
+        self.console.clear()
         self.console.print(ticker_panel)
 
     def stock_lookup_loop(self):

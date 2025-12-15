@@ -3,6 +3,10 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 import time
+import io
+import warnings
+import contextlib
+import logging
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 
@@ -17,8 +21,13 @@ from utils.input import InputSafe
 from modules.client_mgr.client_model import Client, Account
 from modules.client_mgr.valuation import ValuationEngine
 
+# Cache for CAPM computations to avoid redundant API calls
 _CAPM_CACHE = {}  # key -> {"ts": int, "data": dict}
 _CAPM_TTL_SECONDS = 900  # 15 minutes
+
+# Suppress yfinance logs
+logging.getLogger("yfinance").setLevel(logging.ERROR)
+logging.getLogger("urllib3").setLevel(logging.ERROR)
 
 class ModelSelector:
     """
@@ -337,11 +346,15 @@ class FinancialToolkit:
 
             download_list = sorted(set(tickers + [str(benchmark_ticker).upper()]))
 
-            df = yf.download(download_list, period=period, interval="1d", progress=False, group_by="column")
-            if df is None or df.empty:
-                data = {"error": "No market data returned", "beta": None, "alpha_annual": None, "r_squared": None, "sharpe": None, "vol_annual": None, "points": 0}
-                _CAPM_CACHE[key] = {"ts": ts, "data": data}
-                return data
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=FutureWarning)
+                warnings.simplefilter("ignore", category=UserWarning)
+                with contextlib.redirect_stderr(io.StringIO()):
+                    df = yf.download(download_list, period=period, interval="1d", progress=False, group_by="column")
+                    if df is None or df.empty:
+                        data = {"error": "No market data returned", "beta": None, "alpha_annual": None, "r_squared": None, "sharpe": None, "vol_annual": None, "points": 0}
+                        _CAPM_CACHE[key] = {"ts": ts, "data": data}
+                        return data
 
             # Handle possible MultiIndex: prefer "Close"
             if isinstance(df.columns, pd.MultiIndex):

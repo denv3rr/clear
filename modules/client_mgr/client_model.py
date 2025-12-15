@@ -11,11 +11,10 @@ class Account:
     account_type: str = "Taxable"
     current_value: float = 0.0
 
-    # Market holdings: {ticker: quantity}
     holdings: Dict[str, float] = field(default_factory=dict)
 
-    # Manual / off-market holdings (estimated).
-    # Each item: {"name": str, "quantity": float, "unit_price": float, "total_value": float, "currency": str, "notes": str}
+    # Manual/off-market holdings (estimated). Each item can contain:
+    # name, quantity, unit_price, total_value, currency, notes
     manual_holdings: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -31,6 +30,7 @@ class Account:
 
 @dataclass
 class Client:
+    """A single client record with one or more accounts."""
     client_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     name: str = "New Client"
     risk_profile: str = "Moderate"
@@ -43,7 +43,7 @@ class Client:
             "name": self.name,
             "risk_profile": self.risk_profile,
             "calculated_risk": self.calculated_risk,
-            "accounts": [acc.to_dict() for acc in self.accounts],
+            "accounts": [a.to_dict() for a in self.accounts],
         }
 
     @staticmethod
@@ -57,14 +57,15 @@ class Client:
         )
 
         for acc_data in data.get("accounts", []):
-            account = Account(
-                account_id=acc_data.get("account_id", str(uuid.uuid4())),
-                account_name=acc_data.get("account_name", "Brokerage Account"),
-                account_type=acc_data.get("account_type", "Taxable"),
-                current_value=acc_data.get("current_value", 0.0),
-                holdings=acc_data.get("holdings", {}) or {},
-                manual_holdings=acc_data.get("manual_holdings", []) or [],
+            client.accounts.append(
+                Account(
+                    account_id=acc_data.get("account_id", str(uuid.uuid4())),
+                    account_name=acc_data.get("account_name", "Brokerage Account"),
+                    account_type=acc_data.get("account_type", "Taxable"),
+                    current_value=acc_data.get("current_value", 0.0),
+                    holdings=acc_data.get("holdings", {}) or {},
+                    manual_holdings=acc_data.get("manual_holdings", []) or [],
+                )
             )
-            client.accounts.append(account)
 
         return client

@@ -1,9 +1,11 @@
 from rich.console import Console
+from rich.console import Group
 from rich.table import Table
 from rich.panel import Panel
 from rich import box
 from rich.align import Align
 from rich.text import Text
+
 from typing import Optional, Tuple, List, Union
 
 from utils.input import InputSafe
@@ -189,10 +191,10 @@ class ClientManager:
         aum_grid.add_column(justify="right", style="bold white")
         aum_grid.add_row("Market-Priced AUM", f"[bold green]${total_val:,.2f}[/bold green]")
         if manual_count > 0:
-            aum_grid.add_row("Manual / Off-Market (Est.)", f"[bold magenta]${manual_total:,.2f}[/bold magenta]")
+            aum_grid.add_row("Off-Market", f"[bold magenta]${manual_total:,.2f}[/bold magenta]")
             aum_grid.add_row("Combined (Est.)", f"[bold white]${combined_total:,.2f}[/bold white]")
 
-        self.console.print(Panel(Align.left(aum_grid), title="[bold]AUM Snapshot[/bold]", box=box.HEAVY))
+        self.console.print(Panel(Align.left(aum_grid), title="[bold]Total AUM[/bold]", box=box.HEAVY))
 
         # --- CAPM Snapshot (market holdings only) ---
         capm = FinancialToolkit.compute_capm_metrics_from_holdings(all_holdings, benchmark_ticker="SPY", period="1y")
@@ -292,6 +294,7 @@ class ClientManager:
                 f"[{spark_color}]{sparkline}[/{spark_color}]"
             )
 
+        self.console.print(f"\n\n\n[dim]Total Market-Valued Holdings: {len(account.holdings)}[/dim]")
         self.console.print(table)
 
         # Manual/off-market holdings (estimated)
@@ -301,7 +304,7 @@ class ClientManager:
 
         if manual_norm:
             manual_table = Table(
-                title="[bold magenta]Manual / Off-Market Assets (Estimated)[/bold magenta]",
+                title="[bold magenta]Off-Market Holdings[/bold magenta]",
                 box=box.SIMPLE_HEAD,
                 expand=True
             )
@@ -410,7 +413,9 @@ class ClientManager:
         # Add Total Row
         account_table.add_row("", "[dim]Total[/dim]", "", f"[bold green]${total_val:,.2f}[/bold green]")
         
+        self.console.print(f"[dim]Total Accounts: {len(client.accounts)}[/dim]")
         self.console.print(account_table)
+        self.console.print(Align.right("[dim]Note: Market totals exclude off-market assets.[/dim]"))
 
         self.console.print("\n[bold gold1]MENU[/bold gold1]")
         self.console.print(f"[A] ➕ Add New Account")
@@ -487,7 +492,7 @@ class ClientManager:
                 snap.add_row("R²", f"{acct_capm.get('r_squared', 0.0):.2f}")
 
             self.console.print(Panel(snap, title="[bold]Account Snapshot[/bold]", box=box.SIMPLE_HEAD))
-            self.console.print("[dim]Note: Market valuation & CAPM exclude manual/off-market assets.[/dim]")
+            self.console.print("[dim]Note: Market valuation & CAPM exclude off-market assets.[/dim]")
             
             # Data Display
             self.display_account_holdings(account)
@@ -517,7 +522,7 @@ class ClientManager:
         # Get enriched data from ValuationEngine
         total_val, enriched_data = self.valuation_engine.calculate_portfolio_value(account.holdings)
         
-        table = Table(title=f"[bold gold1]Current Holdings[/bold gold1]", box=box.SIMPLE_HEAD, expand=True)
+        table = Table(title=f"[bold gold1]Market Holdings[/bold gold1]", box=box.SIMPLE_HEAD, expand=True)
         table.add_column("Ticker", style="bold cyan")
         table.add_column("Trend", justify="center", width=5) # New Trend Column
         table.add_column("Quantity", justify="right")
@@ -567,7 +572,7 @@ class ClientManager:
 
         if manual_norm:
             mtable = Table(
-                title="[bold magenta]Manual / Off-Market Holdings (Estimated)[/bold magenta]",
+                title="[bold magenta]Off-Market Holdings[/bold magenta]",
                 box=box.SIMPLE_HEAD,
                 expand=True
             )
@@ -594,22 +599,40 @@ class ClientManager:
 
         combined_total = total_val + manual_total
 
-        # Summary footer (two-track valuation)
+        # --- Summary footer (two-track valuation) ---
         summary = Table.grid(padding=(0, 2))
         summary.add_column(style="dim")
         summary.add_column(justify="right", style="bold white")
         summary.add_row("Market-Priced Total", f"[bold green]${total_val:,.2f}[/bold green]")
-        if manual_total > 0:
-            summary.add_row("Manual / Off-Market (Est.)", f"[bold magenta]${manual_total:,.2f}[/bold magenta]")
-            summary.add_row("Combined (Est.)", f"${combined_total:,.2f}")
 
-        self.console.print(Align.right(summary))
-        self.console.print("[dim]Note: Market totals exclude manual assets. Manual values are user-entered estimates.[/dim]")
-        
-        # Summary footer
-        self.console.print(Align.right(
-            f"[bold white]Total Account Value: [/bold white][bold green]${total_val:,.2f}[/bold green]",
-        ))
+        if manual_total > 0:
+            summary.add_row("Off-Market Total", f"[bold magenta]${manual_total:,.2f}[/bold magenta]")
+            summary.add_row("Combined", f"${combined_total:,.2f}")
+
+        total_line = Text.assemble(
+            ("Total Account Value: ", "bold white"),
+            (f"${combined_total:,.2f}", "bold green"),
+        )
+
+        note_line = Text("Note: Market totals exclude off-market assets.", style="dim")
+
+        # Right-align EACH line INSIDE the panel
+        footer_content = Group(
+            Align.right(summary),
+            Text(""),
+            Align.right(total_line),
+            Align.right(note_line),
+        )
+
+        footer_panel = Panel.fit(
+            footer_content,
+            box=box.ROUNDED,
+            border_style="white",
+            padding=(0, 2),
+        )
+
+        # Right-align the whole panel on the console as well
+        self.console.print(Align.right(footer_panel))
 
     def add_holding_workflow(self, account: Account):
         """Adds or updates a priced holding OR a manual/off-market asset without terminating the program."""

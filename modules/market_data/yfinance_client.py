@@ -2,11 +2,25 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 
+import time
+import io
+import warnings
+import logging
+import contextlib
+
+# Suppress yfinance and urllib3 warnings/logs
+logging.getLogger("yfinance").setLevel(logging.ERROR)
+logging.getLogger("urllib3").setLevel(logging.ERROR)
+
 class YahooWrapper:
     """
-    Handles fetching batch data for global macro assets using nested categorization.
+    Yahoo Finance wrapper (yfinance) with:
+    - silent downloads (no stderr spam / FutureWarnings in UI)
+    - cached failures (skip repeated slow lookups for bad symbols)
+    - lightweight TTL caching for quotes/snapshots to reduce repeated network pulls
     """
     
+    # Nested Macro Tickers
     MACRO_TICKERS = {
 
         "Commodities": {
@@ -30,6 +44,7 @@ class YahooWrapper:
             "ZS=F": "Soybeans",
             "KC=F": "Coffee",
             "SB=F": "Sugar",
+            "CC=F": "Cocoa",
             "CT=F": "Cotton",
 
             # Livestock
@@ -55,11 +70,12 @@ class YahooWrapper:
             "^N225": "Nikkei 225",
             "^HSI": "Hang Seng Index",
             "^STI": "Singapore Straits Times",
+            "000001.SS": "Shanghai Composite",
+            "^KS11": "KOSPI",
 
-            # Emerging Markets
+            # Lat/SAM
             "^BVSP": "Bovespa (Brazil)",
             "^MXX": "IPC (Mexico)",
-            "^KS11": "KOSPI (South Korea)"
         },
 
         "FX": {
@@ -120,7 +136,7 @@ class YahooWrapper:
 
             # Rates & Credit
             "TLT": "20+ Year Treasury Bond ETF",
-            "IEF": "7–10 Year Treasury ETF",
+            "IEF": "7-10 Year Treasury ETF",
             "HYG": "High Yield Corporate Bond ETF",
             "LQD": "Investment Grade Corporate Bond ETF",
 
@@ -141,45 +157,111 @@ class YahooWrapper:
         }
     }
 
-    def get_detailed_quote(self, ticker: str, period="1d", interval="15m"):
-        """
-        Fetches detailed history for a SINGLE ticker to support robust views.
-        Returns a dict with price, change, volume, history list, and basic metadata.
-        """
+    # Failure cache (avoid repeated lag on known-bad tickers)
+    _BAD_SYMBOL_UNTIL: Dict[str, int] = {}
+    _BAD_TTL_SECONDS = 1800  # 30 minutes
+
+    # Last missing symbols from the most recent snapshot call
+    _LAST_MISSING: List[str] = []
+
+    # Snapshot cache (period, interval) -> (ts, results)
+    _SNAPSHOT_CACHE: Dict[Tuple[str, str], Tuple[int, List[Dict[str, Any]]]] = {}
+    _SNAPSHOT_TTL_SECONDS = 60  # 1 minute
+
+    # Detailed quote cache (ticker, period, interval) -> (ts, data)
+    _DETAILED_CACHE: Dict[Tuple[str, str, str], Tuple[int, Dict[str, Any]]] = {}
+    _DETAILED_TTL_SECONDS = 30  # 30 seconds
+
+    @staticmethod
+    def _now() -> int:
+        return int(time.time())
+
+    @classmethod
+    def _is_bad(cls, symbol: str) -> bool:
+        sym = str(symbol or "").strip().upper()
+        if not sym:
+            return True
+        until = int(cls._BAD_SYMBOL_UNTIL.get(sym, 0) or 0)
+        return cls._now() < until
+
+    @classmethod
+    def _mark_bad(cls, symbol: str, ttl_seconds: int = None) -> None:
+        sym = str(symbol or "").strip().upper()
+        if not sym:
+            return
+        ttl = int(ttl_seconds if ttl_seconds is not None else cls._BAD_TTL_SECONDS)
+        cls._BAD_SYMBOL_UNTIL[sym] = cls._now() + max(60, ttl)
+
+    @staticmethod
+    def _silent_download(tickers, **kwargs) -> pd.DataFrame:
+        buf = io.StringIO()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=FutureWarning)
+            warnings.simplefilter("ignore", category=UserWarning)
+            with contextlib.redirect_stderr(buf):
+                return yf.download(tickers, **kwargs)
+
+    @classmethod
+    def get_last_missing_symbols(cls) -> List[str]:
+        return list(cls._LAST_MISSING)
+
+    # ----------------------- Detailed Quote -----------------------
+
+    def get_detailed_quote(self, ticker: str, period: str = "1d", interval: str = "15m") -> Dict[str, Any]:
+        sym = str(ticker or "").strip().upper()
+        if not sym:
+            return {"error": "Empty ticker"}
+
+        if YahooWrapper._is_bad(sym):
+            return {"error": f"No data (cached failure): {sym}"}
+
+        cache_key = (sym, str(period), str(interval))
+        cached = YahooWrapper._DETAILED_CACHE.get(cache_key)
+        if cached:
+            ts, data = cached
+            if (YahooWrapper._now() - int(ts or 0)) <= YahooWrapper._DETAILED_TTL_SECONDS:
+                return data
+
         try:
-            # Fetch history
-            stock = yf.Ticker(ticker)
-            hist = stock.history(period=period, interval=interval)
-            
-            if hist.empty:
-                return {"error": f"No data found for {ticker}"}
+            buf = io.StringIO()
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=FutureWarning)
+                warnings.simplefilter("ignore", category=UserWarning)
+                with contextlib.redirect_stderr(buf):
+                    stock = yf.Ticker(sym)
+                    hist = stock.history(period=period, interval=interval, auto_adjust=True)
 
-            # Get Metadata (try/except as some fields might be missing)
+            if hist is None or hist.empty or ("Close" not in hist.columns):
+                YahooWrapper._mark_bad(sym)
+                return {"error": f"No history returned for {sym}"}
+
+            closes = hist["Close"].dropna()
+            if closes.empty:
+                YahooWrapper._mark_bad(sym)
+                return {"error": f"No close series returned for {sym}"}
+
+            current = float(closes.iloc[-1])
+            start = float(closes.iloc[0])
+            change = current - start
+            pct = (change / start) * 100 if start != 0 else 0.0
+
+            high = float(hist["High"].max()) if "High" in hist.columns and not hist["High"].dropna().empty else current
+            low = float(hist["Low"].min()) if "Low" in hist.columns and not hist["Low"].dropna().empty else current
+            volume = float(hist["Volume"].sum()) if "Volume" in hist.columns and not hist["Volume"].dropna().empty else 0.0
+
+            name = sym
+            sector = "N/A"
+            mkt_cap = None
             try:
-                info = stock.info
-                name = info.get("longName") or info.get("shortName") or ticker
-                sector = info.get("sector", "Unknown Sector")
-                mkt_cap = info.get("marketCap", None)
-            except:
-                name = ticker
-                sector = "N/A"
-                mkt_cap = None
+                info = getattr(stock, "info", {}) or {}
+                name = info.get("shortName") or info.get("longName") or sym
+                sector = info.get("sector") or "N/A"
+                mkt_cap = info.get("marketCap")
+            except Exception:
+                pass
 
-            # Calculate Price Stats
-            current = hist["Close"].iloc[-1]
-            start_price = hist["Close"].iloc[0]
-            change = current - start_price
-            pct = (change / start_price) * 100 if start_price != 0 else 0
-            
-            high = hist["High"].max()
-            low = hist["Low"].min()
-            volume = hist["Volume"].sum() # Volume for the fetched period
-
-            # Prepare Sparkline Data (last 40 points for higher res single view)
-            history_list = hist["Close"].tolist()
-            
-            return {
-                "ticker": ticker.upper(),
+            data = {
+                "ticker": sym,
                 "name": name,
                 "sector": sector,
                 "mkt_cap": mkt_cap,
@@ -189,103 +271,150 @@ class YahooWrapper:
                 "high": float(high),
                 "low": float(low),
                 "volume": int(volume),
-                "history": history_list
+                "history": closes.tail(40).tolist(),
             }
 
+            YahooWrapper._DETAILED_CACHE[cache_key] = (YahooWrapper._now(), data)
+            return data
+
         except Exception as e:
+            YahooWrapper._mark_bad(sym)
             return {"error": str(e)}
 
+    # ----------------------- Macro Snapshot -----------------------
+
     @staticmethod
-    def get_macro_snapshot(period="1d", interval="15m"):
-        """
-        Fetches intraday data and history for sparklines.
-        
-        Args:
-            period (str): Yahoo finance period (1d, 5d, 1mo, etc.)
-            interval (str): Yahoo finance interval (15m, 1h, 1d, etc.)
-        """
-        ticker_meta = {}
+    def _chunk(seq: List[str], size: int) -> List[List[str]]:
+        out = []
+        i = 0
+        while i < len(seq):
+            out.append(seq[i:i + size])
+            i += size
+        return out
+
+    def get_macro_snapshot(self, period: str = "1d", interval: str = "15m") -> List[Dict[str, Any]]:
+        key = (str(period), str(interval))
+
+        cached = YahooWrapper._SNAPSHOT_CACHE.get(key)
+        if cached:
+            ts, data = cached
+            if (YahooWrapper._now() - int(ts or 0)) <= YahooWrapper._SNAPSHOT_TTL_SECONDS:
+                return data
+
+        ticker_meta: Dict[str, Dict[str, str]] = {}
         for cat, symbols in YahooWrapper.MACRO_TICKERS.items():
-            for sym, name in symbols.items():
-                ticker_meta[sym] = {"name": name, "category": cat}
-        
-        flat_list = list(ticker_meta.keys())
-        results = []
+            for sym, name in (symbols or {}).items():
+                s = str(sym or "").strip().upper()
+                if s:
+                    ticker_meta[s] = {"name": name, "category": cat}
 
-        try:
-            # Download batch data
-            data = yf.download(
-                flat_list, 
-                period=period, 
-                interval=interval, 
-                progress=False,
-                group_by='column' 
-            )
-            
-            if data.empty: return []
+        requested = list(ticker_meta.keys())
+        flat_list = [s for s in requested if not YahooWrapper._is_bad(s)]
 
-            is_single = len(flat_list) == 1
+        results: List[Dict[str, Any]] = []
+        missing: List[str] = []
 
-            for sym in flat_list:
+        def process_download_frame(data: pd.DataFrame, symbols: List[str]) -> None:
+            nonlocal results, missing
+            if data is None or data.empty:
+                for s in symbols:
+                    missing.append(s)
+                return
+
+            is_multi = isinstance(data.columns, pd.MultiIndex)
+
+            for sym in symbols:
+                meta = ticker_meta.get(sym, {"name": sym, "category": "Other"})
                 try:
-                    meta = ticker_meta[sym]
-                    
-                    if is_single:
-                        if 'Close' not in data.columns: continue
-                        closes = data['Close']
-                        opens = data['Open']
-                        highs = data['High']
-                        lows = data['Low']
-                        volumes = data['Volume']
+                    if is_multi:
+                        if ("Close" not in data.columns.get_level_values(0)):
+                            missing.append(sym)
+                            YahooWrapper._mark_bad(sym)
+                            continue
+                        if sym not in data["Close"].columns:
+                            missing.append(sym)
+                            YahooWrapper._mark_bad(sym)
+                            continue
+                        closes = data["Close"][sym].dropna()
+                        highs = data["High"][sym].dropna() if "High" in data else pd.Series(dtype=float)
+                        lows = data["Low"][sym].dropna() if "Low" in data else pd.Series(dtype=float)
+                        vols = data["Volume"][sym].dropna() if "Volume" in data else pd.Series(dtype=float)
                     else:
-                        if sym not in data['Close'].columns: continue
-                        closes = data['Close'][sym]
-                        opens = data['Open'][sym]
-                        highs = data['High'][sym]
-                        lows = data['Low'][sym]
-                        volumes = data['Volume'][sym]
+                        closes = data.get("Close", pd.Series(dtype=float)).dropna()
+                        highs = data.get("High", pd.Series(dtype=float)).dropna()
+                        lows = data.get("Low", pd.Series(dtype=float)).dropna()
+                        vols = data.get("Volume", pd.Series(dtype=float)).dropna()
 
-                    valid_history = closes.dropna()
-                    
-                    if valid_history.empty:
+                    if closes.empty:
+                        missing.append(sym)
+                        YahooWrapper._mark_bad(sym)
                         continue
 
-                    current = valid_history.iloc[-1]
-                    last_idx = valid_history.index[-1]
-                    
-                    try:
-                        open_p = opens.loc[last_idx]
-                        high = highs.loc[last_idx]
-                        low = lows.loc[last_idx]
-                        volume = volumes.loc[last_idx]
-                    except:
-                        open_p = current 
-                        high = current
-                        low = current
-                        volume = 0
-                    
-                    price_start = valid_history.iloc[0]
-                    change = current - price_start
-                    pct = (change / price_start) * 100 if price_start != 0 else 0.0
+                    current = float(closes.iloc[-1])
+                    start = float(closes.iloc[0])
+                    change = current - start
+                    pct = (change / start) * 100 if start != 0 else 0.0
 
-                    history_list = valid_history.tail(20).tolist()
+                    high = float(highs.max()) if not highs.empty else current
+                    low = float(lows.min()) if not lows.empty else current
+                    volume = float(vols.iloc[-1]) if not vols.empty else 0.0
 
                     results.append({
-                        "ticker": sym, 
-                        "name": meta["name"], 
-                        "category": meta["category"],
-                        "price": float(current), 
-                        "change": float(change), 
+                        "ticker": sym,
+                        "name": meta.get("name", sym),
+                        "category": meta.get("category", "Other"),
+                        "price": float(current),
+                        "change": float(change),
                         "pct": float(pct),
-                        "high": float(high), 
-                        "low": float(low), 
+                        "high": float(high),
+                        "low": float(low),
                         "volume": int(volume) if not pd.isna(volume) else 0,
-                        "history": history_list
+                        "history": closes.tail(20).tolist(),
                     })
                 except Exception:
-                    continue
-                    
+                    missing.append(sym)
+                    YahooWrapper._mark_bad(sym)
+
+        try:
+            data = YahooWrapper._silent_download(
+                flat_list,
+                period=period,
+                interval=interval,
+                progress=False,
+                group_by="column",
+                auto_adjust=True,
+                threads=False,
+            )
+
+            if data is None or data.empty:
+                for chunk in YahooWrapper._chunk(flat_list, 25):
+                    d = YahooWrapper._silent_download(
+                        chunk,
+                        period=period,
+                        interval=interval,
+                        progress=False,
+                        group_by="column",
+                        auto_adjust=True,
+                        threads=False,
+                    )
+                    process_download_frame(d, chunk)
+            else:
+                process_download_frame(data, flat_list)
+
         except Exception:
+            cached = YahooWrapper._SNAPSHOT_CACHE.get(key)
+            if cached:
+                return cached[1]
             return []
+
+        YahooWrapper._LAST_MISSING = sorted(set(missing))
+
+        if results:
+            YahooWrapper._SNAPSHOT_CACHE[key] = (YahooWrapper._now(), results)
+
+        if not results:
+            cached = YahooWrapper._SNAPSHOT_CACHE.get(key)
+            if cached:
+                return cached[1]
 
         return results
