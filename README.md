@@ -8,7 +8,9 @@
 ![Website](https://img.shields.io/website?url=https%3A%2F%2Fseperet.com&label=seperet.com)
 
   <a>
+    <!--
     <img src="assets/welcome_screen_1.png" alt="Screenshot" style="width=50%">
+    -->
   </a>
 </div>
 
