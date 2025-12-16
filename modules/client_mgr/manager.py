@@ -168,13 +168,13 @@ class ClientManager:
             (
                 Text.assemble("TOTAL AUM\n", aum_text, "\n\n", port_sparkline)
             ),
-            box=box.ROUNDED,
+            box=box.HEAVY,
             border_style="green",
-            title="[bold]Portfolio Performance (1M)[/bold]"
+            title="[bold gold1]Portfolio Performance (1M)[/bold gold1]"
         )
         self.console.print(aum_panel)
 
-        # --- Manual / Off-Market totals (estimated) ---
+        # --- Manual / Off-Market totals ---
         manual_total = 0.0
         manual_count = 0
         for acc in client.accounts:
@@ -185,8 +185,6 @@ class ClientManager:
 
         combined_total = float(total_val) + float(manual_total)
 
-        note = "[dim]Note: Market valuation and CAPM metrics use live global market data. Manual/off-market assets are estimated and not auto-marked to market.[/dim]"
-
         aum_grid = Table.grid(padding=(0, 2))
         aum_grid.add_column(style="dim")
         aum_grid.add_column(justify="right", style="bold white")
@@ -195,7 +193,7 @@ class ClientManager:
             aum_grid.add_row("Off-Market", f"[bold magenta]${manual_total:,.2f}[/bold magenta]")
             aum_grid.add_row("Combined (Est.)", f"[bold white]${combined_total:,.2f}[/bold white]")
 
-        self.console.print(Panel(Align.left(aum_grid), title="[bold]Total AUM[/bold]", box=box.HEAVY))
+        self.console.print(Panel(Align.left(aum_grid), title="[bold gold1]Total AUM[/bold gold1]", box=box.HEAVY))
 
         # --- CAPM Snapshot (market holdings only) ---
         capm = FinancialToolkit.compute_capm_metrics_from_holdings(all_holdings, benchmark_ticker="SPY", period="1y")
@@ -214,19 +212,36 @@ class ClientManager:
             capm_table.add_row("Sharpe (Est.)", f"{capm.get('sharpe', 0.0):.2f}", "Risk-adjusted return (approx.)")
             capm_table.add_row("Volatility (Annual)", f"{capm.get('vol_annual', 0.0):.2%}", "Annualized stdev of portfolio returns")
 
-        self.console.print(Panel(capm_table, title="[bold]CAPM & Risk Snapshot (Market Holdings Only)[/bold]", box=box.HEAVY))
-        self.console.print(note)
+        self.console.print(Panel(capm_table, title="[bold gold1]CAPM & Risk Snapshot (Market Holdings Only)[/bold gold1]", box=box.HEAVY))
 
         # Regime Models
-        returns = [-0.01, 0.004, 0.012, -0.006, 0.002, 0.008, -0.003, 0.015]
+        # (derived from portfolio history)
+        returns = []
+        if port_history and len(port_history) >= 8:
+            for i in range(1, len(port_history)):
+                prev = port_history[i - 1]
+                curr = port_history[i]
+                if prev > 0:
+                    returns.append((curr - prev) / prev)
 
-        snapshot = RegimeModels.compute_markov_snapshot(returns)
-        panel = RegimeRenderer.render(snapshot)
-
-        self.console.print(panel)
+        if returns:
+            snapshot = RegimeModels.compute_markov_snapshot(
+                returns,
+                horizon=1,
+                label="Portfolio"
+            )
+            panel = RegimeRenderer.render(snapshot)
+            self.console.print(panel)
+        else:
+            self.console.print(
+                Panel(
+                    "[dim]Insufficient portfolio history for regime analysis.[/dim]",
+                    title="[bold]Market Regime[/bold]",
+                    border_style="dim"
+                )
+            )
 
         # Account Breakdown Table
-        self.console.print("\n[bold]ACCOUNT BREAKDOWN[/bold]")
         acc_table = Table(box=box.SIMPLE_HEAD, expand=True)
         acc_table.add_column("Account")
         acc_table.add_column("Type")
@@ -242,114 +257,9 @@ class ClientManager:
                 str(len(acc.holdings)),
                 f"[bold green]${acc_val:,.2f}[/bold green]"
             )
-        self.console.print(acc_table)
-        self.console.rule("[dim]ACTIONS[/dim]")
-    
-    def display_account_holdings(self, account: Account):
-        """Renders the detailed holdings with robust pricing + separate manual valuation."""
-
-        # Market-priced holdings
-        market_total, enriched_data = self.valuation_engine.calculate_portfolio_value(account.holdings)
-
-        table = Table(
-            title=f"[bold gold1]Current Holdings[/bold gold1]",
-            box=box.SIMPLE_HEAD,
-            expand=True
-        )
-        table.add_column("Ticker", style="bold cyan")
-        table.add_column("Trend", justify="center", width=5)
-        table.add_column("Qty", justify="right")
-        table.add_column("Price", justify="right")
-        table.add_column("Mkt Value", style="green", justify="right")
-        table.add_column("Alloc %", justify="right", style="dim")
-        table.add_column("Spark", justify="left", width=24)
-
-        # Sort by value desc for readability
-        sorted_holdings = sorted(
-            account.holdings.items(),
-            key=lambda item: enriched_data.get(str(item[0]).strip().upper(), {}).get("market_value", 0.0),
-            reverse=True
-        )
-
-        for raw_ticker, raw_qty in sorted_holdings:
-            ticker = str(raw_ticker).strip().upper()
-            data = enriched_data.get(ticker, {})
-            qty = float(raw_qty or 0.0)
-            mkt_val = float(data.get("market_value", 0.0) or 0.0)
-            price = float(data.get("price", 0.0) or 0.0)
-            change_pct = float(data.get("change_pct", data.get("pct", 0.0)) or 0.0)
-
-            # Trend glyph
-            if change_pct > 0:
-                trend = Text("▲", style="bold green")
-            elif change_pct < 0:
-                trend = Text("▼", style="bold red")
-            else:
-                trend = Text("-", style="dim")
-
-            alloc_pct = (mkt_val / market_total * 100.0) if market_total > 0 else 0.0
-
-            history = data.get("history", []) or []
-            sparkline = ChartRenderer.generate_sparkline(history, length=20) if history else ""
-            spark_color = "green" if change_pct > 0 else ("red" if change_pct < 0 else "dim white")
-
-            table.add_row(
-                ticker,
-                trend,
-                f"{qty:,.4f}",
-                f"${price:,.2f}",
-                f"${mkt_val:,.2f}",
-                f"{alloc_pct:>.1f}%",
-                f"[{spark_color}]{sparkline}[/{spark_color}]"
-            )
-
-        self.console.print(f"\n\n\n[dim]Total Market-Valued Holdings: {len(account.holdings)}[/dim]")
-        self.console.print(table)
-
-        # Manual/off-market holdings (estimated)
-        manual_total, manual_norm = self.valuation_engine.calculate_manual_holdings_value(
-            getattr(account, "manual_holdings", []) or []
-        )
-
-        if manual_norm:
-            manual_table = Table(
-                title="[bold magenta]Off-Market Holdings[/bold magenta]",
-                box=box.SIMPLE_HEAD,
-                expand=True
-            )
-            manual_table.add_column("#", style="dim", width=4, justify="right")
-            manual_table.add_column("Asset", style="bold magenta")
-            manual_table.add_column("Qty", justify="right")
-            manual_table.add_column("Unit", justify="right")
-            manual_table.add_column("Est. Value", justify="right", style="magenta")
-            manual_table.add_column("Notes", style="dim")
-
-            idx = 1
-            for entry in manual_norm:
-                manual_table.add_row(
-                    str(idx),
-                    str(entry.get("name", "")),
-                    f"{float(entry.get('quantity', 0.0) or 0.0):,.4f}",
-                    f"${float(entry.get('unit_price', 0.0) or 0.0):,.2f}",
-                    f"${float(entry.get('total_value', 0.0) or 0.0):,.2f}",
-                    str(entry.get("notes", ""))[:60]
-                )
-                idx += 1
-
-            self.console.print(manual_table)
-
-        # Summary footer (two-track valuation)
-        combined = market_total + manual_total
-        summary = Table.grid(padding=(0, 2))
-        summary.add_column(style="dim white")
-        summary.add_column(style="bold white", justify="right")
-
-        summary.add_row("Market-Priced AUM", f"[bold green]${market_total:,.2f}[/bold green]")
-        if manual_total > 0:
-            summary.add_row("Manual / Off-Market (Est.)", f"[bold magenta]${manual_total:,.2f}[/bold magenta]")
-            summary.add_row("Combined (Est.)", f"[bold white]${combined:,.2f}[/bold white]")
-
-        self.console.print(Align.right(summary))
+        self.console.print(Panel(acc_table, title="[bold gold1]ACCOUNT BREAKDOWN[/bold gold1]", box=box.HEAVY))
+        self.console.print("")
+        self.console.rule()
 
     # --- WORKFLOWS ---
 
@@ -477,31 +387,108 @@ class ClientManager:
             )
             self.console.print(header)
 
-            # --- Account Snapshot (Market + Manual + CAPM) ---
-            market_total, _ = self.valuation_engine.calculate_portfolio_value(account.holdings)
-            manual_total, _ = self.valuation_engine.calculate_manual_holdings_value(getattr(account, "manual_holdings", []) or [])
-            combined = market_total + manual_total
+            # ============================================================
+            # ACCOUNT SNAPSHOT (LEFT) + VALUE OVER TIME (RIGHT)
+            # ============================================================
 
-            acct_capm = FinancialToolkit.compute_capm_metrics_from_holdings(account.holdings, benchmark_ticker="SPY", period="1y")
+            # --- Market valuation for this account ---
+            acc_market_value, acc_enriched = self.valuation_engine.calculate_portfolio_value(
+                account.holdings
+            )
 
-            snap = Table.grid(padding=(0, 2))
-            snap.add_column(style="dim")
-            snap.add_column(justify="right", style="bold white")
+            # --- Manual / off-market valuation ---
+            manual_total, _ = self.valuation_engine.calculate_manual_holdings_value(
+                account.manual_holdings or []
+            )
 
-            snap.add_row("Market Value", f"[bold green]${market_total:,.2f}[/bold green]")
+            combined_total = acc_market_value + manual_total
+
+            # --- CAPM metrics (market holdings only) ---
+            capm = FinancialToolkit.compute_capm_metrics_from_holdings(
+                account.holdings,
+                benchmark_ticker="SPY",
+                period="1y"
+            )
+
+            # ---------------- LEFT SIDE: Snapshot data ----------------
+            snapshot = Table.grid(padding=(0, 2))
+            snapshot.add_column(style="dim", justify="left")
+            snapshot.add_column(justify="right", style="bold white")
+
+            snapshot.add_row(
+                "Market Value",
+                f"[bold green]${acc_market_value:,.2f}[/bold green]"
+            )
+
             if manual_total > 0:
-                snap.add_row("Manual (Est.)", f"[bold magenta]${manual_total:,.2f}[/bold magenta]")
-                snap.add_row("Combined (Est.)", f"${combined:,.2f}")
+                snapshot.add_row(
+                    "Manual (Est.)",
+                    f"[bold magenta]${manual_total:,.2f}[/bold magenta]"
+                )
+                snapshot.add_row(
+                    "Combined (Est.)",
+                    f"[bold white]${combined_total:,.2f}[/bold white]"
+                )
 
-            if acct_capm.get("error"):
-                snap.add_row("CAPM", "[yellow]N/A[/yellow]")
-            else:
-                snap.add_row("Beta", f"{acct_capm.get('beta', 0.0):.2f}")
-                snap.add_row("Alpha (Ann.)", f"{acct_capm.get('alpha_annual', 0.0):+.2%}")
-                snap.add_row("R²", f"{acct_capm.get('r_squared', 0.0):.2f}")
+            # --- CAPM values (preserved exactly) ---
+            if not capm.get("error"):
+                snapshot.add_row("Beta", f"{capm.get('beta', 0.0):.2f}")
+                snapshot.add_row("Alpha (Ann.)", f"{capm.get('alpha_annual', 0.0):+.2%}")
+                snapshot.add_row("R²", f"{capm.get('r_squared', 0.0):.2f}")
 
-            self.console.print(Panel(snap, title="[bold]Account Snapshot[/bold]", box=box.SIMPLE_HEAD))
-            self.console.print("[dim]Note: Market valuation & CAPM exclude off-market assets.[/dim]")
+            note = Text(
+                "Note: Market valuation & CAPM exclude off-market assets.",
+                style="dim"
+            )
+
+            left_panel = Panel(
+                Group(snapshot, Text(""), note),
+                title="[bold]Account Snapshot (1Y)[/bold]",
+                box=box.HEAVY
+            )
+
+            # ---------------- RIGHT SIDE: Value-over-time chart ----------------
+            acc_history = self.valuation_engine.generate_synthetic_portfolio_history(
+                acc_enriched,
+                account.holdings
+            )
+
+            chart_body = Text("No historical data available.", style="dim")
+
+            if acc_history and len(acc_history) >= 2:
+                spark = ChartRenderer.generate_sparkline(acc_history, length=60)
+
+                start_val = acc_history[0]
+                end_val = acc_history[-1]
+
+                pct = ((end_val - start_val) / start_val) * 100 if start_val != 0 else 0.0
+                pct_style = "bold green" if pct >= 0 else "bold red"
+
+                chart_body = Text.assemble(
+                    spark,
+                    "\n",
+                    Text(
+                        f"Start: ${start_val:,.2f}   "
+                        f"End: ${end_val:,.2f}   "
+                        f"({pct:+.2f}%)",
+                        style=pct_style
+                    )
+                )
+
+            right_panel = Panel(
+                Align.center(chart_body),
+                title="[bold]Account Value Over Time[/bold]",
+                box=box.HEAVY,
+            )
+
+            # ---------------- COMBINED LAYOUT ----------------
+            layout = Table.grid(expand=True)
+            layout.add_column(ratio=2)
+            layout.add_column(ratio=3)
+
+            layout.add_row(left_panel, right_panel)
+
+            self.console.print(layout)
             
             # Data Display
             self.display_account_holdings(account)
@@ -531,7 +518,41 @@ class ClientManager:
         # Get enriched data from ValuationEngine
         total_val, enriched_data = self.valuation_engine.calculate_portfolio_value(account.holdings)
         
-        table = Table(title=f"[bold gold1]Market Holdings[/bold gold1]", box=box.SIMPLE_HEAD, expand=True)
+        # --- Generate account value history ---
+        acc_market_val, acc_enriched = self.valuation_engine.calculate_portfolio_value(
+            account.holdings
+        )
+
+        acc_history = self.valuation_engine.generate_synthetic_portfolio_history(
+            acc_enriched,
+            account.holdings
+        )
+
+        # --- Account value-over-time chart ---
+        chart_body = Text("No history available.", style="dim")
+
+        if acc_history and len(acc_history) >= 2:
+            spark = ChartRenderer.generate_sparkline(acc_history, length=60)
+
+            start_val = acc_history[0]
+            end_val = acc_history[-1]
+
+            pct = ((end_val - start_val) / start_val) * 100 if start_val != 0 else 0.0
+            pct_style = "bold green" if pct >= 0 else "bold red"
+
+            chart_body = Text.assemble(
+                spark,
+                "\n",
+                Text(
+                    f"Start: ${start_val:,.2f}   "
+                    f"End: ${end_val:,.2f}   "
+                    f"({pct:+.2f}%)",
+                    style=pct_style
+                )
+            )
+        
+        self.console.print("\n")
+        table = Table(title=f"[bold gold1]Market Holdings[/bold gold1]", box=box.HEAVY, expand=True)
         table.add_column("Ticker", style="bold cyan")
         table.add_column("Trend", justify="center", width=5) # New Trend Column
         table.add_column("Quantity", justify="right")
@@ -582,7 +603,7 @@ class ClientManager:
         if manual_norm:
             mtable = Table(
                 title="[bold magenta]Off-Market Holdings[/bold magenta]",
-                box=box.SIMPLE_HEAD,
+                box=box.HEAVY,
                 expand=True
             )
             mtable.add_column("#", style="dim", justify="right", width=4)

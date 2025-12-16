@@ -643,7 +643,6 @@ class RegimeRenderer:
 
         return Panel(
             Align.center(layout),
-            title="[bold gold1]MARKET REGIME PROJECTION[/bold gold1]",
-            border_style="yellow",
-            box=box.ROUNDED
+            title="[bold gold1]Regime Projection[/bold gold1]",
+            box=box.HEAVY
         )
