@@ -443,7 +443,7 @@ class ClientManager:
 
             left_panel = Panel(
                 Group(snapshot, Text(""), note),
-                title="[bold]Account Snapshot (1Y)[/bold]",
+                title="[bold]Account Snapshot[/bold]",
                 box=box.HEAVY
             )
 
@@ -581,7 +581,7 @@ class ClientManager:
         self.console.print("\n")
         table = Table(title=f"[bold gold1]Market Holdings[/bold gold1]", box=box.HEAVY, expand=True)
         table.add_column("Ticker", style="bold cyan")
-        table.add_column("Trend", justify="center", width=5) # New Trend Column
+        table.add_column("Trend", justify="center", width=5)
         table.add_column("Quantity", justify="right")
         table.add_column("Price/Share", justify="right")
         table.add_column("Market Value", style="green", justify="right")
@@ -635,7 +635,7 @@ class ClientManager:
             )
             mtable.add_column("#", style="dim", justify="right", width=4)
             mtable.add_column("Asset", style="bold magenta")
-            mtable.add_column("Qty", justify="right")
+            mtable.add_column("Quantity", justify="right")
             mtable.add_column("Unit", justify="right")
             mtable.add_column("Est. Value", justify="right", style="magenta")
             mtable.add_column("Notes", style="dim")
@@ -673,7 +673,7 @@ class ClientManager:
 
         note_line = Text("Note: Market totals exclude off-market assets.", style="dim")
 
-        # Right-align EACH line INSIDE the panel
+        # Right-align each line inside the panel
         footer_content = Group(
             Align.right(summary),
             Text(""),
@@ -683,7 +683,7 @@ class ClientManager:
 
         footer_panel = Panel.fit(
             footer_content,
-            box=box.ROUNDED,
+            box=box.HEAVY,
             border_style="white",
             padding=(0, 2),
         )

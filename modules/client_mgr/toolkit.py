@@ -10,7 +10,7 @@ import logging
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 
-from rich.console import Console
+from rich.console import Console, Group
 from rich.table import Table
 from rich.panel import Panel
 from rich.align import Align
@@ -496,7 +496,7 @@ class RegimeModels:
         if not returns or len(returns) < 8:
             return {"error": "Insufficient data for regime analysis"}
 
-        bins = RegimeModels.DEFAULT_BINS
+        bins = RegimeModels._make_bins_quantiles(returns)
         states = RegimeModels._discretize(returns, bins)
         n = len(bins) - 1
 
@@ -544,33 +544,63 @@ class RegimeModels:
         return out
 
     @staticmethod
-    def _transition_matrix(states, n, alpha: float = 0.15):
+    def _transition_matrix(states: list[int], n: int, k: float = 0.75, self_floor: float = 0.40) -> list[list[float]]:
         """
-        alpha = persistence bias
+        Dirichlet-smoothed transition matrix.
+
+        k: smoothing strength (higher = more smoothing)
+        self_floor: minimum probability of staying in the same regime
+                (prevents unrealistically jumpy chains in sparse data)
         """
-        counts = [[0] * n for _ in range(n)]
+        counts = [[0.0] * n for _ in range(n)]
         for a, b in zip(states[:-1], states[1:]):
-            counts[a][b] += 1
+            counts[a][b] += 1.0
 
         P = []
-        for i, row in enumerate(counts):
-            s = sum(row)
-            if s == 0:
-                # strong self-regime bias instead of uniform
-                base = [alpha / (n - 1)] * n
-                base[i] = 1.0 - alpha
-                P.append(base)
-            else:
-                probs = []
-                for j, c in enumerate(row):
-                    p = c / s
-                    if j == i:
-                        p = max(p, alpha)  # enforce persistence floor
-                    probs.append(p)
-                norm = sum(probs)
-                P.append([p / norm for p in probs])
+        for i in range(n):
+            row = counts[i]
+            total = sum(row)
+
+            # Dirichlet prior: start with uniform pseudo-counts
+            smoothed = [(c + k) for c in row]
+            sm_total = sum(smoothed)
+            probs = [v / sm_total for v in smoothed]
+
+            # Enforce persistence floor
+            if probs[i] < self_floor:
+                deficit = self_floor - probs[i]
+                probs[i] += deficit
+                # renormalize others down proportionally
+                other_sum = sum(probs) - probs[i]
+                if other_sum > 0:
+                    scale = (1.0 - probs[i]) / other_sum
+                    for j in range(n):
+                        if j != i:
+                            probs[j] *= scale
+
+            P.append(probs)
 
         return P
+
+    @staticmethod
+    def _make_bins_quantiles(returns: list[float]) -> list[float]:
+        """
+        Build 5-state bins from return quantiles so states are populated.
+        Produces 6 edges: [-inf, q20, q40, q60, q80, +inf]
+        """
+        r = [float(x) for x in returns if x is not None]
+        if len(r) < 20:
+            # fallback if too few points
+            return [-math.inf, -0.02, -0.005, 0.005, 0.02, math.inf]
+
+        qs = np.quantile(r, [0.20, 0.40, 0.60, 0.80]).tolist()
+
+        # guard against identical quantiles (flat series)
+        # if too many duplicates, revert to static bins
+        if len(set(round(q, 10) for q in qs)) < 3:
+            return [-math.inf, -0.02, -0.005, 0.005, 0.02, math.inf]
+
+        return [-math.inf, qs[0], qs[1], qs[2], qs[3], math.inf]
 
     @staticmethod
     def _project(P, current, steps):
@@ -663,8 +693,49 @@ class RegimeRenderer:
             Panel(prob_table, box=box.ROUNDED, title="[bold]Regime Probabilities[/bold]")
         )
 
+        matrix = RegimeRenderer._render_transition_heatmap(
+            snapshot["transition_matrix"],
+            list(snapshot["state_probs"].keys())
+        )
+
+        matrix_panel = Panel(
+            matrix,
+            title="[bold]Transition Matrix[/bold]",
+            box=box.ROUNDED
+        )
+
+        final = Group(
+            layout,
+            matrix_panel
+        )
+
         return Panel(
-            Align.center(layout),
+            final,
             title="[bold gold1]Regime Projection[/bold gold1]",
+            border_style="yellow",
             box=box.HEAVY
         )
+
+    @staticmethod
+    def _render_transition_heatmap(P: list[list[float]], labels: list[str]) -> Table:
+        heat = Table(box=box.SIMPLE, show_header=True, header_style="bold", pad_edge=False)
+        heat.add_column("FROM \\ TO", no_wrap=True)
+        for lab in labels:
+            heat.add_column(lab[:7], justify="center", no_wrap=True, width=7)
+
+        def cell(p: float) -> Text:
+            # intensity blocks (5 levels)
+            if p >= 0.60: ch = "█"
+            elif p >= 0.40: ch = "▓"
+            elif p >= 0.25: ch = "▒"
+            elif p >= 0.10: ch = "░"
+            else: ch = "·"
+            return Text(ch * 5)
+
+        for i, row in enumerate(P):
+            r = [labels[i]]
+            for p in row:
+                r.append(cell(float(p)))
+            heat.add_row(*r)
+
+        return heat
