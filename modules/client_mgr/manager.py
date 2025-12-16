@@ -499,6 +499,23 @@ class ClientManager:
             layout.add_row(left_panel, right_panel)
 
             self.console.print(layout)
+
+            # Regime History (Sub-accounts)
+            returns = []
+            for i in range(1, len(acc_history)):
+                prev = acc_history[i - 1]
+                curr = acc_history[i]
+                if prev > 0:
+                    returns.append((curr - prev) / prev)
+
+            if len(returns) >= 8:
+                snapshot = RegimeModels.compute_markov_snapshot(
+                    returns,
+                    horizon=1,
+                    label="Account"
+                )
+                self.console.print(RegimeRenderer.render(snapshot))
+            # End Regime History ------------
             
             # Data Display
             self.display_account_holdings(account)
