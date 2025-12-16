@@ -46,3 +46,9 @@ class ChartRenderer:
             return Text("▼", style="bold red")
         else:
             return Text("▶", style="dim white")
+
+    @staticmethod
+    def generate_bar(p: float, width: int = 20) -> str:
+        p = max(0.0, min(1.0, float(p)))
+        filled = int(round(p * width))
+        return "█" * filled + "░" * (width - filled)

@@ -14,6 +14,7 @@ from modules.client_mgr.client_model import Client, Account
 from modules.client_mgr.data_handler import DataHandler
 from modules.client_mgr.valuation import ValuationEngine
 from modules.client_mgr.toolkit import FinancialToolkit
+from modules.client_mgr.toolkit import RegimeModels, RegimeRenderer
 
 class ClientManager:
     """
@@ -215,6 +216,14 @@ class ClientManager:
 
         self.console.print(Panel(capm_table, title="[bold]CAPM & Risk Snapshot (Market Holdings Only)[/bold]", box=box.HEAVY))
         self.console.print(note)
+
+        # Regime Models
+        returns = [-0.01, 0.004, 0.012, -0.006, 0.002, 0.008, -0.003, 0.015]
+
+        snapshot = RegimeModels.compute_markov_snapshot(returns)
+        panel = RegimeRenderer.render(snapshot)
+
+        self.console.print(panel)
 
         # Account Breakdown Table
         self.console.print("\n[bold]ACCOUNT BREAKDOWN[/bold]")

@@ -29,6 +29,25 @@ _CAPM_TTL_SECONDS = 900  # 15 minutes
 logging.getLogger("yfinance").setLevel(logging.ERROR)
 logging.getLogger("urllib3").setLevel(logging.ERROR)
 
+# ---------------------------------------------------------------------------
+# REGIME SNAPSHOT CONTRACT
+# ---------------------------------------------------------------------------
+# The UI consumes this structure only.
+# The underlying model (Markov / HMM / etc.) must conform to this output.
+#
+# {
+#   "model": "Markov",
+#   "horizon": "1D",
+#   "current_regime": str,
+#   "confidence": float,
+#   "state_probs": dict[str, float],
+#   "transition_matrix": list[list[float]],
+#   "expected_next": {"regime": str, "probability": float},
+#   "stability": float,
+#   "metrics": {"avg_return": float, "volatility": float}
+# }
+# ---------------------------------------------------------------------------
+
 class ModelSelector:
     """
     Logic engine that determines which financial models are appropriate
@@ -447,3 +466,184 @@ class FinancialToolkit:
             data = {"error": f"CAPM compute error: {ex}", "beta": None, "alpha_annual": None, "r_squared": None, "sharpe": None, "vol_annual": None, "points": 0}
             _CAPM_CACHE[key] = {"ts": ts, "data": data}
             return data
+
+import math
+from collections import defaultdict
+
+class RegimeModels:
+    """
+    Collection of regime-based predictive models.
+    """
+
+    DEFAULT_BINS = [
+        -math.inf, -0.02, -0.005, 0.005, 0.02, math.inf
+    ]
+
+    STATE_LABELS = [
+        "Strong Down",
+        "Mild Down",
+        "Flat",
+        "Mild Up",
+        "Strong Up"
+    ]
+
+    @staticmethod
+    def compute_markov_snapshot(
+        returns: list[float],
+        horizon: int = 1,
+        label: str = "1D"
+    ) -> dict:
+        if not returns or len(returns) < 8:
+            return {"error": "Insufficient data for regime analysis"}
+
+        bins = RegimeModels.DEFAULT_BINS
+        states = RegimeModels._discretize(returns, bins)
+        n = len(bins) - 1
+
+        P = RegimeModels._transition_matrix(states, n)
+
+        current_state = states[-1]
+        probs = RegimeModels._project(P, current_state, horizon)
+
+        next_state = max(probs, key=probs.get)
+
+        avg_return = sum(returns) / len(returns)
+        volatility = math.sqrt(
+            sum((r - avg_return) ** 2 for r in returns) / len(returns)
+        )
+
+        return {
+            "model": "Markov",
+            "horizon": label,
+            "current_regime": RegimeModels.STATE_LABELS[current_state],
+            "confidence": probs[current_state],
+            "state_probs": {
+                RegimeModels.STATE_LABELS[i]: probs[i]
+                for i in range(n)
+            },
+            "transition_matrix": P,
+            "expected_next": {
+                "regime": RegimeModels.STATE_LABELS[next_state],
+                "probability": probs[next_state]
+            },
+            "stability": P[current_state][current_state],
+            "metrics": {
+                "avg_return": avg_return,
+                "volatility": volatility
+            }
+        }
+
+    @staticmethod
+    def _discretize(returns, bins):
+        out = []
+        for r in returns:
+            for i in range(len(bins) - 1):
+                if bins[i] <= r < bins[i + 1]:
+                    out.append(i)
+                    break
+        return out
+
+    @staticmethod
+    def _transition_matrix(states, n):
+        counts = [[0] * n for _ in range(n)]
+        for a, b in zip(states[:-1], states[1:]):
+            counts[a][b] += 1
+
+        P = []
+        for row in counts:
+            s = sum(row)
+            if s == 0:
+                P.append([1 / n] * n)
+            else:
+                P.append([c / s for c in row])
+        return P
+
+    @staticmethod
+    def _project(P, current, steps):
+        probs = {i: 0.0 for i in range(len(P))}
+        probs[current] = 1.0
+
+        for _ in range(steps):
+            next_probs = defaultdict(float)
+            for i, p in probs.items():
+                for j, w in enumerate(P[i]):
+                    next_probs[j] += p * w
+            probs = next_probs
+
+        return probs
+
+from rich.table import Table
+from rich.panel import Panel
+from rich.align import Align
+from rich.text import Text
+from rich import box
+
+from utils.charts import ChartRenderer
+
+class RegimeRenderer:
+    """
+    Renders RegimeSnapshot structures using Rich.
+    """
+
+    @staticmethod
+    def render(snapshot: dict) -> Panel:
+        if "error" in snapshot:
+            return Panel(
+                Text(snapshot["error"], style="bold yellow"),
+                title="[bold]Market Regime[/bold]",
+                border_style="yellow"
+            )
+
+        # --- LEFT: summary ---
+        left = Table.grid(padding=(0, 2))
+        left.add_column(style="dim")
+        left.add_column(justify="right", style="bold white")
+
+        left.add_row("Model", snapshot["model"])
+        left.add_row("Horizon", snapshot["horizon"])
+        left.add_row("Current Regime", snapshot["current_regime"])
+        left.add_row("Confidence", f"{snapshot['confidence']*100:.1f}%")
+        left.add_row("Stability", f"{snapshot['stability']*100:.1f}%")
+        left.add_row(
+            "Avg Return",
+            f"{snapshot['metrics']['avg_return']*100:.2f}%"
+        )
+        left.add_row(
+            "Volatility",
+            f"{snapshot['metrics']['volatility']*100:.2f}%"
+        )
+
+        # --- RIGHT: regime probabilities ---
+        prob_table = Table(
+            box=box.SIMPLE,
+            show_header=True,
+            header_style="bold"
+        )
+        prob_table.add_column("Regime")
+        prob_table.add_column("Prob", justify="right")
+        prob_table.add_column("")
+
+        for name, p in snapshot["state_probs"].items():
+            bar = ChartRenderer.generate_bar(p, width=20)
+            color = "green" if "Up" in name else "red" if "Down" in name else "yellow"
+            prob_table.add_row(
+                name,
+                f"{p*100:.1f}%",
+                f"[{color}]{bar}[/{color}]"
+            )
+
+        layout = Table.grid(expand=True)
+        layout.add_column(ratio=2)
+        layout.add_column(ratio=3)
+
+        layout.add_row(
+            Panel(left, box=box.ROUNDED, title="[bold]Regime Summary[/bold]"),
+            Panel(prob_table, box=box.ROUNDED, title="[bold]Regime Probabilities[/bold]")
+        )
+
+        return Panel(
+            Align.center(layout),
+            title="[bold gold1]MARKET REGIME PROJECTION[/bold gold1]",
+            border_style="yellow",
+            box=box.ROUNDED
+        )
