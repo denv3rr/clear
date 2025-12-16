@@ -487,6 +487,31 @@ class RegimeModels:
         "Strong Up"
     ]
 
+    INTERVAL_POINTS = {
+        "1W": 5,
+        "1M": 21,
+        "3M": 63,
+        "6M": 126,
+        "1Y": 252,
+    }
+
+    @staticmethod
+    def snapshot_from_value_series(values: list[float], interval: str = "1M", label: str = "Portfolio") -> dict:
+        n = RegimeModels.INTERVAL_POINTS.get(interval, 21)
+        series = values[-(n+1):] if values and len(values) >= (n+1) else values
+
+        returns = []
+        if series and len(series) >= 8:
+            for i in range(1, len(series)):
+                prev = float(series[i-1])
+                curr = float(series[i])
+                if prev > 0:
+                    returns.append((curr - prev) / prev)
+
+        snap = RegimeModels.compute_markov_snapshot(returns, horizon=1, label=f"{label} ({interval})")
+        snap["interval"] = interval
+        return snap
+
     @staticmethod
     def compute_markov_snapshot(
         returns: list[float],

@@ -137,7 +137,7 @@ class ClientManager:
 
     def display_client_dashboard(self, client: Client):
         """Composes and displays the client's main dashboard with CHARTS."""
-        
+                
         # 1. Aggregate Holdings for Global View
         all_holdings = {}
         for acc in client.accounts:

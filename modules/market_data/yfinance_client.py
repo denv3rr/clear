@@ -8,152 +8,238 @@ import warnings
 import logging
 import contextlib
 
+from typing import Dict, List, Tuple, Any
+
 # Suppress yfinance and urllib3 warnings/logs
-logging.getLogger("yfinance").setLevel(logging.ERROR)
-logging.getLogger("urllib3").setLevel(logging.ERROR)
+logging.getLogger("yfinance").setLevel(logging.CRITICAL)
+logging.getLogger("urllib3").setLevel(logging.CRITICAL)
 
 class YahooWrapper:
     """
     Yahoo Finance wrapper (yfinance) with:
-    - silent downloads (no stderr spam / FutureWarnings in UI)
-    - cached failures (skip repeated slow lookups for bad symbols)
-    - lightweight TTL caching for quotes/snapshots to reduce repeated network pulls
+    - Chunked parallel downloads to prevent large-batch timeouts.
+    - Negative Caching: Caches empty results to prevent infinite retry loops.
     """
     
-    # Nested Macro Tickers
     MACRO_TICKERS = {
-
-        "Commodities": {
-            # Energy
-            "CL=F": "Crude Oil WTI",
-            "BZ=F": "Brent Crude",
-            "NG=F": "Natural Gas",
-            "RB=F": "RBOB Gasoline",
-            "HO=F": "Heating Oil",
-
-            # Metals
-            "GC=F": "Gold",
-            "SI=F": "Silver",
-            "HG=F": "Copper",
-            "PL=F": "Platinum",
-            "PA=F": "Palladium",
-
-            # Agriculture
-            "ZC=F": "Corn",
-            "ZW=F": "Wheat",
-            "ZS=F": "Soybeans",
-            "KC=F": "Coffee",
-            "SB=F": "Sugar",
-            "CC=F": "Cocoa",
-            "CT=F": "Cotton",
-
-            # Livestock
-            "LE=F": "Live Cattle",
-            "GF=F": "Feeder Cattle",
-            "HE=F": "Lean Hogs"
-        },
-
+        # =========================
+        # Global Equity Indices
+        # =========================
         "Indices": {
-            # U.S.
-            "^GSPC": "S&P 500",
-            "^DJI": "Dow Jones",
-            "^IXIC": "Nasdaq Composite",
-            "^RUT": "Russell 2000",
-            "^VIX": "VIX Volatility Index",
 
-            # Europe
-            "^FTSE": "FTSE 100",
-            "^GDAXI": "DAX (Germany)",
-            "^FCHI": "CAC 40 (France)",
+            "United States": {
+                "^GSPC": "S&P 500",
+                "^DJI": "Dow Jones",
+                "^IXIC": "Nasdaq",
+                "^RUT": "Russell 2K",
+                "^VIX": "VIX"
+            },
 
-            # Asia
-            "^N225": "Nikkei 225",
-            "^HSI": "Hang Seng Index",
-            "^STI": "Singapore Straits Times",
-            "000001.SS": "Shanghai Composite",
-            "^KS11": "KOSPI",
+            "Europe": {
+                "^FTSE": "FTSE 100",
+                "^GDAXI": "DAX",
+                "^FCHI": "CAC 40"
+            },
 
-            # Lat/SAM
-            "^BVSP": "Bovespa (Brazil)",
-            "^MXX": "IPC (Mexico)",
+            "Asia-Pacific": {
+                "^N225": "Nikkei 225",
+                "^HSI": "Hang Seng",
+                "^STI": "Straits Times",
+                "000001.SS": "Shanghai",
+                "^KS11": "KOSPI"
+            },
+
+            "Latin America": {
+                "^BVSP": "Bovespa",
+                "^MXX": "IPC Mexico"
+            }
         },
 
+        # =========================
+        # U.S. Mega-Cap / Big Tech
+        # =========================
+        "Big Tech": {
+            "Mega-Cap Leaders": {
+                "AAPL": "Apple",
+                "MSFT": "Microsoft",
+                "NVDA": "Nvidia",
+                "GOOGL": "Google",
+                "AMZN": "Amazon",
+                "META": "Meta",
+                "TSLA": "Tesla",
+                "AMD": "AMD"
+            }
+        },
+
+        # =========================
+        # U.S. Sector ETFs
+        # =========================
+        "US Sectors": {
+            "Cyclical & Growth": {
+                "XLK": "Technology",
+                "XLF": "Financials",
+                "XLE": "Energy",
+                "XLI": "Industrials",
+                "XLY": "Cons. Disc"
+            },
+
+            "Defensive": {
+                "XLV": "Healthcare",
+                "XLP": "Cons. Stap",
+                "XLU": "Utilities",
+                "XLRE": "Real Estate"
+            },
+
+            "Communications & Materials": {
+                "XLC": "Comm Svc",
+                "XLB": "Materials"
+            }
+        },
+
+        # =========================
+        # Commodities (Futures)
+        # =========================
+        "Commodities": {
+
+            "Energy": {
+                "CL=F": "Crude Oil",
+                "BZ=F": "Brent Crude",
+                "NG=F": "Nat Gas",
+                "RB=F": "Gasoline",
+                "HO=F": "Heating Oil"
+            },
+
+            "Metals": {
+                "GC=F": "Gold",
+                "SI=F": "Silver",
+                "HG=F": "Copper",
+                "PL=F": "Platinum",
+                "PA=F": "Palladium"
+            },
+
+            "Agriculture": {
+                "ZC=F": "Corn",
+                "ZW=F": "Wheat",
+                "ZS=F": "Soybeans",
+                "KC=F": "Coffee",
+                "SB=F": "Sugar",
+                "CC=F": "Cocoa",
+                "CT=F": "Cotton"
+            },
+
+            "Livestock": {
+                "LE=F": "Live Cattle",
+                "GF=F": "Feeder Cattle",
+                "HE=F": "Lean Hogs"
+            }
+        },
+
+        # =========================
+        # Foreign Exchange (FX)
+        # =========================
         "FX": {
-            # Majors
-            "EURUSD=X": "EUR/USD",
-            "GBPUSD=X": "GBP/USD",
-            "USDJPY=X": "USD/JPY",
-            "AUDUSD=X": "AUD/USD",
-            "NZDUSD=X": "NZD/USD",
 
-            # USD crosses
-            "USDCAD=X": "USD/CAD",
-            "USDCHF=X": "USD/CHF",
-            "USDSEK=X": "USD/SEK",
-            "USDNOK=X": "USD/NOK",
-            "USDZAR=X": "USD/ZAR",
+            "Major Pairs": {
+                "EURUSD=X": "EUR/USD",
+                "GBPUSD=X": "GBP/USD",
+                "USDJPY=X": "USD/JPY",
+                "AUDUSD=X": "AUD/USD",
+                "NZDUSD=X": "NZD/USD"
+            },
 
-            # EM FX
-            "USDMXN=X": "USD/MXN",
-            "USDTRY=X": "USD/TRY",
-            "USDCNY=X": "USD/CNY",
-            "USDHKD=X": "USD/HKD",
-            "USDINR=X": "USD/INR"
+            "USD Crosses": {
+                "USDCAD=X": "USD/CAD",
+                "USDCHF=X": "USD/CHF",
+                "USDSEK=X": "USD/SEK",
+                "USDNOK=X": "USD/NOK",
+                "USDZAR=X": "USD/ZAR"
+            },
+
+            "Emerging Markets": {
+                "USDMXN=X": "USD/MXN",
+                "USDTRY=X": "USD/TRY",
+                "USDCNY=X": "USD/CNY",
+                "USDHKD=X": "USD/HKD",
+                "USDINR=X": "USD/INR"
+            },
+
+            "Dollar Index": {
+                "DX-Y.NYB": "DXY Index"
+            }
         },
 
+        # =========================
+        # Interest Rates & Volatility
+        # =========================
         "Rates": {
-            # U.S. yields
-            "^IRX": "13W Treasury Bill Yield",
-            "^FVX": "5Y Treasury Yield",
-            "^TNX": "10Y Treasury Yield",
-            "^TYX": "30Y Treasury Yield",
 
-            # Volatility indices
-            "^MOVE": "Bond Volatility Index",
+            "U.S. Treasury Yields": {
+                "^IRX": "13W T-Bill",
+                "^FVX": "5Y Treasury",
+                "^TNX": "10Y Treasury",
+                "^TYX": "30Y Treasury"
+            },
 
-            # Global rates (confirmed)
-            "^FTSE": "UK 10Y Gilt Yield",
-            "^N225": "Japan 10Y JGB Yield"
+            "Fixed Income Volatility": {
+                "^MOVE": "Bond Vol"
+            }
         },
 
+        # =========================
+        # Cryptocurrencies
+        # =========================
         "Crypto": {
-            "BTC-USD": "Bitcoin",
-            "ETH-USD": "Ethereum",
-            "SOL-USD": "Solana",
-            "XRP-USD": "Ripple",
-            "ADA-USD": "Cardano"
+
+            "Large-Cap": {
+                "BTC-USD": "Bitcoin",
+                "ETH-USD": "Ethereum"
+            },
+
+            "Altcoins": {
+                "SOL-USD": "Solana",
+                "XRP-USD": "Ripple",
+                "ADA-USD": "Cardano",
+                "DOGE-USD": "Dogecoin"
+            }
         },
 
+        # =========================
+        # Macro & Cross-Asset ETFs
+        # =========================
         "Macro ETFs": {
-            # Equities
-            "SPY": "S&P 500 ETF",
-            "QQQ": "Nasdaq 100 ETF",
-            "IWM": "Russell 2000 ETF",
 
-            # Global macro exposures
-            "EEM": "Emerging Markets ETF",
-            "VEA": "Developed Markets ex-US ETF",
+            "Equity Exposure": {
+                "SPY": "S&P 500 ETF",
+                "QQQ": "Nasdaq 100",
+                "IWM": "Russell 2000",
+                "EEM": "Emerging Mkts",
+                "VEA": "Dev Markets"
+            },
 
-            # Rates & Credit
-            "TLT": "20+ Year Treasury Bond ETF",
-            "IEF": "7-10 Year Treasury ETF",
-            "HYG": "High Yield Corporate Bond ETF",
-            "LQD": "Investment Grade Corporate Bond ETF",
+            "Rates & Credit": {
+                "TLT": "20Y Bond ETF",
+                "IEF": "7-10Y Bond",
+                "HYG": "High Yield",
+                "LQD": "Inv Grade"
+            },
 
-            # Currencies
-            "UUP": "US Dollar Index ETF",
-            "FXE": "Euro Currency ETF",
-            "FXY": "Japanese Yen ETF",
+            "Currency": {
+                "UUP": "USD Bullish",
+                "FXE": "Euro ETF",
+                "FXY": "Yen ETF"
+            },
 
-            # Commodities
-            "GLD": "Gold ETF",
-            "SLV": "Silver ETF",
-            "DBC": "Broad Commodity ETF",
-            "USO": "Oil ETF",
+            "Commodities": {
+                "GLD": "Gold ETF",
+                "SLV": "Silver ETF",
+                "DBC": "Commodity ETF",
+                "USO": "Oil ETF"
+            },
 
-            # Shipping & global trade
-            "BDRY": "Dry Bulk Shipping ETF",
-            "SEA": "Global Shipping ETF"
+            "Global Trade": {
+                "BDRY": "Dry Bulk",
+                "SEA": "Shipping"
+            }
         }
     }
 
@@ -166,11 +252,26 @@ class YahooWrapper:
 
     # Snapshot cache (period, interval) -> (ts, results)
     _SNAPSHOT_CACHE: Dict[Tuple[str, str], Tuple[int, List[Dict[str, Any]]]] = {}
-    _SNAPSHOT_TTL_SECONDS = 60  # 1 minute
+    _SNAPSHOT_TTL_SECONDS = 120  # Cache Macro view for 2 mins
 
     # Detailed quote cache (ticker, period, interval) -> (ts, data)
     _DETAILED_CACHE: Dict[Tuple[str, str, str], Tuple[int, Dict[str, Any]]] = {}
-    _DETAILED_TTL_SECONDS = 30  # 30 seconds
+    _DETAILED_TTL_SECONDS = 60 
+
+    # Global RAM cache for ultra-fast refresh (within same run)
+    _FAST_CACHE: Dict[str, Tuple[int, Any]] = {}
+    _FAST_TTL = 10 
+
+    @classmethod
+    def _get_fast_cache(cls, key: str):
+        data = cls._FAST_CACHE.get(key)
+        if data and (cls._now() - data[0]) < cls._FAST_TTL:
+            return data[1]
+        return None
+
+    @classmethod
+    def _set_fast_cache(cls, key: str, val: Any):
+        cls._FAST_CACHE[key] = (cls._now(), val)
 
     @staticmethod
     def _now() -> int:
@@ -194,10 +295,23 @@ class YahooWrapper:
 
     @staticmethod
     def _silent_download(tickers, **kwargs) -> pd.DataFrame:
+        """
+        Wraps yf.download to suppress stderr/stdout noise.
+        Forces threads=True for speed unless explicitly disabled.
+        """
+        # Ensure threading is enabled for speed unless caller forbids it
+        if "threads" not in kwargs:
+            kwargs["threads"] = True
+            
+        # Add ignore_tz to speed up parsing in newer pandas/yf versions
+        if "ignore_tz" not in kwargs:
+            kwargs["ignore_tz"] = True
+
         buf = io.StringIO()
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=FutureWarning)
             warnings.simplefilter("ignore", category=UserWarning)
+            # Redirect stderr to swallow the progress bars and error logs
             with contextlib.redirect_stderr(buf):
                 return yf.download(tickers, **kwargs)
 
@@ -216,6 +330,13 @@ class YahooWrapper:
             return {"error": f"No data (cached failure): {sym}"}
 
         cache_key = (sym, str(period), str(interval))
+        fast_key = f"dq::{sym}:{period}:{interval}"
+        
+        # Check L1 (Fast RAM)
+        fast_hit = YahooWrapper._get_fast_cache(fast_key)
+        if fast_hit: return fast_hit
+
+        # Check L2 (TTL Cache)
         cached = YahooWrapper._DETAILED_CACHE.get(cache_key)
         if cached:
             ts, data = cached
@@ -223,6 +344,7 @@ class YahooWrapper:
                 return data
 
         try:
+            # We use Ticker.history() for single symbols as it's cleaner than download()
             buf = io.StringIO()
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", category=FutureWarning)
@@ -253,6 +375,7 @@ class YahooWrapper:
             sector = "N/A"
             mkt_cap = None
             try:
+                # Ticker info fetching can be slow, wrap heavily
                 info = getattr(stock, "info", {}) or {}
                 name = info.get("shortName") or info.get("longName") or sym
                 sector = info.get("sector") or "N/A"
@@ -275,6 +398,7 @@ class YahooWrapper:
             }
 
             YahooWrapper._DETAILED_CACHE[cache_key] = (YahooWrapper._now(), data)
+            YahooWrapper._set_fast_cache(fast_key, data)
             return data
 
         except Exception as e:
@@ -285,30 +409,40 @@ class YahooWrapper:
 
     @staticmethod
     def _chunk(seq: List[str], size: int) -> List[List[str]]:
-        out = []
-        i = 0
-        while i < len(seq):
-            out.append(seq[i:i + size])
-            i += size
-        return out
+        return [seq[i:i + size] for i in range(0, len(seq), size)]
 
     def get_macro_snapshot(self, period: str = "1d", interval: str = "15m") -> List[Dict[str, Any]]:
         key = (str(period), str(interval))
+        fast_key = f"macro::{period}:{interval}"
+        
+        # L1 Cache
+        fast_hit = YahooWrapper._get_fast_cache(fast_key)
+        if fast_hit: return fast_hit
 
+        # L2 Cache
         cached = YahooWrapper._SNAPSHOT_CACHE.get(key)
         if cached:
             ts, data = cached
             if (YahooWrapper._now() - int(ts or 0)) <= YahooWrapper._SNAPSHOT_TTL_SECONDS:
                 return data
 
+        # Prepare Ticker List
         ticker_meta: Dict[str, Dict[str, str]] = {}
-        for cat, symbols in YahooWrapper.MACRO_TICKERS.items():
-            for sym, name in (symbols or {}).items():
-                s = str(sym or "").strip().upper()
-                if s:
-                    ticker_meta[s] = {"name": name, "category": cat}
+        
+        # Nested dict parsing
+        for cat, subcats in YahooWrapper.MACRO_TICKERS.items():
+            for subcat, symbols in subcats.items():
+                for sym, name in symbols.items():
+                    s = str(sym or "").strip().upper()
+                    if s:
+                        ticker_meta[s] = {
+                            "name": name, 
+                            "category": cat, 
+                            "subcategory": subcat
+                        }
 
         requested = list(ticker_meta.keys())
+        # Filter out "known bad" symbols to speed up batch processing
         flat_list = [s for s in requested if not YahooWrapper._is_bad(s)]
 
         results: List[Dict[str, Any]] = []
@@ -317,25 +451,21 @@ class YahooWrapper:
         def process_download_frame(data: pd.DataFrame, symbols: List[str]) -> None:
             nonlocal results, missing
             if data is None or data.empty:
-                for s in symbols:
-                    missing.append(s)
+                missing.extend(symbols)
                 return
 
             is_multi = isinstance(data.columns, pd.MultiIndex)
 
             for sym in symbols:
-                meta = ticker_meta.get(sym, {"name": sym, "category": "Other"})
+                meta = ticker_meta.get(sym, {"name": sym, "category": "Other", "subcategory": ""})
                 try:
                     if is_multi:
-                        if ("Close" not in data.columns.get_level_values(0)):
-                            missing.append(sym)
-                            YahooWrapper._mark_bad(sym)
-                            continue
                         if sym not in data["Close"].columns:
                             missing.append(sym)
-                            YahooWrapper._mark_bad(sym)
                             continue
+                        
                         closes = data["Close"][sym].dropna()
+                        # Optional columns
                         highs = data["High"][sym].dropna() if "High" in data else pd.Series(dtype=float)
                         lows = data["Low"][sym].dropna() if "Low" in data else pd.Series(dtype=float)
                         vols = data["Volume"][sym].dropna() if "Volume" in data else pd.Series(dtype=float)
@@ -347,7 +477,6 @@ class YahooWrapper:
 
                     if closes.empty:
                         missing.append(sym)
-                        YahooWrapper._mark_bad(sym)
                         continue
 
                     current = float(closes.iloc[-1])
@@ -355,66 +484,63 @@ class YahooWrapper:
                     change = current - start
                     pct = (change / start) * 100 if start != 0 else 0.0
 
-                    high = float(highs.max()) if not highs.empty else current
-                    low = float(lows.min()) if not lows.empty else current
-                    volume = float(vols.iloc[-1]) if not vols.empty else 0.0
+                    h_val = float(highs.max()) if not highs.empty else current
+                    l_val = float(lows.min()) if not lows.empty else current
+                    v_val = float(vols.iloc[-1]) if not vols.empty else 0.0
 
                     results.append({
                         "ticker": sym,
                         "name": meta.get("name", sym),
                         "category": meta.get("category", "Other"),
+                        "subcategory": meta.get("subcategory", ""),
                         "price": float(current),
                         "change": float(change),
                         "pct": float(pct),
-                        "high": float(high),
-                        "low": float(low),
-                        "volume": int(volume) if not pd.isna(volume) else 0,
+                        "high": float(h_val),
+                        "low": float(l_val),
+                        "volume": int(v_val),
                         "history": closes.tail(20).tolist(),
                     })
                 except Exception:
                     missing.append(sym)
-                    YahooWrapper._mark_bad(sym)
 
         try:
-            data = YahooWrapper._silent_download(
-                flat_list,
-                period=period,
-                interval=interval,
-                progress=False,
-                group_by="column",
-                auto_adjust=True,
-                threads=False,
-            )
-
-            if data is None or data.empty:
-                for chunk in YahooWrapper._chunk(flat_list, 25):
-                    d = YahooWrapper._silent_download(
-                        chunk,
-                        period=period,
-                        interval=interval,
-                        progress=False,
-                        group_by="column",
-                        auto_adjust=True,
-                        threads=False,
-                    )
-                    process_download_frame(d, chunk)
-            else:
-                process_download_frame(data, flat_list)
+            # --- PERFORMANCE FIX: Smaller chunks + Always Cache ---
+            # Breaking into chunks of 20 avoids the "10s timeout" if one ticker is bad
+            for chunk in YahooWrapper._chunk(flat_list, 20):
+                d = YahooWrapper._silent_download(
+                    chunk,
+                    period=period,
+                    interval=interval,
+                    progress=False,
+                    group_by="column",
+                    auto_adjust=True,
+                    threads=True
+                )
+                process_download_frame(d, chunk)
 
         except Exception:
+            # Return old cache if everything explodes
             cached = YahooWrapper._SNAPSHOT_CACHE.get(key)
-            if cached:
-                return cached[1]
-            return []
-
+            if cached: return cached[1]
+            # Don't return empty yet, let the next block handle caching failure
+        
+        # Mark persistently missing symbols as bad
         YahooWrapper._LAST_MISSING = sorted(set(missing))
+        for m in YahooWrapper._LAST_MISSING:
+            YahooWrapper._mark_bad(m)
 
+        # --- CRITICAL FIX: Cache result even if empty ---
+        # If we don't cache empty results, the app will retry the download
+        # on the NEXT loop (0.1s later), causing the infinite lag.
+        # We cache it for at least 15 seconds to give the UI breathing room.
+        
         if results:
             YahooWrapper._SNAPSHOT_CACHE[key] = (YahooWrapper._now(), results)
-
-        if not results:
-            cached = YahooWrapper._SNAPSHOT_CACHE.get(key)
-            if cached:
-                return cached[1]
+            YahooWrapper._set_fast_cache(fast_key, results)
+        else:
+            # Cache failure for 15s to stop the refresh loop from hanging
+            fake_ts = YahooWrapper._now() - YahooWrapper._SNAPSHOT_TTL_SECONDS + 15
+            YahooWrapper._SNAPSHOT_CACHE[key] = (fake_ts, [])
 
         return results

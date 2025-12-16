@@ -23,7 +23,7 @@ class MainMenu:
         """Helper to build the main menu Rich panel."""
         menu_options = [
             ("1", "Client Manager", "View portfolios, add clients, manage accounts"),
-            ("2", "Market Data", "Live Tickers, Futures, Commodities (Finnhub/Yahoo)"),
+            ("2", "Markets", "Tickers, Futures, Commodities ([green]LIVE[/green])"),
             ("3", "Settings", "API Config, User Preferences"),
             ("0", "Exit", "Securely close the session")
         ]

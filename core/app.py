@@ -49,6 +49,7 @@ class ClearApp:
             settings = SettingsModule()
             settings.run()
 
+    # Using this as temp page when adding new modules
     def placeholder_module(self, name: str):
         self.console.print(f"\n[bold green]>> LOADING {name}...[/bold green]")
         self.console.print("[italic]   Module logic to be implemented soon ...[/italic]")
