@@ -5,6 +5,7 @@ from rich.panel import Panel
 from rich import box
 from rich.align import Align
 from rich.text import Text
+from rich.rule import Rule
 
 from typing import Optional, Tuple, List, Union
 
@@ -157,9 +158,10 @@ class ClientManager:
         title_grid.add_column(justify="left")
         title_grid.add_column(justify="right")
         title_grid.add_row(
-            f"[bold gold1]CLIENT DASHBOARD: {client.name}[/bold gold1]",
-            f"[dim]ID: {client.client_id[:8]}[/dim]"
+            f"[bold gold1]CLIENT:[/bold gold1] {client.name}",
+            f"[dim]ID: {client.client_id}[/dim]"
         )
+        title_grid.add_row(f"[bold gold1]Active Accounts:[/bold gold1] {len(client.accounts)}")
         self.console.print(Panel(title_grid, style="on black", box=box.SQUARE))
 
         # AUM & Chart Panel
@@ -378,14 +380,20 @@ class ClientManager:
         """Dedicated loop for managing holdings for a single selected account."""
         while True:
             self.console.clear()
-            
-            # Header
-            header = Panel(
-                f"[bold white]Client:[/bold white] {client.name}\n"
-                f"[bold white]Account:[/bold white] {account.account_name} ({account.account_type})",
-                border_style="blue"
+
+            # Header Area
+            title_grid = Table.grid(expand=True)
+            title_grid.add_column(justify="left")
+            title_grid.add_column(justify="right")
+            title_grid.add_row(
+                f"[bold gold1]ACCOUNT DASHBOARD[/bold gold1]"
             )
-            self.console.print(header)
+            title_grid.add_row(Rule(style="bold white"))
+            title_grid.add_row(f"[bold gold1]CLIENT:[/bold gold1] {client.name}", f"[dim]ID: {client.client_id}[/dim]")
+            title_grid.add_row(
+                f"[bold gold1]Account:[/bold gold1] {account.account_name} ({account.account_type})",
+            )
+            self.console.print(Panel(title_grid, style="on black", box=box.SQUARE))
 
             # ============================================================
             # ACCOUNT SNAPSHOT (LEFT) + VALUE OVER TIME (RIGHT)
@@ -1021,7 +1029,7 @@ class ClientManager:
         
         self.clients.append(new_client)
         DataHandler.save_clients(self.clients)
-        self.console.print(f"[green]Client created with ID: {new_client.client_id[:8]}[/green]")
+        self.console.print(f"[green]Client created with ID: {new_client.client_id}[/green]")
         InputSafe.pause()
 
     def edit_client_workflow(self, client: Client):
