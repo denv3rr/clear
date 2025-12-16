@@ -52,3 +52,15 @@ class ChartRenderer:
         p = max(0.0, min(1.0, float(p)))
         filled = int(round(p * width))
         return "█" * filled + "░" * (width - filled)
+
+    @staticmethod
+    def regime_strip(regime: str, width: int = 20) -> str:
+        color_map = {
+            "Strong Up": "green",
+            "Mild Up": "green",
+            "Flat": "yellow",
+            "Mild Down": "red",
+            "Strong Down": "red",
+        }
+        color = color_map.get(regime, "white")
+        return f"[{color}]" + ("█" * width) + f"[/{color}]"

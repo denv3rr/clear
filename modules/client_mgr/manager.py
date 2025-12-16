@@ -448,6 +448,7 @@ class ClientManager:
             )
 
             # ---------------- RIGHT SIDE: Value-over-time chart ----------------
+
             acc_history = self.valuation_engine.generate_synthetic_portfolio_history(
                 acc_enriched,
                 account.holdings
@@ -455,30 +456,39 @@ class ClientManager:
 
             chart_body = Text("No historical data available.", style="dim")
 
-            if acc_history and len(acc_history) >= 2:
-                spark = ChartRenderer.generate_sparkline(acc_history, length=60)
+            if acc_history and len(acc_history) >= 3:
+                # Clamp history to last N points to avoid ellipsis at end of chart
+                MAX_POINTS = 48
+                series = acc_history[-MAX_POINTS:]
 
-                start_val = acc_history[0]
-                end_val = acc_history[-1]
+                spark = ChartRenderer.generate_sparkline(
+                    series,
+                    length=MAX_POINTS  # hard lock width
+                )
+
+                start_val = series[0]
+                end_val = series[-1]
 
                 pct = ((end_val - start_val) / start_val) * 100 if start_val != 0 else 0.0
                 pct_style = "bold green" if pct >= 0 else "bold red"
 
-                chart_body = Text.assemble(
-                    spark,
-                    "\n",
-                    Text(
-                        f"Start: ${start_val:,.2f}   "
-                        f"End: ${end_val:,.2f}   "
-                        f"({pct:+.2f}%)",
-                        style=pct_style
+                chart_body = Group(
+                    Align.center(spark),
+                    Align.center(
+                        Text(
+                            f"\nStart: ${start_val:,.2f}   "
+                            f"End: ${end_val:,.2f}   "
+                            f"({pct:+.2f}%)",
+                            style=pct_style
+                        )
                     )
                 )
 
             right_panel = Panel(
-                Align.center(chart_body),
+                chart_body,
                 title="[bold]Account Value Over Time[/bold]",
                 box=box.HEAVY,
+                padding=(1, 2),
             )
 
             # ---------------- COMBINED LAYOUT ----------------

@@ -544,18 +544,32 @@ class RegimeModels:
         return out
 
     @staticmethod
-    def _transition_matrix(states, n):
+    def _transition_matrix(states, n, alpha: float = 0.15):
+        """
+        alpha = persistence bias
+        """
         counts = [[0] * n for _ in range(n)]
         for a, b in zip(states[:-1], states[1:]):
             counts[a][b] += 1
 
         P = []
-        for row in counts:
+        for i, row in enumerate(counts):
             s = sum(row)
             if s == 0:
-                P.append([1 / n] * n)
+                # strong self-regime bias instead of uniform
+                base = [alpha / (n - 1)] * n
+                base[i] = 1.0 - alpha
+                P.append(base)
             else:
-                P.append([c / s for c in row])
+                probs = []
+                for j, c in enumerate(row):
+                    p = c / s
+                    if j == i:
+                        p = max(p, alpha)  # enforce persistence floor
+                    probs.append(p)
+                norm = sum(probs)
+                P.append([p / norm for p in probs])
+
         return P
 
     @staticmethod
@@ -599,6 +613,11 @@ class RegimeRenderer:
         left.add_column(style="dim")
         left.add_column(justify="right", style="bold white")
 
+        left.add_row()
+        left.add_row(
+            "State",
+            ChartRenderer.regime_strip(snapshot["current_regime"], width=16)
+        )
         left.add_row("Model", snapshot["model"])
         left.add_row("Horizon", snapshot["horizon"])
         left.add_row("Current Regime", snapshot["current_regime"])
@@ -617,14 +636,17 @@ class RegimeRenderer:
         prob_table = Table(
             box=box.SIMPLE,
             show_header=True,
-            header_style="bold"
+            header_style="bold",
+            expand=False,
+            width=50
         )
+
         prob_table.add_column("Regime")
         prob_table.add_column("Prob", justify="right")
         prob_table.add_column("")
 
         for name, p in snapshot["state_probs"].items():
-            bar = ChartRenderer.generate_bar(p, width=20)
+            bar = ChartRenderer.generate_bar(p, width=18)
             color = "green" if "Up" in name else "red" if "Down" in name else "yellow"
             prob_table.add_row(
                 name,
