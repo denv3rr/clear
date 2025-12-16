@@ -14,7 +14,8 @@ except ImportError:
     
 class SystemHost:
     """
-    Retrieves and stores system information for the session context.
+    Retrieves and stores system information for the session context,
+    now including detailed hardware/performance metrics.
     """
 
     @staticmethod
@@ -25,10 +26,12 @@ class SystemHost:
         hostname = socket.gethostname()
         
         # Determine OS info based on psutil availability
+        os_info_base = f"{platform.system()} {platform.release()}"
         if PSUTIL_AVAILABLE:
-            os_info = f"{platform.system()} {platform.release()} ({platform.machine()})"
+            # Added machine architecture for more detail
+            os_info_full = f"{os_info_base} ({platform.machine()})"
         else:
-            os_info = f"{platform.system()} {platform.release()} (Details N/A)"
+            os_info_full = f"{os_info_base}"
             
         try:
             # Dummy connection to get local IP (does not send data)
@@ -38,28 +41,33 @@ class SystemHost:
             s.close()
         except Exception:
             local_ip = "127.0.0.1"
+            
+        # Initialize hardware info variables
+        cpu_usage = "N/A"
+        mem_usage = "N/A" # Using this key to match welcome.py's expectation
+        cpu_cores = "N/A"
 
         # Hardware Information - ONLY if psutil is available
         if PSUTIL_AVAILABLE:
             try:
-                cpu_percent = f"{psutil.cpu_percent()}%"
+                cpu_usage = f"{psutil.cpu_percent(interval=None):.1f}%"
+                cpu_cores = psutil.cpu_count()
                 
-                # Convert bytes to Gigabytes
                 mem_info = psutil.virtual_memory()
+                # Calculate Used/Total RAM in GB
                 total_ram_gb = mem_info.total / (1024.0 ** 3)
-                # Calculate Used RAM
                 used_ram_gb = (mem_info.total - mem_info.available) / (1024.0 ** 3)
-                
-                mem_usage = f"{mem_info.percent}% ({used_ram_gb:.2f}G / {total_ram_gb:.2f}G)" # <-- FIX APPLIED
+
+                # FIX: Format as a single descriptive string to match the 'RAM USAGE' display
+                mem_usage = f"{mem_info.percent:.1f}% ({used_ram_gb:.2f}G / {total_ram_gb:.2f}G)" 
+
             except Exception:
-                # Fallback if psutil is available but fails to get data
-                cpu_percent = "Error"
+                cpu_usage = "Error"
                 mem_usage = "Error"
+                cpu_cores = "Error"
         else:
-            # Fallback if psutil is not imported
-            cpu_percent = "N/A (psutil missing)"
             mem_usage = "N/A (psutil missing)"
-        
+
         # Python Information
         python_version = platform.python_version()
 
@@ -71,11 +79,15 @@ class SystemHost:
         return {
             "user": user,
             "hostname": hostname,
-            "os": os_info,
+            "os": os_info_full,
             "ip": local_ip,
             "login_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "finnhub_status": has_finnhub,
-            "cpu_usage": cpu_percent,
-            "mem_usage": mem_usage,
-            "python_version": python_version
+            
+            # New Hardware Metrics
+            "cpu_usage": cpu_usage,
+            "cpu_cores": cpu_cores,
+            "mem_usage": mem_usage, # <-- FIX: This is the combined, formatted RAM usage.
+            "python_version": python_version,
+            "psutil_available": PSUTIL_AVAILABLE
         }
