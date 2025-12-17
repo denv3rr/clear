@@ -446,13 +446,45 @@ class FinancialToolkit:
             sharpe = ((avg_p - rf_daily) / std_p * (252.0 ** 0.5)) if std_p > 0 else None
             vol_annual = std_p * (252.0 ** 0.5)
 
+            # --- Additional Risk Metrics ---
+
+            # Downside deviation (for Sortino)
+            neg = p[p < rf_daily]
+            downside_std = float(np.std(neg, ddof=1)) if len(neg) > 1 else None
+            downside_vol_annual = downside_std * (252.0 ** 0.5) if downside_std else None
+
+            sortino = None
+            if downside_std and downside_std > 0:
+                sortino = (avg_p - rf_daily) / downside_std * (252.0 ** 0.5)
+
+            # Jensen's Alpha (alias of CAPM alpha)
+            jensen_alpha = alpha_annual
+
+            # Information Ratio
+            excess = p - m
+            te = float(np.std(excess, ddof=1))
+            information_ratio = None
+            if te > 0:
+                information_ratio = (avg_p - avg_m) / te * (252.0 ** 0.5)
+
+            # M-squared (Modigliani-Modigliani)
+            std_m = float(np.std(m, ddof=1))
+            m_squared = None
+            if std_p > 0:
+                m_squared = ((avg_p - rf_daily) / std_p) * std_m * 252.0 + risk_free_annual
+
             data = {
                 "error": "",
                 "beta": beta,
                 "alpha_annual": alpha_annual,
+                "jensen_alpha": jensen_alpha,
                 "r_squared": r_squared,
                 "sharpe": sharpe,
+                "sortino": sortino,
+                "information_ratio": information_ratio,
+                "m_squared": m_squared,
                 "vol_annual": vol_annual,
+                "downside_vol_annual": downside_vol_annual,
                 "points": int(len(joined)),
                 "benchmark": bench,
                 "period": period,
@@ -569,7 +601,7 @@ class RegimeModels:
         return out
 
     @staticmethod
-    def _transition_matrix(states: list[int], n: int, k: float = 0.75, self_floor: float = 0.40) -> list[list[float]]:
+    def _transition_matrix(states: list[int], n: int, k: float = 0.75, self_floor: float = 0.0):
         """
         Dirichlet-smoothed transition matrix.
 
@@ -590,18 +622,6 @@ class RegimeModels:
             smoothed = [(c + k) for c in row]
             sm_total = sum(smoothed)
             probs = [v / sm_total for v in smoothed]
-
-            # Enforce persistence floor
-            if probs[i] < self_floor:
-                deficit = self_floor - probs[i]
-                probs[i] += deficit
-                # renormalize others down proportionally
-                other_sum = sum(probs) - probs[i]
-                if other_sum > 0:
-                    scale = (1.0 - probs[i]) / other_sum
-                    for j in range(n):
-                        if j != i:
-                            probs[j] *= scale
 
             P.append(probs)
 
