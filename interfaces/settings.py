@@ -28,6 +28,7 @@ class SettingsModule:
     def _menu_api_security(self):
         while True:
             self.console.clear()
+            print("\x1b[3J", end="")
             
             # Modular Menu Definition
             options = {
@@ -91,6 +92,7 @@ class SettingsModule:
     def _menu_display_ux(self):
         while True:
             self.console.clear()
+            print("\x1b[3J", end="")
             
             # Dynamic options based on current settings
             hl = self.settings['display']['color_highlight']
@@ -117,6 +119,7 @@ class SettingsModule:
     def _menu_system_perf(self):
         while True:
             self.console.clear()
+            print("\x1b[3J", end="")
             
             net = self.settings['network']
             sys_conf = self.settings['system']
@@ -142,10 +145,11 @@ class SettingsModule:
                 val = InputSafe.get_float("Enter MB (1-1024):", 1, 1024)
                 self.settings['system']['cache_size_mb'] = int(val)
 
-    # --- 4. Deep Diagnostics (Unchanged logic, just standard prompt) ---
+    # --- 4. Diagnostics ---
     def _run_deep_diagnostics(self):
         self.console.clear()
-        self.console.print("\n[bold]🩺 DEEP SYSTEM DIAGNOSTICS[/bold]")
+        print("\x1b[3J", end="")
+        self.console.print("\n[bold]SYSTEM DIAGNOSTICS[/bold]")
         
         results = {}
         with self.console.status("[bold cyan]Testing Connectivity...[/bold cyan]"):
@@ -164,7 +168,6 @@ class SettingsModule:
         results['disk_usage'] = disk_percent
         sys_info = SystemHost.get_info()
         
-        self.console.print("\n[bold white]DIAGNOSTIC REPORT[/bold white]")
         table = Table(box=box.SIMPLE)
         table.add_column("Metric", style="dim")
         table.add_column("Value/Status", justify="left")
@@ -247,6 +250,7 @@ class SettingsModule:
     def run(self):
         while True:
             self.console.clear()
+            print("\x1b[3J", end="")
             self.console.print(self._build_info_panel())
             
             # Modular Menu Implementation
@@ -258,13 +262,15 @@ class SettingsModule:
                 "0": "🔙 Return to Main"
             }
             
-            # Using the centralized renderer
+            # Using centralized renderer
             InputSafe.display_options(options)
             
-            # Using default prompt from get_option which is now [>]
             choice = InputSafe.get_option(list(options.keys()))
 
-            if choice == "0": break
+            from interfaces.menus import MainMenu as m # for cls/clear
+            if choice == "0":
+                m.clear_console()
+                break
             elif choice == "1": self._menu_api_security()
             elif choice == "2": self._menu_display_ux()
             elif choice == "3": self._menu_system_perf()

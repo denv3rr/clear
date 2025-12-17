@@ -53,6 +53,7 @@ class MarketFeed:
         """Standard interaction loop for the Market Module."""
         while True:
             self.console.clear()
+            print("\x1b[3J", end="")
             
             # Display current settings in the view
             current_label = self.interval_options[self.interval_idx][0]
@@ -69,6 +70,7 @@ class MarketFeed:
             
             if choice == "0":
                 self.console.clear()
+                print("\x1b[3J", end="")
                 break
             elif choice == "1":
                 self.stock_lookup_loop()
@@ -189,6 +191,7 @@ class MarketFeed:
         )
 
         self.console.clear()
+        print("\x1b[3J", end="")
         self.console.print(ticker_panel)
 
     def stock_lookup_loop(self):
@@ -274,6 +277,7 @@ class MarketFeed:
                 )
                 
                 self.console.clear()
+                print("\x1b[3J", end="")
                 self.console.print(main_panel)
                 
                 self.console.print("[bold cyan]OPTIONS:[/bold cyan] [I] Change Interval | [N] New Search | [0] Back")

@@ -92,6 +92,7 @@ class FinancialToolkit:
         """Main loop for the Client Financial Toolkit."""
         while True:
             self.console.clear()
+            print("\x1b[3J", end="")
             self.console.print(f"[bold gold1]FINANCIAL TOOLKIT | {self.client.name}[/bold gold1]")
             
             # --- AUTO MODEL SELECTION ---
@@ -126,6 +127,7 @@ class FinancialToolkit:
         and the benchmark (SPY) using yfinance.
         """
         self.console.clear()
+        print("\x1b[3J", end="")
         self.console.print(f"[bold blue]CAPM & RISK METRICS (Benchmark: {self.benchmark_ticker})[/bold blue]")
         
         # 1. Aggregate Holdings
@@ -273,6 +275,7 @@ class FinancialToolkit:
         Auto-fetches 'S' (Spot Price) if the user selects a holding.
         """
         self.console.clear()
+        print("\x1b[3J", end="")
         self.console.print(Panel("[bold]BLACK-SCHOLES DERIVATIVES MODEL[/bold]", box=box.HEAVY))
         
         # 1. Spot Price (S)
@@ -528,6 +531,103 @@ class RegimeModels:
     }
 
     @staticmethod
+    def _stationary_distribution(P: list[list[float]], tol: float = 1e-12, max_iter: int = 5000) -> list[float]:
+        """
+        Power-iteration stationary distribution for a row-stochastic Markov chain.
+
+        Returns pi such that pi = pi * P, sum(pi)=1.
+
+        No clamping. No flooring. Converges for ergodic chains; otherwise returns last iterate.
+        """
+        n = len(P)
+        if n <= 0:
+            return []
+
+        # Start uniform
+        pi = [1.0 / n] * n
+
+        it = 0
+        while it < max_iter:
+            # pi_next[j] = sum_i pi[i] * P[i][j]
+            pi_next = [0.0] * n
+            i = 0
+            while i < n:
+                row = P[i]
+                w = float(pi[i])
+                j = 0
+                while j < n:
+                    pi_next[j] += w * float(row[j])
+                    j += 1
+                i += 1
+
+            s = float(sum(pi_next))
+            if s > 0:
+                inv = 1.0 / s
+                j = 0
+                while j < n:
+                    pi_next[j] *= inv
+                    j += 1
+
+            # L1 diff
+            diff = 0.0
+            j = 0
+            while j < n:
+                diff += abs(pi_next[j] - pi[j])
+                j += 1
+
+            pi = pi_next
+            if diff < tol:
+                break
+
+            it += 1
+
+        return pi
+
+    @staticmethod
+    def _evolution_surface(P: list[list[float]], current_state: int, steps: int) -> list[list[float]]:
+        """
+        Returns a matrix (steps+1) x n where row t is the state probability vector at time t,
+        starting from a one-hot distribution at current_state.
+        """
+        n = len(P)
+        if n <= 0:
+            return []
+
+        # t=0
+        out = []
+        probs = [0.0] * n
+        probs[current_state] = 1.0
+        out.append(probs[:])
+
+        t = 0
+        while t < steps:
+            nxt = [0.0] * n
+            i = 0
+            while i < n:
+                pi = float(probs[i])
+                if pi != 0.0:
+                    row = P[i]
+                    j = 0
+                    while j < n:
+                        nxt[j] += pi * float(row[j])
+                        j += 1
+                i += 1
+
+            s = float(sum(nxt))
+            if s > 0:
+                inv = 1.0 / s
+                j = 0
+                while j < n:
+                    nxt[j] *= inv
+                    j += 1
+
+            probs = nxt
+            out.append(probs[:])
+            t += 1
+
+        return out
+
+    @staticmethod
     def snapshot_from_value_series(values: list[float], interval: str = "1M", label: str = "Portfolio") -> dict:
         n = RegimeModels.INTERVAL_POINTS.get(interval, 21)
         series = values[-(n+1):] if values and len(values) >= (n+1) else values
@@ -569,6 +669,12 @@ class RegimeModels:
             sum((r - avg_return) ** 2 for r in returns) / len(returns)
         )
 
+        # --- Surfaces (pure Markov; interval-compatible) ---
+        pi = RegimeModels._stationary_distribution(P)
+        evo_steps = 12
+        evo = RegimeModels._evolution_surface(P, current_state, evo_steps)
+
+        #
         return {
             "model": "Markov",
             "horizon": label,
@@ -587,7 +693,17 @@ class RegimeModels:
             "metrics": {
                 "avg_return": avg_return,
                 "volatility": volatility
-            }
+            },
+            "stationary": {
+                RegimeModels.STATE_LABELS[i]: pi[i] for i in range(n)
+            },
+            "evolution": {
+                "steps": evo_steps,
+                "series": [
+                    {RegimeModels.STATE_LABELS[i]: evo[t][i] for i in range(n)}
+                    for t in range(len(evo))
+                ]
+            },
         }
 
     @staticmethod
@@ -749,9 +865,48 @@ class RegimeRenderer:
             box=box.ROUNDED
         )
 
+        # --- Surfaces ---
+        surfaces_group = None
+        if snapshot.get("stationary") and snapshot.get("evolution"):
+            P = snapshot["transition_matrix"]
+            labels = list(snapshot["state_probs"].keys())
+
+            trans_surf = RegimeRenderer._render_transition_surface(P)
+            stat_surf = RegimeRenderer._render_stationary_surface(snapshot["stationary"])
+            evo_surf = RegimeRenderer._render_evolution_surface(snapshot["evolution"], labels)
+
+            surfaces_group = Group(
+                Panel(trans_surf, title="[bold]Transition Surface[/bold]", box=box.ROUNDED),
+                Panel(stat_surf, title="[bold]Stationary (π)[/bold]", box=box.ROUNDED),
+                Panel(evo_surf, title="[bold]Evolution Surface[/bold]", box=box.ROUNDED),
+            )
+
+        # --- Matrix (full width) ---
+        stack = []
+
+        stack.append(matrix_panel)
+
+        # --- Surfaces (full width below matrix) ---
+        if surfaces_group is not None:
+            stack.append(
+                Panel(
+                    surfaces_group,
+                    title="[bold]Surfaces[/bold]",
+                    box=box.ROUNDED
+                )
+            )
+        else:
+            stack.append(
+                Panel(
+                    "[dim]Surface data not available.[/dim]",
+                    title="[bold]Surfaces[/bold]",
+                    box=box.ROUNDED
+                )
+            )
+
         final = Group(
             layout,
-            matrix_panel
+            *stack
         )
 
         return Panel(
@@ -769,18 +924,112 @@ class RegimeRenderer:
             heat.add_column(lab[:7], justify="center", no_wrap=True, width=7)
 
         def cell(p: float) -> Text:
+            p = float(p or 0.0)
+
             # intensity blocks (5 levels)
             if p >= 0.60: ch = "█"
             elif p >= 0.40: ch = "▓"
             elif p >= 0.25: ch = "▒"
             elif p >= 0.10: ch = "░"
             else: ch = "·"
-            return Text(ch * 5)
+
+            blocks = ch * 5
+            pct = f"{p*100:4.1f}%"
+            return Text(f"{blocks}\n{pct}", style="bold white")
 
         for i, row in enumerate(P):
             r = [labels[i]]
             for p in row:
                 r.append(cell(float(p)))
             heat.add_row(*r)
+
+        return heat
+
+    @staticmethod
+    def _render_transition_surface(P: list[list[float]]) -> Table:
+        """
+        Pseudo-3D surface using stacked blocks. This is a heightmap-like display suitable for terminals.
+        """
+        n = len(P)
+        surf = Table(box=box.SIMPLE, show_header=False, pad_edge=False)
+        surf.add_column("Surface", no_wrap=True)
+
+        # Render each row as a "ridge" of stacked blocks.
+        # Height is proportional to probability (0..1) mapped to 0..8 blocks.
+        def stack(p: float) -> str:
+            h = int(round(max(0.0, min(1.0, float(p))) * 8.0))
+            if h <= 0:
+                return "·"
+            return "█" * h
+
+        i = 0
+        lines = []
+        while i < n:
+            row = P[i]
+            j = 0
+            parts = []
+            while j < n:
+                parts.append(stack(row[j]).ljust(8))
+                j += 1
+            lines.append(" ".join(parts))
+            i += 1
+
+        # Fit into a single column (table rows)
+        for ln in lines:
+            surf.add_row(Text(ln, style="bold white"))
+
+        return surf
+
+    @staticmethod
+    def _render_stationary_surface(stationary: dict) -> Table:
+        """
+        Stationary distribution as labeled bars.
+        """
+        tab = Table(box=box.SIMPLE, show_header=True, header_style="bold", pad_edge=False)
+        tab.add_column("Regime", no_wrap=True)
+        tab.add_column("π", justify="right", width=7)
+        tab.add_column("", no_wrap=True)
+
+        for name, p in stationary.items():
+            p = float(p or 0.0)
+            bar = ChartRenderer.generate_bar(p, width=18)
+            color = "green" if "Up" in name else "red" if "Down" in name else "yellow"
+            tab.add_row(name, f"{p*100:.1f}%", f"[{color}]{bar}[/{color}]")
+
+        return tab
+
+    @staticmethod
+    def _render_evolution_surface(evolution: dict, labels: list[str]) -> Table:
+        """
+        Time-evolving probability manifold: rows = time step, cols = regimes.
+        Each cell is intensity-coded.
+        """
+        series = evolution.get("series", []) if isinstance(evolution, dict) else []
+        heat = Table(box=box.SIMPLE, show_header=True, header_style="bold", pad_edge=False)
+
+        heat.add_column("t", justify="right", width=3, style="dim")
+        for lab in labels:
+            heat.add_column(lab[:7], justify="center", no_wrap=True, width=7)
+
+        def cell(p: float) -> Text:
+            p = float(p or 0.0)
+            if p >= 0.60: ch = "█"
+            elif p >= 0.40: ch = "▓"
+            elif p >= 0.25: ch = "▒"
+            elif p >= 0.10: ch = "░"
+            else: ch = "·"
+
+            blocks = ch * 5
+            pct = f"{p*100:4.1f}%"
+            return Text(f"{blocks}\n{pct}", style="bold white")
+
+        t = 0
+        while t < len(series):
+            rowd = series[t]
+            row = [str(t)]
+            for lab in labels:
+                row.append(cell(rowd.get(lab, 0.0)))
+            heat.add_row(*row)
+            t += 1
 
         return heat

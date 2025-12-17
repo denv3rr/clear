@@ -48,6 +48,7 @@ class ClientManager:
         """Main loop for the Client Management Module."""
         while True:
             self.console.clear()
+            print("\x1b[3J", end="")
             self.display_client_list()
 
             self.console.print("\n[bold gold1]CLIENT MANAGER ACTIONS:[/bold gold1]")
@@ -61,6 +62,7 @@ class ClientManager:
             if choice == "0":
                 DataHandler.save_clients(self.clients)
                 self.console.clear()
+                print("\x1b[3J", end="")
                 break
             elif choice == "1":
                 self.add_client_workflow()
@@ -279,6 +281,7 @@ class ClientManager:
         """Displays a specific client's portfolio dashboard and manages client actions."""
         while True:
             self.console.clear()
+            print("\x1b[3J", end="")
             self.display_client_dashboard(client)
             
             self.console.print(f"\n[bold gold1]CLIENT OPTIONS | {client.name}[/bold gold1]")
@@ -365,6 +368,7 @@ class ClientManager:
         """Controller for the Accounts screen."""
         while True:
             self.console.clear()
+            print("\x1b[3J", end="")
             action, account = self._select_account_action(client)
             
             if action == "BACK":
@@ -380,6 +384,7 @@ class ClientManager:
         """Dedicated loop for managing holdings for a single selected account."""
         while True:
             self.console.clear()
+            print("\x1b[3J", end="")
 
             # Header Area
             title_grid = Table.grid(expand=True)
