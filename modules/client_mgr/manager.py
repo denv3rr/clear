@@ -259,7 +259,7 @@ class ClientManager:
                 str(len(acc.holdings)),
                 f"[bold green]${acc_val:,.2f}[/bold green]"
             )
-        self.console.print(Panel(acc_table, title="[bold gold1]ACCOUNT BREAKDOWN[/bold gold1]", box=box.HEAVY))
+        self.console.print(Panel(acc_table, title=f"[bold gold1]All Client Accounts[/bold gold1] [bold white]|[/bold white] [bold gold1]{client.name}[/bold gold1]", box=box.HEAVY))
         self.console.print("")
         self.console.rule()
 
@@ -1022,7 +1022,7 @@ class ClientManager:
         name = self.console.input("\n[bold cyan]Client Name:[/bold cyan] ").strip()
         if not name: return
         
-        risk = InputSafe.get_option(["Conservative", "Moderate", "Aggressive"], prompt_text="Risk Profile:")
+        risk = InputSafe.get_option(["Conservative", "Moderate", "Aggressive"], prompt_text="Risk Profile")
         
         new_client = Client(name=name, risk_profile=risk)
         new_client.accounts.append(Account(account_name="Primary Brokerage"))

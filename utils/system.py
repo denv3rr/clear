@@ -44,7 +44,7 @@ class SystemHost:
             
         # Initialize hardware info variables
         cpu_usage = "N/A"
-        mem_usage = "N/A" # Using this key to match welcome.py's expectation
+        mem_usage = "N/A"
         cpu_cores = "N/A"
 
         # Hardware Information - ONLY if psutil is available
@@ -58,8 +58,8 @@ class SystemHost:
                 total_ram_gb = mem_info.total / (1024.0 ** 3)
                 used_ram_gb = (mem_info.total - mem_info.available) / (1024.0 ** 3)
 
-                # FIX: Format as a single descriptive string to match the 'RAM USAGE' display
-                mem_usage = f"{mem_info.percent:.1f}% ({used_ram_gb:.2f}G / {total_ram_gb:.2f}G)" 
+                # Format as a single string to match 'RAM USAGE' display
+                mem_usage = f"{mem_info.percent:.1f}% ({used_ram_gb:.2f} GB / {total_ram_gb:.2f} GB)" 
 
             except Exception:
                 cpu_usage = "Error"
@@ -87,7 +87,7 @@ class SystemHost:
             # New Hardware Metrics
             "cpu_usage": cpu_usage,
             "cpu_cores": cpu_cores,
-            "mem_usage": mem_usage, # <-- FIX: This is the combined, formatted RAM usage.
+            "mem_usage": mem_usage,
             "python_version": python_version,
             "psutil_available": PSUTIL_AVAILABLE
         }

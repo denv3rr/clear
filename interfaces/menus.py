@@ -4,6 +4,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.align import Align
+from rich.text import Text
 from rich import box
 
 from utils.input import InputSafe
@@ -35,7 +36,7 @@ class MainMenu:
         table.add_column("Description", style="italic grey70")
 
         for key, name, desc in menu_options:
-            table.add_row(f"[{key}]", name, desc)
+            table.add_row(key, name, desc)
 
         # Wrap in a Panel
         panel = Panel(
@@ -70,8 +71,22 @@ class MainMenu:
             "3": "settings",
             "0": "exit"
         }
+
+        panel_width = 200
+        inner_content_offset = 28
+        terminal_width = self.console.width
         
-        choice = InputSafe.get_option(list(action_map.keys()), prompt_text="[>]")
+        # 1. Calculate the base left padding needed to center the 200-width panel
+        base_left_padding = max(0, (terminal_width - panel_width) // 2)
+        
+        # 2. Add the inner content offset (6) to align the prompt with the menu text
+        total_left_padding = base_left_padding + inner_content_offset
+        
+        # Prepend the spaces to the prompt text
+        padded_prompt = Text(" " * total_left_padding + "[>]")
+        
+        choice = InputSafe.get_option(list(action_map.keys()), prompt_text=padded_prompt)
+        
         action = action_map[choice]
 
         if action == "exit":

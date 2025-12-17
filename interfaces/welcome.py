@@ -22,7 +22,7 @@ class StartupScreen:
         try:
             data = SystemHost.get_info()
         except:
-            # FIX: Updated Fallback data structure to include all keys returned by SystemHost
+            # Structure to include all keys returned by SystemHost
             data = {
                 "hostname": "Unknown",
                 "user": "User",
@@ -31,12 +31,12 @@ class StartupScreen:
                 "login_time": "Now",
                 "finnhub_status": False,
                 "cpu_usage": "N/A",
-                "mem_usage": "N/A", # FIX: Use 'mem_usage'
-                "cpu_cores": "N/A", # FIX: Added 'cpu_cores'
+                "mem_usage": "N/A",
+                "cpu_cores": "N/A",
                 "python_version": "N/A",
             }
 
-        # --- 1. ASCII Art Content (Raw String) ---
+        # --- 1. ASCII Art ---
         ascii_art_clear = r"""
  ██████╗██╗     ███████╗ █████╗ ██████╗ 
 ██╔════╝██║     ██╔════╝██╔══██╗██╔══██╗
@@ -61,11 +61,11 @@ class StartupScreen:
         info_panel_content.add_column(justify="center")
 
         info_panel_content.add_row(f"[bold white]Welcome, {data['user']}.[/bold white]")
-        info_panel_content.add_row(f"[yellow]{ascii_art_dash}[/yellow]")
+        info_panel_content.add_row(f"")
 
         # LINKS IN GRID
         links_grid = Table.grid(expand=False, padding=(0, 1))
-        links_grid.add_column(style="yellow", justify="left", ratio=1)
+        links_grid.add_column(style="blue", justify="left", ratio=1)
         links_grid.add_column(style="white", justify="left", ratio=1)
 
         links_grid.add_row("PROJECT REPO:", 
@@ -89,7 +89,7 @@ class StartupScreen:
         info_panel = Panel(
             info_panel_content,
             box=box.ROUNDED,
-            border_style="yellow",
+            border_style="blue",
             padding=(1, 3),
             width=100,
         )
@@ -136,13 +136,13 @@ class StartupScreen:
         status = "DETECTED" if data["finnhub_status"] else "MISSING"
 
         sys_info_grid_content.add_row("")
-        sys_info_grid_content.add_row(f"[bold cyan][+][/bold cyan] [bold white]SYSTEM TIME: [/bold white]  {data['login_time']}")
-        sys_info_grid_content.add_row(f"[bold cyan][+][/bold cyan] [bold white]FINNHUB KEY: [/bold white]  [{color}]{status}[/{color}]")
+        sys_info_grid_content.add_row(f"[bold cyan][+][/bold cyan] [bold cyan]SYSTEM TIME: [/bold cyan]  {data['login_time']}")
+        sys_info_grid_content.add_row(f"[bold cyan][+][/bold cyan] [bold cyan]FINNHUB KEY: [/bold cyan]  [{color}]{status}[/{color}]")
 
         sys_info_grid = Panel(
             sys_info_grid_content,
             box=box.ROUNDED,
-            border_style="yellow",
+            border_style="blue",
             padding=(1, 3),
             width=100,
         )
