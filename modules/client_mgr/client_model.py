@@ -11,7 +11,11 @@ class Account:
     account_type: str = "Taxable"
     current_value: float = 0.0
 
+    active_interval: str = "1M"
+
     holdings: Dict[str, float] = field(default_factory=dict)
+
+    lots: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
 
     # Manual/off-market holdings (estimated). Each item can contain:
     # name, quantity, unit_price, total_value, currency, notes
@@ -25,6 +29,8 @@ class Account:
             "current_value": self.current_value,
             "holdings": self.holdings,
             "manual_holdings": self.manual_holdings,
+            "active_interval": self.active_interval,
+            "lots": self.lots,
         }
 
 
@@ -35,6 +41,9 @@ class Client:
     name: str = "New Client"
     risk_profile: str = "Moderate"
     calculated_risk: str = "N/A"
+
+    active_interval: str = "1M"
+
     accounts: List[Account] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -44,6 +53,7 @@ class Client:
             "risk_profile": self.risk_profile,
             "calculated_risk": self.calculated_risk,
             "accounts": [a.to_dict() for a in self.accounts],
+            "active_interval": self.active_interval,
         }
 
     @staticmethod
@@ -54,6 +64,7 @@ class Client:
             risk_profile=data.get("risk_profile", "Moderate"),
             calculated_risk=data.get("calculated_risk", "N/A"),
             accounts=[],
+            active_interval=data.get("active_interval", "1M"),
         )
 
         for acc_data in data.get("accounts", []):
@@ -65,6 +76,8 @@ class Client:
                     current_value=acc_data.get("current_value", 0.0),
                     holdings=acc_data.get("holdings", {}) or {},
                     manual_holdings=acc_data.get("manual_holdings", []) or [],
+                    active_interval=acc_data.get("active_interval", data.get("active_interval", "1M")),
+                    lots=acc_data.get("lots", {}) or {},
                 )
             )
 

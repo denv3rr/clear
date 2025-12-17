@@ -25,6 +25,14 @@ INTERVAL_POINTS = {
     "1Y": 252,
 }
 
+CAPM_PERIOD = {
+    "1W": "1mo",
+    "1M": "6mo",
+    "3M": "1y",
+    "6M": "2y",
+    "1Y": "5y",
+}
+
 class ClientManager:
     """
     Manages client creation, portfolio viewing, and account/holding modification.
@@ -162,8 +170,8 @@ class ClientManager:
         # 3. Generate Portfolio History Chart
         port_history = self.valuation_engine.generate_synthetic_portfolio_history(enriched_data, all_holdings)
         n = INTERVAL_POINTS.get(interval, 22)
-        series = port_history[-n:]
-        port_sparkline = ChartRenderer.generate_sparkline(series, length=n)
+        port_series = port_history[-n:]
+        port_sparkline = ChartRenderer.generate_sparkline(port_series, length=n)
         
         # --- RENDER UI ---
         
@@ -213,7 +221,8 @@ class ClientManager:
         self.console.print(Panel(Align.left(aum_grid), title="[bold gold1]Total AUM[/bold gold1]", box=box.HEAVY))
 
         # --- CAPM Snapshot (market holdings only) ---
-        capm = FinancialToolkit.compute_capm_metrics_from_holdings(all_holdings, benchmark_ticker="SPY", period="1y")
+        capm_period = CAPM_PERIOD.get(interval, "1y")
+        capm = FinancialToolkit.compute_capm_metrics_from_holdings(all_holdings, benchmark_ticker="SPY", period=capm_period)
 
         capm_table = Table(box=box.SIMPLE_HEAD, expand=True)
         capm_table.add_column("Metric", style="bold")
@@ -242,9 +251,9 @@ class ClientManager:
                     returns.append((curr - prev) / prev)
 
         if returns:
-            snapshot = RegimeModels.compute_markov_snapshot(
-                returns,
-                horizon=1,
+            snapshot = RegimeModels.snapshot_from_value_series(
+                port_series,
+                interval=interval,
                 label="Portfolio"
             )
             panel = RegimeRenderer.render(snapshot)
@@ -301,9 +310,10 @@ class ClientManager:
             self.console.print("[1] 📝 Edit Client Profile")
             self.console.print("[2] 💰 Manage Accounts & Holdings")
             self.console.print("[3] 🛠️ Financial Toolkit (Models & Analysis)")
+            self.console.print("[4] ⏱ Change Interval (page-wide)")
             self.console.print("[0] 🔙 Return to Client List")
             
-            choice = InputSafe.get_option(["1", "2", "3", "0"], prompt_text="[>]")
+            choice = InputSafe.get_option(["1", "2", "3", "4", "0"], prompt_text="[>]")
             
             if choice == "0":
                 DataHandler.save_clients(self.clients)
@@ -316,6 +326,8 @@ class ClientManager:
                 # LAUNCH TOOLKIT
                 toolkit = FinancialToolkit(client)
                 toolkit.run()
+            elif choice == "4":
+                self._change_interval_workflow(client)
                 
     # --- ACCOUNT MANAGEMENT ---
     
@@ -396,7 +408,10 @@ class ClientManager:
     def manage_holdings_loop(self, client: Client, account: Account):
         """Dedicated loop for managing holdings for a single selected account."""
 
-        interval = getattr(account, "active_interval", "1M")
+        interval = getattr(client, "active_interval", getattr(account, "active_interval", "1M"))
+
+        # Ensure this account stays synced to the page-wide interval
+        account.active_interval = interval
 
         while True:
             self.console.clear()
@@ -414,6 +429,7 @@ class ClientManager:
             title_grid.add_row(
                 f"[bold gold1]Account:[/bold gold1] {account.account_name} ({account.account_type})",
             )
+            title_grid.add_row(f"[bold gold1]Interval:[/bold gold1] [bold white]([/bold white][bold green]{interval}[/bold green][bold white])[/bold white]")
             self.console.print(Panel(title_grid, style="on black", box=box.SQUARE))
 
             # ============================================================
@@ -433,10 +449,11 @@ class ClientManager:
             combined_total = acc_market_value + manual_total
 
             # --- CAPM metrics (market holdings only) ---
+            capm_period = CAPM_PERIOD.get(interval, "1y")
             capm = FinancialToolkit.compute_capm_metrics_from_holdings(
                 account.holdings,
                 benchmark_ticker="SPY",
-                period="1y"
+                period=capm_period
             )
 
             # ---------------- LEFT SIDE: Snapshot data ----------------
@@ -486,13 +503,17 @@ class ClientManager:
             chart_body = Text("No historical data available.", style="dim")
 
             if acc_history and len(acc_history) >= 3:
-                # Clamp history to last N points to avoid ellipsis at end of chart
-                MAX_POINTS = 48
-                series = acc_history[-MAX_POINTS:]
+                interval_points = INTERVAL_POINTS.get(interval, 22)
+
+                # Keep interval semantics, but cap the rendered width to avoid terminal overflow
+                MAX_RENDER_POINTS = 48
+                render_points = interval_points if interval_points <= MAX_RENDER_POINTS else MAX_RENDER_POINTS
+
+                series = acc_history[-render_points:]
 
                 spark = ChartRenderer.generate_sparkline(
                     series,
-                    length=MAX_POINTS  # hard lock width
+                    length=render_points
                 )
 
                 start_val = series[0]
@@ -515,7 +536,7 @@ class ClientManager:
 
             right_panel = Panel(
                 chart_body,
-                title="[bold]Account Value Over Time[/bold]",
+                title=f"[bold]Account Value Over Time [bold white]([/bold white][bold green]{interval}[/bold green][bold white])[/bold white][/bold]",
                 box=box.HEAVY,
                 padding=(1, 2),
             )
@@ -531,9 +552,10 @@ class ClientManager:
 
             # Regime History (Sub-accounts)
             returns = []
-            for i in range(1, len(acc_history)):
-                prev = acc_history[i - 1]
-                curr = acc_history[i]
+            history_for_regime = acc_history[-(INTERVAL_POINTS.get(interval, 22) + 1):]
+            for i in range(1, len(history_for_regime)):
+                prev = history_for_regime[i - 1]
+                curr = history_for_regime[i]
                 if prev > 0:
                     returns.append((curr - prev) / prev)
 
@@ -570,6 +592,8 @@ class ClientManager:
 
     def display_account_holdings(self, account: Account):
         """Renders the detailed holdings with robust pricing and trend data."""
+
+        interval = getattr(account, "active_interval", "1M")
         
         # Get enriched data from ValuationEngine
         total_val, enriched_data = self.valuation_engine.calculate_portfolio_value(account.holdings)
@@ -584,30 +608,45 @@ class ClientManager:
             account.holdings
         )
 
-        # --- Account value-over-time chart ---
+        # --- Account value-over-time chart (interval-driven) ---
         chart_body = Text("No history available.", style="dim")
 
         if acc_history and len(acc_history) >= 2:
-            spark = INTERVAL_POINTS.get(interval, 22)
-            series = port_history[-spark:]
-            port_sparkline = ChartRenderer.generate_sparkline(series, length=spark)
+            interval_points = INTERVAL_POINTS.get(interval, 22)
 
-            start_val = acc_history[0]
-            end_val = acc_history[-1]
+            # Cap render width for terminal safety
+            MAX_RENDER_POINTS = 48
+            render_points = interval_points if interval_points <= MAX_RENDER_POINTS else MAX_RENDER_POINTS
+
+            series = acc_history[-render_points:]
+            sparkline = ChartRenderer.generate_sparkline(series, length=render_points)
+
+            start_val = series[0]
+            end_val = series[-1]
 
             pct = ((end_val - start_val) / start_val) * 100 if start_val != 0 else 0.0
             pct_style = "bold green" if pct >= 0 else "bold red"
 
-            chart_body = Text.assemble(
-                spark,
-                "\n",
-                Text(
-                    f"Start: ${start_val:,.2f}   "
-                    f"End: ${end_val:,.2f}   "
-                    f"({pct:+.2f}%)",
-                    style=pct_style
+            chart_body = Group(
+                Align.center(sparkline),
+                Align.center(
+                    Text(
+                        f"\nStart: ${start_val:,.2f}   "
+                        f"End: ${end_val:,.2f}   "
+                        f"({pct:+.2f}%)",
+                        style=pct_style
+                    )
                 )
             )
+
+        self.console.print(
+            Panel(
+                chart_body,
+                title=f"[bold]Account Value Trend[/bold] [bold white]([/bold white][bold green]{interval}[/bold green][bold white])[/bold white]",
+                box=box.HEAVY,
+                padding=(1, 2),
+            )
+        )
         
         self.console.print("\n")
         table = Table(title=f"[bold gold1]Market Holdings[/bold gold1]", box=box.HEAVY, expand=True)
@@ -1081,3 +1120,22 @@ class ClientManager:
             DataHandler.save_clients(self.clients)
             self.console.print("[green]Client deleted.[/green]")
         InputSafe.pause()
+
+    def _set_page_interval(self, client: Client, interval: str):
+        """Sets interval at the client level and propagates to all accounts for page-wide consistency."""
+        if interval not in INTERVAL_POINTS:
+            interval = "1M"
+
+        client.active_interval = interval
+
+        # Propagate to accounts so account dashboards stay synced
+        for acc in client.accounts:
+            acc.active_interval = interval
+
+        DataHandler.save_clients(self.clients)
+
+    def _change_interval_workflow(self, client: Client):
+        """Interactive interval selection that applies page-wide."""
+        self.console.print("\n[bold gold1]Select Interval (page-wide):[/bold gold1]")
+        interval = InputSafe.get_option(list(INTERVAL_POINTS.keys()), prompt_text="[>]")
+        self._set_page_interval(client, interval)
