@@ -17,6 +17,14 @@ from modules.client_mgr.valuation import ValuationEngine
 from modules.client_mgr.toolkit import FinancialToolkit
 from modules.client_mgr.toolkit import RegimeModels, RegimeRenderer
 
+INTERVAL_POINTS = {
+    "1W": 5,
+    "1M": 22,
+    "3M": 66,
+    "6M": 132,
+    "1Y": 252,
+}
+
 class ClientManager:
     """
     Manages client creation, portfolio viewing, and account/holding modification.
@@ -139,6 +147,8 @@ class ClientManager:
 
     def display_client_dashboard(self, client: Client):
         """Composes and displays the client's main dashboard with CHARTS."""
+
+        interval = getattr(client, "active_interval", "1M")
                 
         # 1. Aggregate Holdings for Global View
         all_holdings = {}
@@ -151,7 +161,9 @@ class ClientManager:
         
         # 3. Generate Portfolio History Chart
         port_history = self.valuation_engine.generate_synthetic_portfolio_history(enriched_data, all_holdings)
-        port_sparkline = ChartRenderer.generate_sparkline(port_history, length=60)
+        n = INTERVAL_POINTS.get(interval, 22)
+        series = port_history[-n:]
+        port_sparkline = ChartRenderer.generate_sparkline(series, length=n)
         
         # --- RENDER UI ---
         
@@ -164,6 +176,7 @@ class ClientManager:
             f"[dim]ID: {client.client_id}[/dim]"
         )
         title_grid.add_row(f"[bold gold1]Active Accounts:[/bold gold1] {len(client.accounts)}")
+        title_grid.add_row(f"[bold gold1]Interval:[/bold gold1] [bold white]([/bold white][bold green]{interval}[/bold green][bold white])[/bold white]")
         self.console.print(Panel(title_grid, style="on black", box=box.SQUARE))
 
         # AUM & Chart Panel
@@ -174,7 +187,7 @@ class ClientManager:
             ),
             box=box.HEAVY,
             border_style="green",
-            title="[bold gold1]Portfolio Performance (1M)[/bold gold1]"
+            title=f"[bold gold1]Portfolio Performance ([bold green]{interval}[/bold green])[/bold gold1]"
         )
         self.console.print(aum_panel)
 
@@ -382,6 +395,9 @@ class ClientManager:
 
     def manage_holdings_loop(self, client: Client, account: Account):
         """Dedicated loop for managing holdings for a single selected account."""
+
+        interval = getattr(account, "active_interval", "1M")
+
         while True:
             self.console.clear()
             print("\x1b[3J", end="")
@@ -572,7 +588,9 @@ class ClientManager:
         chart_body = Text("No history available.", style="dim")
 
         if acc_history and len(acc_history) >= 2:
-            spark = ChartRenderer.generate_sparkline(acc_history, length=60)
+            spark = INTERVAL_POINTS.get(interval, 22)
+            series = port_history[-spark:]
+            port_sparkline = ChartRenderer.generate_sparkline(series, length=spark)
 
             start_val = acc_history[0]
             end_val = acc_history[-1]
