@@ -8,6 +8,7 @@ from rich.text import Text
 from rich.rule import Rule
 
 from typing import Optional, Tuple, List, Union
+from datetime import datetime
 
 from utils.input import InputSafe
 from utils.charts import ChartRenderer
@@ -608,9 +609,8 @@ class ClientManager:
     # --- HOLDINGS & DETAILS LOGIC ---
 
     def display_account_holdings(self, account: Account):
-        """Renders the detailed holdings with robust pricing and trend data."""
-        
-        # Get enriched data from ValuationEngine
+        """Renders market holdings with lot-level detail (dim subheaders)."""
+
         interval = getattr(account, "active_interval", "1M")
         hp = HISTORY_PERIOD.get(interval, "1mo")
         hi = HISTORY_INTERVAL_MAP.get(interval, "1d")
@@ -620,56 +620,8 @@ class ClientManager:
             history_period=hp,
             history_interval=hi,
         )
-        
-        # --- Generate account value history ---
-        acc_history = self.valuation_engine.generate_synthetic_portfolio_history(
-            enriched_data,
-            account.holdings,
-            interval=interval
-        )
 
-        # --- Account value-over-time chart (interval-driven) ---
-        chart_body = Text("No history available.", style="dim")
-
-        if acc_history and len(acc_history) >= 2:
-            interval_points = INTERVAL_POINTS.get(interval, 22)
-
-            # Cap render width for terminal safety
-            MAX_RENDER_POINTS = 48
-            render_points = interval_points if interval_points <= MAX_RENDER_POINTS else MAX_RENDER_POINTS
-
-            series = acc_history[-render_points:]
-            sparkline = ChartRenderer.generate_sparkline(series, length=render_points)
-
-            start_val = series[0]
-            end_val = series[-1]
-
-            pct = ((end_val - start_val) / start_val) * 100 if start_val != 0 else 0.0
-            pct_style = "bold green" if pct >= 0 else "bold red"
-
-            chart_body = Group(
-                Align.center(sparkline),
-                Align.center(
-                    Text(
-                        f"\nStart: ${start_val:,.2f}   "
-                        f"End: ${end_val:,.2f}   "
-                        f"({pct:+.2f}%)",
-                        style=pct_style
-                    )
-                )
-            )
-
-        self.console.print(
-            Panel(
-                chart_body,
-                title=f"[bold]Account Value Over Time [/bold] [bold white]([/bold white][bold green]{interval}[/bold green][bold white])[/bold white]",
-                box=box.HEAVY,
-                padding=(1, 2),
-            )
-        )
-        
-        self.console.print("\n")
-        table = Table(title=f"[bold gold1]Market Holdings[/bold gold1]", box=box.HEAVY, expand=True)
+        table = Table(title="[bold gold1]Market Holdings[/bold gold1]", box=box.HEAVY, expand=True)
         table.add_column("Ticker", style="bold cyan")
         table.add_column("Trend", justify="center", width=5)
         table.add_column("Quantity", justify="right")
@@ -677,20 +629,36 @@ class ClientManager:
         table.add_column("Market Value", style="green", justify="right")
         table.add_column("Alloc %", justify="right", style="dim")
 
-        # Sort holdings by value descending
         sorted_holdings = sorted(
-            account.holdings.items(), 
-            key=lambda item: enriched_data.get(item[0], {}).get('market_value', 0), 
-            reverse=True
+            account.holdings.items(),
+            key=lambda item: enriched_data.get(item[0], {}).get("market_value", 0),
+            reverse=True,
         )
 
         for ticker, quantity in sorted_holdings:
+            lots = account.lots.get(ticker, [])
+
+            # --- Lot Subheaders (dim) ---
+            if lots:
+                table.add_row(
+                    Text(f"{ticker} lots:", style="dim"),
+                    "", "", "", "", ""
+                )
+                for i, lot in enumerate(lots, 1):
+                    table.add_row(
+                        Text(f"  └─ Lot {i}", style="dim"),
+                        "",
+                        Text(f"{lot['qty']:,.4f}", style="dim", justify="right"),
+                        Text(f"${lot['basis']:,.2f}", style="dim", justify="right"),
+                        Text(lot.get("date", ""), style="dim"),
+                        "",
+                    )
+
             data = enriched_data.get(ticker, {})
-            mkt_val = data.get('market_value', 0.0)
-            price = data.get('price', 0.0)
-            change_pct = data.get('change_pct', 0.0)
-            
-            # Determine Trend Arrow
+            mkt_val = data.get("market_value", 0.0)
+            price = data.get("price", 0.0)
+            change_pct = data.get("change_pct", 0.0)
+
             if change_pct > 0:
                 trend = Text("▲", style="bold green")
             elif change_pct < 0:
@@ -698,16 +666,15 @@ class ClientManager:
             else:
                 trend = Text("-", style="dim")
 
-            # Calculate allocation percentage
             alloc_pct = (mkt_val / total_val * 100) if total_val > 0 else 0.0
-            
+
             table.add_row(
                 ticker,
                 trend,
                 f"{quantity:,.4f}",
                 f"${price:,.2f}",
                 f"${mkt_val:,.2f}",
-                f"{alloc_pct:>.1f}%"
+                f"{alloc_pct:>.1f}%",
             )
 
         self.console.print(table)
@@ -782,84 +749,131 @@ class ClientManager:
         self.console.print(Align.right(footer_panel))
 
     def add_holding_workflow(self, account: Account):
-        """Adds or updates a priced holding OR a manual/off-market asset without terminating the program."""
+        """Adds or updates a priced holding using proper lot-based acquisition."""
 
-        self.console.print("\n[dim]Enter Ticker alone OR 'Ticker Quantity' (e.g. 'NVDA 10').[/dim]")
-        self.console.print("[dim]Type 'MANUAL' to add an off-market asset (estimated value).[/dim]")
+        self.console.print("\n[dim]Enter Ticker (e.g. 'AAPL'). Type 'MANUAL' for off-market assets.[/dim]")
 
-        raw_input = ""
         try:
-            raw_input = (self.console.input("[bold cyan]Ticker Input:[/bold cyan] ") or "").strip()
+            raw = (self.console.input("[bold cyan]Ticker Input:[/bold cyan] ") or "").strip()
         except Exception:
-            raw_input = ""
+            raw = ""
 
-        if not raw_input:
+        if not raw:
             InputSafe.pause()
             return
 
-        if raw_input.strip().lower() in ("manual", "m", "off", "offmarket", "off-market"):
+        if raw.lower() in ("manual", "m", "off", "offmarket", "off-market"):
             self._add_manual_holding_workflow(account)
             InputSafe.pause()
             return
 
-        # Parse "TICKER [QTY]"
-        parts = raw_input.split()
-        ticker = parts[0].strip().upper()
-        quantity = None
+        ticker = raw.upper()
 
-        if len(parts) >= 2:
-            try:
-                quantity = float(parts[1])
-            except Exception:
-                self.console.print(f"[red]Could not parse quantity '{parts[1]}'.[/red]")
-                InputSafe.pause()
-                return
+        # --- Acquisition Method Selection ---
+        self.console.print("\n[bold gold1]How are you adding this position?[/bold gold1]")
+        self.console.print("[1] Current Market Price (today)")
+        self.console.print("[2] Historical Price (date-based lot)")
+        self.console.print("[3] Custom Cost Basis")
+        self.console.print("[0] Cancel")
 
-        # Quote feedback (never raises; always returns dict)
-        quote = self.valuation_engine.get_quote_data(ticker)
-        price = float(quote.get("price", 0.0) or 0.0)
-        trend = float(quote.get("change_pct", quote.get("pct", 0.0)) or 0.0)
-        if price > 0:
-            self.console.print(f"   [dim]Price: ${price:,.2f} | Trend: {trend:+.2f}% | Source: {quote.get('source','N/A')}[/dim]")
-        else:
-            err = quote.get("error", "") or "Could not fetch live price."
-            self.console.print(f"   [yellow]Warning: {err}[/yellow]")
-            self.console.print("   [dim]You can still store the ticker + qty; valuation will show $0 until pricing is available.[/dim]")
+        choice = InputSafe.get_option(["1", "2", "3", "0"], prompt_text="[>]")
 
-        # Prompt for quantity if needed
-        if quantity is None:
-            qty_str = ""
-            try:
-                qty_str = (self.console.input(f"[bold cyan]Quantity for {ticker}:[/bold cyan] ") or "").strip()
-            except Exception:
-                qty_str = ""
+        if choice == "0":
+            return
 
-            if not qty_str:
-                InputSafe.pause()
-                return
-
-            try:
-                quantity = float(qty_str)
-            except Exception:
-                self.console.print("[red]Invalid quantity.[/red]")
-                InputSafe.pause()
-                return
-
-        if quantity < 0:
-            self.console.print("[red]Quantity cannot be negative.[/red]")
+        # Quantity (required for all lot types)
+        try:
+            qty_raw = (self.console.input(f"[bold cyan]Quantity for {ticker}:[/bold cyan] ") or "").strip()
+            quantity = float(qty_raw)
+        except Exception:
+            self.console.print("[red]Invalid quantity.[/red]")
             InputSafe.pause()
             return
 
-        account.holdings[ticker] = float(quantity)
-        self.console.print(f"[green]Successfully set {ticker} to {quantity:,.4f} shares.[/green]")
+        if quantity <= 0:
+            self.console.print("[red]Quantity must be greater than zero.[/red]")
+            InputSafe.pause()
+            return
+
+        # Delegate lot creation
+        self._add_lot_from_choice(account, ticker, quantity, choice)
+
+        account.sync_holdings_from_lots()
 
         try:
-            DataHandler.save_clients(self.clients)  # Auto-save
+            DataHandler.save_clients(self.clients)
         except Exception as ex:
             self.console.print(f"[red]Warning: Could not auto-save client data: {ex}[/red]")
 
-        account.sync_holdings_from_lots() # Keep aggregate holdings in sync
         InputSafe.pause()
+
+    def _add_lot_from_choice(self, account: Account, ticker: str, quantity: float, choice: str):
+        """Creates a lot entry based on acquisition method without altering valuation logic."""
+
+        from datetime import datetime
+
+        lots = account.lots.setdefault(ticker, [])
+
+        # --- Option 1: Current Market Price ---
+        if choice == "1":
+            quote = self.valuation_engine.get_quote_data(ticker)
+            price = float(quote.get("price", 0.0) or 0.0)
+
+            if price <= 0:
+                self.console.print("[yellow]Warning: Live price unavailable. Basis set to $0.00[/yellow]")
+
+            lot = {
+                "qty": quantity,
+                "basis": price,
+                "date": datetime.utcnow().strftime("%Y-%m-%d"),
+            }
+
+            lots.append(lot)
+            self.console.print(f"[green]Added lot for {ticker} at current market price.[/green]")
+
+        # --- Option 2: Historical Price ---
+        elif choice == "2":
+            date = self.console.input("[bold cyan]Acquisition Date (YYYY-MM-DD):[/bold cyan] ").strip()
+
+            try:
+                hist = self.valuation_engine.yahoo.get_detailed_quote(
+                    ticker,
+                    period="max",
+                    interval="1d"
+                )
+                history = hist.get("history", [])
+                basis = float(history[-1]) if history else 0.0
+            except Exception:
+                basis = 0.0
+
+            lot = {
+                "qty": quantity,
+                "basis": basis,
+                "date": date,
+            }
+
+            lots.append(lot)
+            self.console.print(f"[green]Added historical lot for {ticker}.[/green]")
+
+        # --- Option 3: Custom Cost Basis ---
+        elif choice == "3":
+            try:
+                basis_raw = (self.console.input("[bold cyan]Cost Basis per Share ($):[/bold cyan] ") or "").strip()
+                basis = float(basis_raw)
+            except Exception:
+                self.console.print("[red]Invalid cost basis.[/red]")
+                return
+
+            date = self.console.input("[dim]Acquisition Date (optional): [/dim]").strip() or "CUSTOM"
+
+            lot = {
+                "qty": quantity,
+                "basis": basis,
+                "date": date,
+            }
+
+            lots.append(lot)
+            self.console.print(f"[green]Added custom-basis lot for {ticker}.[/green]")
 
     def _add_manual_holding_workflow(self, account: Account):
         """Adds or updates an off-market/manual asset (estimated value)."""

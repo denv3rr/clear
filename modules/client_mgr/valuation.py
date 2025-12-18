@@ -321,21 +321,10 @@ class ValuationEngine:
     ) -> list[float]:
         """\
         Reconstructs the portfolio's aggregate history (for a main dashboard chart).
-        
-        CRITICAL MATH NOTE:
-        Since Yahoo data returns lists of varying lengths (due to holidays, 
-        listing dates, or data gaps), we must align by time.
-        
-        Without distinct DateTime keys, we assume the END of the list is "NOW".
-        We iterate BACKWARDS (right-alignment) to ensure the current valuation
-        is accurate and the history walks back in lockstep. This prevents
-        offsetting recent data against old data.
         """
-        # Note: We import inside method to avoid circular import issues if modules change
         from modules.client_mgr.manager import INTERVAL_POINTS
 
-        # Get expected points, but we will dynamically adjust to available data
-        expected_points = INTERVAL_POINTS.get(interval, 22)
+        points = INTERVAL_POINTS.get(interval, 22)
 
         if not enriched_data or not holdings:
             return []
@@ -343,46 +332,38 @@ class ValuationEngine:
         histories: List[List[float]] = []
         quantities: List[float] = []
 
-        # Collect histories for valid holdings
         for t, info in enriched_data.items():
             hist = info.get("history", []) or []
             if not hist:
                 continue
-            
             try:
                 qty = float(info.get("quantity", holdings.get(t, 0.0)) or 0.0)
             except Exception:
                 qty = 0.0
-            
-            # Sanitize history to floats
-            clean_hist = [float(x) for x in hist if x is not None]
-            if clean_hist:
-                histories.append(clean_hist)
-                quantities.append(qty)
+            histories.append([float(x) for x in hist if x is not None])
+            quantities.append(qty)
 
         if not histories:
             return []
 
-        # Find the minimum available history length to ensure overlap validity
-        min_len = min(len(h) for h in histories)
+        min_len = min(len(h) for h in histories if h)
         if min_len <= 0:
             return []
 
-        # Construct aggregate history (Right-Aligned / Backwards)
-        out_reversed: List[float] = []
-        
-        # We iterate i from 1 to min_len (inclusive) and access index [-i]
-        for i in range(1, min_len + 1):
-            daily_total = 0.0
-            for j in range(len(histories)):
+        out: List[float] = []
+        idx = 0
+        while idx < min_len:
+            total = 0.0
+            j = 0
+            while j < len(histories):
                 try:
-                    # Right-aligned access: [-1] is latest, [-2] is yesterday, etc.
-                    price = histories[j][-i]
-                    qty = quantities[j]
-                    daily_total += price * qty
-                except IndexError:
-                    pass # Should be covered by min_len, but safety first
-            out_reversed.append(daily_total)
+                    total += histories[j][idx] * quantities[j]
+                except Exception:
+                    pass
+                j += 1
+            out.append(total)
+            idx += 1
 
-        # Reverse back to chronological order (Oldest -> Newest)
-        return out_reversed[::-1]
+        return out
+
+
