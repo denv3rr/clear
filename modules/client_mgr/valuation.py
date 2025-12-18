@@ -305,10 +305,19 @@ class ValuationEngine:
     # Aggregate history (dashboard)
     # -------------------------------
 
-    def generate_synthetic_portfolio_history(self, enriched_data: Dict[str, Any], holdings: Dict[str, float]) -> List[float]:
+    def generate_synthetic_portfolio_history(
+        self,
+        enriched_data: dict,
+        holdings: dict,
+        interval: str = "1M",
+    ) -> list[float]:
         """\
         Reconstructs the portfolio's aggregate history (for a main dashboard chart).
         """
+        from modules.client_mgr.manager import INTERVAL_POINTS
+
+        points = INTERVAL_POINTS.get(interval, 22)
+
         if not enriched_data or not holdings:
             return []
 

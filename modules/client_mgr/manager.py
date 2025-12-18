@@ -168,7 +168,11 @@ class ClientManager:
         total_val, enriched_data = self.valuation_engine.calculate_portfolio_value(all_holdings)
         
         # 3. Generate Portfolio History Chart
-        port_history = self.valuation_engine.generate_synthetic_portfolio_history(enriched_data, all_holdings)
+        port_history = self.valuation_engine.generate_synthetic_portfolio_history(
+            enriched_data,
+            all_holdings,
+            interval=interval
+        )
         n = INTERVAL_POINTS.get(interval, 22)
         port_series = port_history[-n:]
         port_sparkline = ChartRenderer.generate_sparkline(port_series, length=n)
@@ -309,8 +313,8 @@ class ClientManager:
             self.console.print(f"\n[bold gold1]CLIENT OPTIONS | {client.name}[/bold gold1]")
             self.console.print("[1] 📝 Edit Client Profile")
             self.console.print("[2] 💰 Manage Accounts & Holdings")
-            self.console.print("[3] 🛠️ Financial Toolkit (Models & Analysis)")
-            self.console.print("[4] ⏱ Change Interval (page-wide)")
+            self.console.print("[3] 🛠️ Tools (Models & Analysis)")
+            self.console.print("[4] ⏱  Change Interval (portfolio-wide)")
             self.console.print("[0] 🔙 Return to Client List")
             
             choice = InputSafe.get_option(["1", "2", "3", "4", "0"], prompt_text="[>]")
@@ -323,7 +327,6 @@ class ClientManager:
             elif choice == "2":
                 self.manage_accounts_workflow(client)
             elif choice == "3":
-                # LAUNCH TOOLKIT
                 toolkit = FinancialToolkit(client)
                 toolkit.run()
             elif choice == "4":
@@ -422,13 +425,10 @@ class ClientManager:
             title_grid.add_column(justify="left")
             title_grid.add_column(justify="right")
             title_grid.add_row(
-                f"[bold gold1]ACCOUNT DASHBOARD[/bold gold1]"
+                f"[bold gold1]ACCOUNT DASHBOARD[/bold gold1] [bold white]|[/bold white] [bold gold1]([/bold gold1]{account.account_name}[bold gold1])[/bold gold1] [bold white]|[/bold white] [bold gold1]([/bold gold1]{account.account_type}[bold gold1])[/bold gold1]"
             )
             title_grid.add_row(Rule(style="bold white"))
             title_grid.add_row(f"[bold gold1]CLIENT:[/bold gold1] {client.name}", f"[dim]ID: {client.client_id}[/dim]")
-            title_grid.add_row(
-                f"[bold gold1]Account:[/bold gold1] {account.account_name} ({account.account_type})",
-            )
             title_grid.add_row(f"[bold gold1]Interval:[/bold gold1] [bold white]([/bold white][bold green]{interval}[/bold green][bold white])[/bold white]")
             self.console.print(Panel(title_grid, style="on black", box=box.SQUARE))
 
@@ -497,7 +497,8 @@ class ClientManager:
 
             acc_history = self.valuation_engine.generate_synthetic_portfolio_history(
                 acc_enriched,
-                account.holdings
+                account.holdings,
+                interval=interval
             )
 
             chart_body = Text("No historical data available.", style="dim")
@@ -538,7 +539,7 @@ class ClientManager:
                 chart_body,
                 title=f"[bold]Account Value Over Time [bold white]([/bold white][bold green]{interval}[/bold green][bold white])[/bold white][/bold]",
                 box=box.HEAVY,
-                padding=(1, 2),
+                padding=(3, 2),
             )
 
             # ---------------- COMBINED LAYOUT ----------------
@@ -575,9 +576,10 @@ class ClientManager:
             self.console.print("[1] ➕ Add/Update Holding (Ticker & Qty)")
             self.console.print("[2] ➖ Remove Holding")
             self.console.print("[3] 📝 Edit Account Details")
+            self.console.print("[4] ⏱  Change Interval (portfolio-wide)")
             self.console.print("[0] 🔙 Return to Accounts")
             
-            choice = InputSafe.get_option(["1", "2", "3", "0"], prompt_text="[>]")
+            choice = InputSafe.get_option(["1", "2", "3", "4", "0"], prompt_text="[>]")
 
             if choice == "0":
                 break
@@ -587,6 +589,8 @@ class ClientManager:
                 self.remove_holding_workflow(account)
             elif choice == "3":
                 self.edit_account_workflow(account)
+            elif choice == "4":
+                self._change_interval_workflow(client)
 
     # --- HOLDINGS & DETAILS LOGIC ---
 
@@ -605,7 +609,8 @@ class ClientManager:
 
         acc_history = self.valuation_engine.generate_synthetic_portfolio_history(
             acc_enriched,
-            account.holdings
+            account.holdings,
+            interval=interval
         )
 
         # --- Account value-over-time chart (interval-driven) ---
@@ -642,7 +647,7 @@ class ClientManager:
         self.console.print(
             Panel(
                 chart_body,
-                title=f"[bold]Account Value Trend[/bold] [bold white]([/bold white][bold green]{interval}[/bold green][bold white])[/bold white]",
+                title=f"[bold]Account Value Over Time [/bold] [bold white]([/bold white][bold green]{interval}[/bold green][bold white])[/bold white]",
                 box=box.HEAVY,
                 padding=(1, 2),
             )

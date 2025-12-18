@@ -183,7 +183,7 @@ class MarketFeed:
 
         ticker_panel = Panel(
             Align.center(table),
-            title=f"[bold gold1]MACRO DASHBOARD ({view_label})[/bold gold1]",
+            title=f"[bold gold1]MACRO DASHBOARD ([bold green]{view_label}[/bold green])[/bold gold1]",
             border_style="yellow",
             box=box.ROUNDED,
             padding=(0, 2),
