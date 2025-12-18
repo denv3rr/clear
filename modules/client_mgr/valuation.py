@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import concurrent.futures
 import time
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from modules.market_data.finnhub_client import FinnhubWrapper
 from modules.market_data.yfinance_client import YahooWrapper
-
 
 class ValuationEngine:
     """\
@@ -82,7 +82,7 @@ class ValuationEngine:
                     "price": price,
                     "change": chg,
                     "pct": pct,
-                    "change_pct": pct,  # alias for UI compatibility
+                    "change_pct": pct,
                     "currency": "USD",
                     "timestamp": ts,
                     "source": "Finnhub",

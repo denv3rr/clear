@@ -1,3 +1,9 @@
+# CLIENT AND ACCOUNT MANAGER MAIN
+# TO-DO:
+
+# Fix lot timestamps and related pricing calculations for historical data
+# Fix cost basis averages as a result of above issue
+
 from rich.console import Console
 from rich.console import Group
 from rich.table import Table
@@ -37,7 +43,7 @@ HISTORY_PERIOD = {
 }
 
 # Maps active_interval to the data granularity
-# CRITICAL: 1W needs 60m data to have enough points for Regime/Volatility math
+# NOTE: 1W needs 60m data to have enough points for Regime/Volatility related math
 HISTORY_INTERVAL_MAP = {
     "1W": "60m", 
     "1M": "1d",
@@ -635,30 +641,22 @@ class ClientManager:
             reverse=True,
         )
 
-        for ticker, quantity in sorted_holdings:
+        for ticker, total_qty in sorted_holdings:
+            data = enriched_data.get(ticker, {})
             lots = account.lots.get(ticker, [])
 
-            # --- Lot Subheaders (dim) ---
+            live_price = float(data.get("price", 0.0) or 0.0)
+            mkt_val = float(data.get("market_value", 0.0) or 0.0)
+            change_pct = float(data.get("change_pct", 0.0) or 0.0)
+
+            # --- Weighted Avg Cost Basis ---
+            avg_cost = 0.0
             if lots:
-                table.add_row(
-                    Text(f"{ticker} lots:", style="dim"),
-                    "", "", "", "", ""
-                )
-                for i, lot in enumerate(lots, 1):
-                    table.add_row(
-                        Text(f"  └─ Lot {i}", style="dim"),
-                        "",
-                        Text(f"{lot['qty']:,.4f}", style="dim", justify="right"),
-                        Text(f"${lot['basis']:,.2f}", style="dim", justify="right"),
-                        Text(lot.get("date", ""), style="dim"),
-                        "",
-                    )
+                total_cost = sum(float(l["qty"]) * float(l["basis"]) for l in lots)
+                total_lot_qty = sum(float(l["qty"]) for l in lots)
+                avg_cost = (total_cost / total_lot_qty) if total_lot_qty > 0 else 0.0
 
-            data = enriched_data.get(ticker, {})
-            mkt_val = data.get("market_value", 0.0)
-            price = data.get("price", 0.0)
-            change_pct = data.get("change_pct", 0.0)
-
+            # --- Trend Indicator (market-based, unchanged) ---
             if change_pct > 0:
                 trend = Text("▲", style="bold green")
             elif change_pct < 0:
@@ -668,14 +666,26 @@ class ClientManager:
 
             alloc_pct = (mkt_val / total_val * 100) if total_val > 0 else 0.0
 
+            # --- MAIN TICKER ROW ---
             table.add_row(
                 ticker,
                 trend,
-                f"{quantity:,.4f}",
-                f"${price:,.2f}",
+                f"{total_qty:,.4f}",
+                f"${avg_cost:,.2f}",
                 f"${mkt_val:,.2f}",
                 f"{alloc_pct:>.1f}%",
             )
+
+            # --- LOT ROWS (IMMEDIATELY UNDER TICKER) ---
+            for i, lot in enumerate(lots, 1):
+                table.add_row(
+                    Text(f"  └─ Lot {i}", style="dim"),
+                    "",
+                    Text(f"{lot['qty']:,.4f}", style="dim", justify="right"),
+                    Text(f"${lot['basis']:,.2f}", style="dim", justify="right"),
+                    Text(lot.get("timestamp", "N/A"), style="dim"),
+                    "",
+                )
 
         self.console.print(table)
 
@@ -772,7 +782,7 @@ class ClientManager:
         # --- Acquisition Method Selection ---
         self.console.print("\n[bold gold1]How are you adding this position?[/bold gold1]")
         self.console.print("[1] Current Market Price (today)")
-        self.console.print("[2] Historical Price (date-based lot)")
+        self.console.print("[2] Historical Price (date-time-based lot)")
         self.console.print("[3] Custom Cost Basis")
         self.console.print("[0] Cancel")
 
@@ -825,7 +835,7 @@ class ClientManager:
             lot = {
                 "qty": quantity,
                 "basis": price,
-                "date": datetime.utcnow().strftime("%Y-%m-%d"),
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             }
 
             lots.append(lot)
@@ -833,8 +843,17 @@ class ClientManager:
 
         # --- Option 2: Historical Price ---
         elif choice == "2":
-            date = self.console.input("[bold cyan]Acquisition Date (YYYY-MM-DD):[/bold cyan] ").strip()
+            ts_raw = self.console.input(
+                "[bold cyan]Acquisition Date/Time (YYYY-MM-DD HH:MM:SS):[/bold cyan] "
+            ).strip()
 
+            try:
+                lot_dt = datetime.strptime(ts_raw, "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                self.console.print("[red]Invalid timestamp format.[/red]")
+                return
+
+            basis = 0.0
             try:
                 hist = self.valuation_engine.yahoo.get_detailed_quote(
                     ticker,
@@ -842,14 +861,21 @@ class ClientManager:
                     interval="1d"
                 )
                 history = hist.get("history", [])
-                basis = float(history[-1]) if history else 0.0
+                dates = hist.get("dates", [])
+
+                # find closest price at or before timestamp
+                for d, p in zip(dates, history):
+                    if d <= lot_dt:
+                        basis = float(p)
+                    else:
+                        break
             except Exception:
                 basis = 0.0
 
             lot = {
                 "qty": quantity,
                 "basis": basis,
-                "date": date,
+                "timestamp": ts_raw,
             }
 
             lots.append(lot)
@@ -864,12 +890,12 @@ class ClientManager:
                 self.console.print("[red]Invalid cost basis.[/red]")
                 return
 
-            date = self.console.input("[dim]Acquisition Date (optional): [/dim]").strip() or "CUSTOM"
+            timestamp = self.console.input("[dim]Acquisition Date/Time (optional): [/dim]").strip() or "CUSTOM"
 
             lot = {
                 "qty": quantity,
                 "basis": basis,
-                "date": date,
+                "timestamp": timestamp,
             }
 
             lots.append(lot)
@@ -1064,12 +1090,12 @@ class ClientManager:
             # Display Lots in the EXACT SAME TABLE FORMAT
             table = Table(title=f"Tax Lots: {ticker}", box=box.ROUNDED, expand=True)
             table.add_column("#", style="dim")
-            table.add_column("Date", style="cyan")
+            table.add_column("Timestamp", style="cyan")
             table.add_column("Quantity", justify="right")
             table.add_column("Cost Basis", justify="right", style="green")
             
             for i, lot in enumerate(lots, 1):
-                table.add_row(str(i), lot.get("date", "N/A"), f"{lot['qty']:.2f}", f"${lot['basis']:.2f}")
+                table.add_row(str(i), lot.get("timestamp", "N/A"), f"{lot['qty']:.2f}", f"${lot['basis']:.2f}")
             
             self.console.print(table)
             self.console.print("\n[1] ➕ Add Lot | [2] 📝 Edit Lot | [3] 🗑️ Delete Lot | [0] Done")
@@ -1080,8 +1106,8 @@ class ClientManager:
             if choice == "1":
                 qty = InputSafe.get_float("Quantity:")
                 basis = InputSafe.get_float("Cost Basis per share:")
-                date = self.console.input("Acquisition Date (YYYY-MM-DD): ")
-                lots.append({"qty": qty, "basis": basis, "date": date})
+                timestamp = self.console.input("Acquisition Timestamp (YYYY-MM-DD H:M:S): ")
+                lots.append({"qty": qty, "basis": basis, "timestamp": timestamp})
             
             elif choice == "2" and lots:
                 idx = int(InputSafe.get_option([str(i) for i in range(1, len(lots)+1)])) - 1

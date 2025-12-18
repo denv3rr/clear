@@ -19,7 +19,7 @@ class Account:
     # name, quantity, unit_price, total_value, currency, notes
     manual_holdings: List[Dict[str, Any]] = field(default_factory=list)
 
-    # Lot-based structure: { "TICKER": [ {"qty": float, "basis": float, "date": "YYYY-MM-DD"}, ... ] }
+    # Lot-based structure: { "TICKER": [ {"qty": float, "basis": float, "timestamp": "YYYY-MM-DD | H:M:S"}, ... ] }
     lots: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
 
     def sync_holdings_from_lots(self):
@@ -30,8 +30,7 @@ class Account:
         - It does not delete legacy holdings entries for tickers that have no lots yet.
         - It normalizes tickers to uppercase to prevent duplicate keys (e.g., 'aapl' vs 'AAPL').
         """
-        # Preserve any legacy holdings tickers that do not yet have lots, then override
-        # any tickers that *do* have lots with the recomputed aggregate.
+        
         new_holdings = dict(self.holdings or {})
         lots_map = self.lots if isinstance(self.lots, dict) else {}
         for raw_ticker, lot_list in lots_map.items():
@@ -47,6 +46,57 @@ class Account:
                         continue
             new_holdings[ticker] = float(total_qty)
         self.holdings = new_holdings
+
+    @staticmethod
+    def from_dict(data: Dict[str, Any]) -> "Client":
+        client = Client(
+            client_id=data.get("client_id", str(uuid.uuid4())),
+            name=data.get("name", "New Client"),
+            risk_profile=data.get("risk_profile", "Moderate"),
+            active_interval=data.get("active_interval", "1M"),
+            accounts=[]
+        )
+
+        for acc_data in data.get("accounts", []):
+            # -----------------------------
+            # LOT MIGRATION
+            # -----------------------------
+            raw_lots = acc_data.get("lots", {}) or {}
+            normalized_lots: Dict[str, List[Dict[str, Any]]] = {}
+
+            for raw_ticker, lot_list in raw_lots.items():
+                ticker = str(raw_ticker).strip().upper()
+                fixed_lots = []
+
+                for lot in lot_list or []:
+                    if not isinstance(lot, dict):
+                        continue
+
+                    # Backfill missing timestamp
+                    if not lot.get("timestamp"):
+                        lot["timestamp"] = "LEGACY"
+
+                    fixed_lots.append(lot)
+
+                normalized_lots[ticker] = fixed_lots
+
+            client.accounts.append(
+                Account(
+                    account_id=acc_data.get("account_id", str(uuid.uuid4())),
+                    account_name=acc_data.get("account_name", "Brokerage Account"),
+                    account_type=acc_data.get("account_type", "Taxable"),
+                    current_value=acc_data.get("current_value", 0.0),
+                    holdings=acc_data.get("holdings", {}) or {},
+                    manual_holdings=acc_data.get("manual_holdings", []) or [],
+                    active_interval=acc_data.get(
+                        "active_interval",
+                        data.get("active_interval", "1M")
+                    ),
+                    lots=normalized_lots,
+                )
+            )
+
+        return client
 
     def to_dict(self) -> Dict[str, Any]:
         return {
