@@ -705,6 +705,18 @@ class RegimeModels:
                 ]
             },
         }
+    
+    @staticmethod
+    def _bin_returns_sigma(returns: pd.Series) -> pd.Series:
+        """Bins returns using Standard Deviation thresholds for stability."""
+        mu = returns.mean()
+        std = returns.std()
+        
+        # Thresholds: +/- 1.0 sigma for Mild, +/- 2.0 sigma for Strong
+        bins = [-np.inf, mu - 2*std, mu - std, mu + std, mu + 2*std, np.inf]
+        labels = ["Strong Down", "Mild Down", "Neutral", "Mild Up", "Strong Up"]
+        
+        return pd.cut(returns, bins=bins, labels=labels)
 
     @staticmethod
     def _discretize(returns, bins):

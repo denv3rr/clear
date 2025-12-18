@@ -15,11 +15,19 @@ class Account:
 
     holdings: Dict[str, float] = field(default_factory=dict)
 
+    # Standardized lot structure
+    # { "NVDA": [ {"qty": 500, "basis": 120.0, "date": "2023-01-01"}, ... ] }
     lots: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
 
     # Manual/off-market holdings (estimated). Each item can contain:
     # name, quantity, unit_price, total_value, currency, notes
     manual_holdings: List[Dict[str, Any]] = field(default_factory=list)
+
+    def sync_holdings_from_lots(self):
+        """Calculates aggregate holdings quantity from the sum of all lots."""
+        self.holdings = {}
+        for ticker, lot_list in self.lots.items():
+            self.holdings[ticker] = sum(float(l.get("qty", 0)) for l in lot_list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -28,6 +36,7 @@ class Account:
             "account_type": self.account_type,
             "current_value": self.current_value,
             "holdings": self.holdings,
+            "lots": self.lots,
             "manual_holdings": self.manual_holdings,
             "active_interval": self.active_interval,
             "lots": self.lots,

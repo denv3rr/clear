@@ -858,6 +858,7 @@ class ClientManager:
         except Exception as ex:
             self.console.print(f"[red]Warning: Could not auto-save client data: {ex}[/red]")
 
+        account.sync_holdings_from_lots() # Keep aggregate holdings in sync
         InputSafe.pause()
 
     def _add_manual_holding_workflow(self, account: Account):
@@ -956,6 +957,8 @@ class ClientManager:
         except Exception as ex:
             self.console.print(f"[red]Warning: Could not auto-save client data: {ex}[/red]")
 
+        account.sync_holdings_from_lots() # Keep aggregate holdings in sync
+
     def remove_holding_workflow(self, account: Account):
         """Removes a priced holding, or a manual/off-market asset."""
 
@@ -1020,6 +1023,7 @@ class ClientManager:
             except Exception as ex:
                 self.console.print(f"[red]Warning: Could not auto-save client data: {ex}[/red]")
 
+            account.sync_holdings_from_lots() # Keep aggregate holdings in sync
             InputSafe.pause()
             return
 
@@ -1035,6 +1039,43 @@ class ClientManager:
             self.console.print(f"[red]Ticker '{ticker}' not found.[/red]")
 
         InputSafe.pause()
+
+    def edit_lots_workflow(self, account: Account, ticker: str):
+        """Sub-workflow to manage specific tax lots for a holding."""
+        while True:
+            self.console.clear()
+            ticker = ticker.upper()
+            lots = account.lots.get(ticker, [])
+            
+            # Display Lots in the EXACT SAME TABLE FORMAT
+            table = Table(title=f"Tax Lots: {ticker}", box=box.ROUNDED, expand=True)
+            table.add_column("#", style="dim")
+            table.add_column("Date", style="cyan")
+            table.add_column("Quantity", justify="right")
+            table.add_column("Cost Basis", justify="right", style="green")
+            
+            for i, lot in enumerate(lots, 1):
+                table.add_row(str(i), lot.get("date", "N/A"), f"{lot['qty']:.2f}", f"${lot['basis']:.2f}")
+            
+            self.console.print(table)
+            self.console.print("\n[1] ➕ Add Lot | [2] 📝 Edit Lot | [3] 🗑️ Delete Lot | [0] Done")
+            
+            choice = InputSafe.get_option(["1", "2", "3", "0"])
+            if choice == "0": break
+            
+            if choice == "1":
+                qty = InputSafe.get_float("Quantity:")
+                basis = InputSafe.get_float("Cost Basis per share:")
+                date = self.console.input("Acquisition Date (YYYY-MM-DD): ")
+                lots.append({"qty": qty, "basis": basis, "date": date})
+            
+            elif choice == "2" and lots:
+                idx = int(InputSafe.get_option([str(i) for i in range(1, len(lots)+1)])) - 1
+                lots[idx]["basis"] = InputSafe.get_float(f"New Basis (Current: {lots[idx]['basis']}):")
+                lots[idx]["qty"] = InputSafe.get_float(f"New Quantity (Current: {lots[idx]['qty']}):")
+                
+            account.lots[ticker] = lots
+            account.sync_holdings_from_lots() # Keep aggregate holdings in sync
 
     # --- ACCOUNT CRUD (Create/Update/Delete) ---
 
