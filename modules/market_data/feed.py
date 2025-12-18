@@ -23,8 +23,9 @@ class MarketFeed:
         self.current_interval = "15m"
         
         # Preset Intervals
+        # Format: (Display Label, API Period, API Interval)
         self.interval_options = [
-            ("1D", "1d", "15m"),   # Label, Period, Interval
+            ("1D", "1d", "15m"),   
             ("5D", "5d", "60m"),
             ("1M", "1mo", "1d"),
             ("3M", "3mo", "1d"),

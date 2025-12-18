@@ -124,7 +124,7 @@ class ValuationEngine:
         "error": f"Could not fetch live price for {t}",
         }
 
-    def get_detailed_data(self, ticker: str) -> Dict[str, Any]:
+    def get_detailed_data(self, ticker: str, period: str = "1mo", interval: str = "1d") -> Dict[str, Any]:
         """\
         Fetches richer data used for account/portfolio tables (includes history for sparklines).
         Prefers Yahoo for history, falls back to Finnhub for price-only.
@@ -132,7 +132,7 @@ class ValuationEngine:
         t = self._normalize_ticker(ticker)
 
         try:
-            data = self.yahoo.get_detailed_quote(t, period="1mo", interval="1d")
+            data = self.yahoo.get_detailed_quote(t, period=period, interval=interval)
             if isinstance(data, dict) and "error" not in data:
                 # Ensure key consistency
                 data["ticker"] = data.get("ticker", t)
@@ -163,7 +163,12 @@ class ValuationEngine:
     # Portfolio valuation
     # -------------------------------
 
-    def calculate_portfolio_value(self, holdings: Dict[str, float]) -> Tuple[float, Dict[str, Any]]:
+    def calculate_portfolio_value(
+        self,
+        holdings: Dict[str, float],
+        history_period: str = "1mo",
+        history_interval: str = "1d",
+    ) -> Tuple[float, Dict[str, Any]]:
         """\
         Threaded calculation of market-priced holdings.
 
@@ -183,7 +188,10 @@ class ValuationEngine:
         unique_tickers = sorted(set(tickers))
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            future_to_ticker = {executor.submit(self.get_detailed_data, t): t for t in unique_tickers}
+            future_to_ticker = {
+                executor.submit(self.get_detailed_data, t, history_period, history_interval): t
+                for t in unique_tickers
+            }
 
             for future in concurrent.futures.as_completed(future_to_ticker):
                 t = future_to_ticker[future]
@@ -313,10 +321,21 @@ class ValuationEngine:
     ) -> list[float]:
         """\
         Reconstructs the portfolio's aggregate history (for a main dashboard chart).
+        
+        CRITICAL MATH NOTE:
+        Since Yahoo data returns lists of varying lengths (due to holidays, 
+        listing dates, or data gaps), we must align by time.
+        
+        Without distinct DateTime keys, we assume the END of the list is "NOW".
+        We iterate BACKWARDS (right-alignment) to ensure the current valuation
+        is accurate and the history walks back in lockstep. This prevents
+        offsetting recent data against old data.
         """
+        # Note: We import inside method to avoid circular import issues if modules change
         from modules.client_mgr.manager import INTERVAL_POINTS
 
-        points = INTERVAL_POINTS.get(interval, 22)
+        # Get expected points, but we will dynamically adjust to available data
+        expected_points = INTERVAL_POINTS.get(interval, 22)
 
         if not enriched_data or not holdings:
             return []
@@ -324,36 +343,46 @@ class ValuationEngine:
         histories: List[List[float]] = []
         quantities: List[float] = []
 
+        # Collect histories for valid holdings
         for t, info in enriched_data.items():
             hist = info.get("history", []) or []
             if not hist:
                 continue
+            
             try:
                 qty = float(info.get("quantity", holdings.get(t, 0.0)) or 0.0)
             except Exception:
                 qty = 0.0
-            histories.append([float(x) for x in hist if x is not None])
-            quantities.append(qty)
+            
+            # Sanitize history to floats
+            clean_hist = [float(x) for x in hist if x is not None]
+            if clean_hist:
+                histories.append(clean_hist)
+                quantities.append(qty)
 
         if not histories:
             return []
 
-        min_len = min(len(h) for h in histories if h)
+        # Find the minimum available history length to ensure overlap validity
+        min_len = min(len(h) for h in histories)
         if min_len <= 0:
             return []
 
-        out: List[float] = []
-        idx = 0
-        while idx < min_len:
-            total = 0.0
-            j = 0
-            while j < len(histories):
+        # Construct aggregate history (Right-Aligned / Backwards)
+        out_reversed: List[float] = []
+        
+        # We iterate i from 1 to min_len (inclusive) and access index [-i]
+        for i in range(1, min_len + 1):
+            daily_total = 0.0
+            for j in range(len(histories)):
                 try:
-                    total += histories[j][idx] * quantities[j]
-                except Exception:
-                    pass
-                j += 1
-            out.append(total)
-            idx += 1
+                    # Right-aligned access: [-1] is latest, [-2] is yesterday, etc.
+                    price = histories[j][-i]
+                    qty = quantities[j]
+                    daily_total += price * qty
+                except IndexError:
+                    pass # Should be covered by min_len, but safety first
+            out_reversed.append(daily_total)
 
-        return out
+        # Reverse back to chronological order (Oldest -> Newest)
+        return out_reversed[::-1]

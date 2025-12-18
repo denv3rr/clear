@@ -17,12 +17,32 @@ from modules.client_mgr.valuation import ValuationEngine
 from modules.client_mgr.toolkit import FinancialToolkit
 from modules.client_mgr.toolkit import RegimeModels, RegimeRenderer
 
+# Maps active_interval to the number of points we render on the sparkline
 INTERVAL_POINTS = {
-    "1W": 5,
+    "1W": 40,   # Increased point count for hourly data
     "1M": 22,
     "3M": 66,
     "6M": 132,
     "1Y": 252,
+}
+
+# Maps active_interval to the lookback period requested from Yahoo
+HISTORY_PERIOD = {
+    "1W": "5d",
+    "1M": "1mo",
+    "3M": "3mo",
+    "6M": "6mo",
+    "1Y": "1y",
+}
+
+# Maps active_interval to the data granularity
+# CRITICAL: 1W needs 60m data to have enough points for Regime/Volatility math
+HISTORY_INTERVAL_MAP = {
+    "1W": "60m", 
+    "1M": "1d",
+    "3M": "1d",
+    "6M": "1d",
+    "1Y": "1d",
 }
 
 CAPM_PERIOD = {
@@ -49,7 +69,12 @@ class ClientManager:
         Recalculates account value using the ValuationEngine and updates 
         the account's current_value field in place.
         """
-        total_value, _ = self.valuation_engine.calculate_portfolio_value(account.holdings)
+        # Default to 1M/1d for simple list view totals
+        total_value, _ = self.valuation_engine.calculate_portfolio_value(
+            account.holdings,
+            history_period="1mo",
+            history_interval="1d"
+        )
         account.current_value = total_value
         return total_value
 
@@ -124,35 +149,6 @@ class ClientManager:
         
         return Panel(details_grid, title="[bold blue]CLIENT DETAILS[/bold blue]", box=box.ROUNDED, width=100)
 
-    def _build_account_summary_table(self, client: Client) -> Tuple[Table, float]:
-        summary_table = Table(
-            title="\n\n\n[bold gold1]Portfolio Structure[/bold gold1]",
-            box=box.SIMPLE_HEAD,
-            expand=True,
-            header_style="bold cyan"
-        )
-        summary_table.add_column("ID", style="dim", width=8)
-        summary_table.add_column("Account Name")
-        summary_table.add_column("Type")
-        summary_table.add_column("Holdings", justify="center")
-        summary_table.add_column("Market Value", style="green", justify="right")
-        
-        total_portfolio_value = 0.0
-        
-        for account in client.accounts:
-            total_value = self._recalculate_account_value(account) 
-            total_portfolio_value += total_value
-            
-            summary_table.add_row(
-                account.account_id[:8],
-                account.account_name,
-                account.account_type,
-                str(len(account.holdings)),
-                f"${total_value:,.2f}"
-            )
-        
-        return summary_table, total_portfolio_value
-
     def display_client_dashboard(self, client: Client):
         """Composes and displays the client's main dashboard with CHARTS."""
 
@@ -164,8 +160,15 @@ class ClientManager:
             for t, q in acc.holdings.items():
                 all_holdings[t] = all_holdings.get(t, 0) + q
 
-        # 2. Fetch Data (Threaded)
-        total_val, enriched_data = self.valuation_engine.calculate_portfolio_value(all_holdings)
+        # 2. Fetch Data (Threaded) with CORRECT granularity
+        hp = HISTORY_PERIOD.get(interval, "1mo")
+        hi = HISTORY_INTERVAL_MAP.get(interval, "1d")
+
+        total_val, enriched_data = self.valuation_engine.calculate_portfolio_value(
+            all_holdings,
+            history_period=hp,
+            history_interval=hi,
+        )
         
         # 3. Generate Portfolio History Chart
         port_history = self.valuation_engine.generate_synthetic_portfolio_history(
@@ -173,9 +176,13 @@ class ClientManager:
             all_holdings,
             interval=interval
         )
-        n = INTERVAL_POINTS.get(interval, 22)
-        port_series = port_history[-n:]
-        port_sparkline = ChartRenderer.generate_sparkline(port_series, length=n)
+        
+        n_points = INTERVAL_POINTS.get(interval, 22)
+        # Right-aligned slicing provided by valuation logic, safe-guard view here
+        port_series = port_history[-n_points:] if port_history else []
+        render_n = min(n_points, len(port_series)) if port_series else 0
+        
+        port_sparkline = ChartRenderer.generate_sparkline(port_series, length=render_n) if render_n > 0 else Text("N/A", style="dim")
         
         # --- RENDER UI ---
         
@@ -254,7 +261,7 @@ class ClientManager:
                 if prev > 0:
                     returns.append((curr - prev) / prev)
 
-        if returns:
+        if returns and len(returns) >= 8:
             snapshot = RegimeModels.snapshot_from_value_series(
                 port_series,
                 interval=interval,
@@ -279,7 +286,7 @@ class ClientManager:
         acc_table.add_column("Est. Value", justify="right")
         
         for acc in client.accounts:
-            # We do a quick local calc here based on the enriched data we already have
+            # Quick local calc, reusing enriched prices
             acc_val = sum(enriched_data.get(t, {}).get('price', 0) * q for t, q in acc.holdings.items())
             acc_table.add_row(
                 acc.account_name,
@@ -411,12 +418,12 @@ class ClientManager:
     def manage_holdings_loop(self, client: Client, account: Account):
         """Dedicated loop for managing holdings for a single selected account."""
 
-        interval = getattr(client, "active_interval", getattr(account, "active_interval", "1M"))
-
-        # Ensure this account stays synced to the page-wide interval
-        account.active_interval = interval
-
         while True:
+            interval = getattr(client, "active_interval", getattr(account, "active_interval", "1M"))
+
+            # Ensure this account stays synced to the page-wide interval
+            account.active_interval = interval
+
             self.console.clear()
             print("\x1b[3J", end="")
 
@@ -437,8 +444,13 @@ class ClientManager:
             # ============================================================
 
             # --- Market valuation for this account ---
+            hp = HISTORY_PERIOD.get(interval, "1mo")
+            hi = HISTORY_INTERVAL_MAP.get(interval, "1d")
+
             acc_market_value, acc_enriched = self.valuation_engine.calculate_portfolio_value(
-                account.holdings
+                account.holdings,
+                history_period=hp,
+                history_interval=hi,
             )
 
             # --- Manual / off-market valuation ---
@@ -554,11 +566,12 @@ class ClientManager:
             # Regime History (Sub-accounts)
             returns = []
             history_for_regime = acc_history[-(INTERVAL_POINTS.get(interval, 22) + 1):]
-            for i in range(1, len(history_for_regime)):
-                prev = history_for_regime[i - 1]
-                curr = history_for_regime[i]
-                if prev > 0:
-                    returns.append((curr - prev) / prev)
+            if history_for_regime and len(history_for_regime) >= 2:
+                for i in range(1, len(history_for_regime)):
+                    prev = history_for_regime[i - 1]
+                    curr = history_for_regime[i]
+                    if prev > 0:
+                        returns.append((curr - prev) / prev)
 
             if len(returns) >= 8:
                 snapshot = RegimeModels.compute_markov_snapshot(
@@ -596,19 +609,21 @@ class ClientManager:
 
     def display_account_holdings(self, account: Account):
         """Renders the detailed holdings with robust pricing and trend data."""
-
-        interval = getattr(account, "active_interval", "1M")
         
         # Get enriched data from ValuationEngine
-        total_val, enriched_data = self.valuation_engine.calculate_portfolio_value(account.holdings)
+        interval = getattr(account, "active_interval", "1M")
+        hp = HISTORY_PERIOD.get(interval, "1mo")
+        hi = HISTORY_INTERVAL_MAP.get(interval, "1d")
+
+        total_val, enriched_data = self.valuation_engine.calculate_portfolio_value(
+            account.holdings,
+            history_period=hp,
+            history_interval=hi,
+        )
         
         # --- Generate account value history ---
-        acc_market_val, acc_enriched = self.valuation_engine.calculate_portfolio_value(
-            account.holdings
-        )
-
         acc_history = self.valuation_engine.generate_synthetic_portfolio_history(
-            acc_enriched,
+            enriched_data,
             account.holdings,
             interval=interval
         )
@@ -1129,6 +1144,7 @@ class ClientManager:
     def _set_page_interval(self, client: Client, interval: str):
         """Sets interval at the client level and propagates to all accounts for page-wide consistency."""
         if interval not in INTERVAL_POINTS:
+            # Fallback only if input was truly invalid, but user workflow below prevents this
             interval = "1M"
 
         client.active_interval = interval
@@ -1142,5 +1158,20 @@ class ClientManager:
     def _change_interval_workflow(self, client: Client):
         """Interactive interval selection that applies page-wide."""
         self.console.print("\n[bold gold1]Select Interval (page-wide):[/bold gold1]")
-        interval = InputSafe.get_option(list(INTERVAL_POINTS.keys()), prompt_text="[>]")
-        self._set_page_interval(client, interval)
+        
+        # Explicit mapping for robust input handling
+        options_list = list(INTERVAL_POINTS.keys()) # ['1W', '1M', '3M', '6M', '1Y']
+        
+        for i, opt in enumerate(options_list, 1):
+            self.console.print(f"[{i}] {opt}")
+            
+        # Get numeric input to map reliably to the key string
+        choice = InputSafe.get_option([str(i) for i in range(1, len(options_list)+1)] + ["0"], prompt_text="[>]")
+        
+        if choice == "0":
+            return
+            
+        # Map numeric choice back to the string key (e.g. "1" -> "1W")
+        selected_interval = options_list[int(choice) - 1]
+        
+        self._set_page_interval(client, selected_interval)
