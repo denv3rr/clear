@@ -22,13 +22,11 @@
 
 ---
 
-> [!WARNING]
->
-> Work in progress. Issues still present.
-
 <br>
 
 > [!NOTE]
+>
+> Work in progress. Issues still present.
 >
 > Also, don't say anything about the typo in the username.
 > <br>
