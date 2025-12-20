@@ -7,6 +7,7 @@ import io
 import warnings
 import contextlib
 import logging
+from collections import defaultdict
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 
@@ -24,6 +25,10 @@ from modules.client_mgr.valuation import ValuationEngine
 # Cache for CAPM computations to avoid redundant API calls
 _CAPM_CACHE = {}  # key -> {"ts": int, "data": dict}
 _CAPM_TTL_SECONDS = 900  # 15 minutes
+
+# Interval presets for toolkit models
+TOOLKIT_PERIOD = {"1W": "1mo", "1M": "6mo", "3M": "1y", "6M": "2y", "1Y": "5y"}
+TOOLKIT_INTERVAL = {"1W": "60m", "1M": "1d", "3M": "1d", "6M": "1d", "1Y": "1d"}
 
 # Suppress yfinance logs
 logging.getLogger("yfinance").setLevel(logging.ERROR)
@@ -78,6 +83,43 @@ class ModelSelector:
         
         return recommendations
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 class FinancialToolkit:
     """
     Advanced financial analysis tools context-aware of a specific client's portfolio.
@@ -108,9 +150,10 @@ class FinancialToolkit:
             self.console.print("\n[bold white]--- Quantitative Models ---[/bold white]")
             self.console.print("[1] 🔢 CAPM Analysis (Alpha, Beta, R²)")
             self.console.print("[2] 📉 Black-Scholes Option Pricing")
+            self.console.print("[3] 📊 Multi-Model Risk Dashboard")
             self.console.print("[0] 🔙 Return to Client Dashboard")
             
-            choice = InputSafe.get_option(["1", "2", "0"], prompt_text="[>]")
+            choice = InputSafe.get_option(["1", "2", "3", "0"], prompt_text="[>]")
             
             if choice == "0":
                 break
@@ -118,6 +161,8 @@ class FinancialToolkit:
                 self._run_capm_analysis()
             elif choice == "2":
                 self._run_black_scholes()
+            elif choice == "3":
+                self._run_multi_model_dashboard()
 
     # --- REAL-TIME DATA ANALYSIS TOOLS ---
 
@@ -331,6 +376,285 @@ class FinancialToolkit:
         self.console.print("\n")
         self.console.print(Align.center(results))
         InputSafe.pause()
+
+    def _run_multi_model_dashboard(self):
+        """Compute a multi-model risk dashboard for the client's portfolio."""
+        self.console.clear()
+        print("\x1b[3J", end="")
+        self.console.print(f"[bold blue]MULTI-MODEL RISK DASHBOARD[/bold blue]")
+
+        interval = self._select_interval()
+        if not interval:
+            return
+
+        holdings = self._aggregate_holdings()
+        if not holdings:
+            self.console.print("[yellow]No holdings available for analysis.[/yellow]")
+            InputSafe.pause()
+            return
+
+        period = TOOLKIT_PERIOD.get(interval, "1y")
+        returns, benchmark_returns, meta = self._get_portfolio_and_benchmark_returns(
+            holdings,
+            benchmark_ticker=self.benchmark_ticker,
+            period=period,
+            interval=TOOLKIT_INTERVAL.get(interval, "1d"),
+        )
+
+        if returns is None or returns.empty:
+            self.console.print("[yellow]Insufficient market data for this interval.[/yellow]")
+            InputSafe.pause()
+            return
+
+        metrics = self._compute_risk_metrics(
+            returns,
+            benchmark_returns=benchmark_returns,
+            risk_free_annual=0.04,
+        )
+
+        title = f"[bold gold1]Portfolio Risk Models[/bold gold1] [dim]({interval})[/dim]"
+        header = Panel(
+            Align.center(f"[bold white]{self.client.name}[/bold white] | [dim]{meta}[/dim]"),
+            title=title,
+            border_style="cyan",
+            box=box.ROUNDED,
+        )
+        self.console.print(header)
+        self.console.print(self._render_risk_metrics_table(metrics))
+        self.console.print(self._render_return_distribution(returns))
+        InputSafe.pause()
+
+    def _select_interval(self) -> Optional[str]:
+        options = list(TOOLKIT_PERIOD.keys())
+        self.console.print("\n[bold white]Select Interval[/bold white]")
+        for opt in options:
+            self.console.print(f"[{opt}]")
+        choice = InputSafe.get_option(options, prompt_text="[>]")
+        return choice.upper()
+
+    def _aggregate_holdings(self) -> Dict[str, float]:
+        consolidated = {}
+        for acc in self.client.accounts:
+            for ticker, qty in acc.holdings.items():
+                consolidated[ticker] = consolidated.get(ticker, 0) + qty
+        return consolidated
+
+    def _get_portfolio_and_benchmark_returns(
+        self,
+        holdings: Dict[str, float],
+        benchmark_ticker: str,
+        period: str,
+        interval: str,
+    ) -> Tuple[Optional[pd.Series], Optional[pd.Series], str]:
+        tickers = [t for t, q in holdings.items() if str(t).strip() and float(q or 0.0) != 0.0]
+        if not tickers:
+            return None, None, "No non-zero holdings"
+
+        download_list = sorted(set([str(t).upper() for t in tickers] + [benchmark_ticker]))
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=FutureWarning)
+                warnings.simplefilter("ignore", category=UserWarning)
+                with contextlib.redirect_stderr(io.StringIO()):
+                    df = yf.download(
+                        download_list,
+                        period=period,
+                        interval=interval,
+                        progress=False,
+                        group_by="column",
+                        auto_adjust=True,
+                    )
+        except Exception as exc:
+            return None, None, f"Market data error: {exc}"
+
+        if df is None or df.empty:
+            return None, None, "Market data empty"
+
+        if isinstance(df.columns, pd.MultiIndex):
+            if "Close" in df.columns.levels[0]:
+                close = df["Close"].copy()
+            elif "Adj Close" in df.columns.levels[0]:
+                close = df["Adj Close"].copy()
+            else:
+                return None, None, "Close price not available"
+        else:
+            close = df.get("Close") or df.get("Adj Close")
+            if close is None:
+                return None, None, "Close price not available"
+
+        bench = str(benchmark_ticker).upper()
+        if bench not in close.columns:
+            return None, None, f"Benchmark '{bench}' missing"
+
+        port_val = None
+        for t, qty in holdings.items():
+            t_norm = str(t).upper()
+            if t_norm == bench or t_norm not in close.columns:
+                continue
+            series = close[t_norm] * float(qty)
+            port_val = series if port_val is None else (port_val + series)
+
+        if port_val is None:
+            return None, None, "No overlapping price series"
+
+        port_ret = port_val.pct_change().dropna()
+        bench_ret = close[bench].pct_change().dropna()
+        meta = f"Period: {period} | Interval: {interval} | Points: {len(port_ret)}"
+        return port_ret, bench_ret, meta
+
+    def _compute_risk_metrics(
+        self,
+        returns: pd.Series,
+        benchmark_returns: Optional[pd.Series],
+        risk_free_annual: float,
+    ) -> Dict[str, Any]:
+        ann_factor = 252.0
+        rf_daily = risk_free_annual / ann_factor
+        avg_daily = float(returns.mean())
+        std_daily = float(returns.std(ddof=1))
+
+        vol_annual = std_daily * (ann_factor ** 0.5)
+        mean_annual = avg_daily * ann_factor
+
+        sharpe = None
+        if std_daily > 0:
+            sharpe = (avg_daily - rf_daily) / std_daily * (ann_factor ** 0.5)
+
+        downside = returns[returns < rf_daily]
+        downside_std = float(downside.std(ddof=1)) if len(downside) > 1 else 0.0
+        sortino = None
+        if downside_std > 0:
+            sortino = (avg_daily - rf_daily) / downside_std * (ann_factor ** 0.5)
+
+        beta = None
+        alpha_annual = None
+        r_squared = None
+        information_ratio = None
+        treynor = None
+        m_squared = None
+        tracking_error = None
+
+        if benchmark_returns is not None and not benchmark_returns.empty:
+            aligned = pd.concat([returns, benchmark_returns], axis=1).dropna()
+            if not aligned.empty and len(aligned) > 10:
+                p = aligned.iloc[:, 0].values
+                m = aligned.iloc[:, 1].values
+                var_m = float(np.var(m, ddof=1))
+                cov_pm = float(np.cov(p, m, ddof=1)[0][1])
+                beta = (cov_pm / var_m) if var_m > 0 else None
+
+                avg_m = float(np.mean(m))
+                alpha_annual = (avg_daily - (rf_daily + (beta or 0.0) * (avg_m - rf_daily))) * ann_factor
+
+                corr = float(np.corrcoef(p, m)[0][1])
+                r_squared = corr * corr
+
+                excess = p - m
+                tracking_error = float(np.std(excess, ddof=1))
+                if tracking_error > 0:
+                    information_ratio = (avg_daily - avg_m) / tracking_error * (ann_factor ** 0.5)
+
+                if beta and beta != 0:
+                    treynor = (avg_daily - rf_daily) / beta * ann_factor
+
+                std_m = float(np.std(m, ddof=1))
+                if std_daily > 0:
+                    m_squared = ((avg_daily - rf_daily) / std_daily) * std_m * ann_factor + risk_free_annual
+
+        max_drawdown = self._max_drawdown(returns)
+        var_95, cvar_95 = self._historical_var_cvar(returns, 0.95)
+        var_99, cvar_99 = self._historical_var_cvar(returns, 0.99)
+
+        return {
+            "mean_annual": mean_annual,
+            "vol_annual": vol_annual,
+            "sharpe": sharpe,
+            "sortino": sortino,
+            "beta": beta,
+            "alpha_annual": alpha_annual,
+            "r_squared": r_squared,
+            "information_ratio": information_ratio,
+            "tracking_error": tracking_error,
+            "treynor": treynor,
+            "m_squared": m_squared,
+            "max_drawdown": max_drawdown,
+            "var_95": var_95,
+            "cvar_95": cvar_95,
+            "var_99": var_99,
+            "cvar_99": cvar_99,
+        }
+
+    def _max_drawdown(self, returns: pd.Series) -> float:
+        if returns.empty:
+            return 0.0
+        cumulative = (1 + returns).cumprod()
+        peak = cumulative.cummax()
+        drawdown = (cumulative / peak) - 1.0
+        return float(drawdown.min())
+
+    def _historical_var_cvar(self, returns: pd.Series, confidence: float) -> Tuple[float, float]:
+        if returns.empty:
+            return 0.0, 0.0
+        q = returns.quantile(1 - confidence)
+        tail = returns[returns <= q]
+        cvar = float(tail.mean()) if not tail.empty else float(q)
+        return float(q), cvar
+
+    def _render_risk_metrics_table(self, metrics: Dict[str, Any]) -> Panel:
+        table = Table(box=box.SIMPLE, expand=True)
+        table.add_column("Metric", style="bold cyan")
+        table.add_column("Value", justify="right")
+        table.add_column("Notes", style="dim")
+
+        def fmt(value: Any, fmt_str: str, fallback: str = "N/A") -> str:
+            return fallback if value is None else fmt_str.format(value)
+
+        table.add_row("Annual Return (μ)", fmt(metrics.get("mean_annual"), "{:+.2%}"), "Avg daily return * 252")
+        table.add_row("Volatility (σ)", fmt(metrics.get("vol_annual"), "{:.2%}"), "Annualized std dev")
+        table.add_row("Sharpe Ratio", fmt(metrics.get("sharpe"), "{:.2f}"), "Risk-adjusted return")
+        table.add_row("Sortino Ratio", fmt(metrics.get("sortino"), "{:.2f}"), "Downside-adjusted")
+        table.add_row("Beta", fmt(metrics.get("beta"), "{:.2f}"), "Systemic sensitivity")
+        table.add_row("Alpha (Jensen)", fmt(metrics.get("alpha_annual"), "{:+.2%}"), "Excess return vs CAPM")
+        table.add_row("R-Squared", fmt(metrics.get("r_squared"), "{:.2f}"), "Fit vs benchmark")
+        table.add_row("Tracking Error", fmt(metrics.get("tracking_error"), "{:.2%}"), "Std dev of excess")
+        table.add_row("Information Ratio", fmt(metrics.get("information_ratio"), "{:.2f}"), "Excess / tracking error")
+        table.add_row("Treynor Ratio", fmt(metrics.get("treynor"), "{:.2%}"), "Return per beta")
+        table.add_row("M²", fmt(metrics.get("m_squared"), "{:+.2%}"), "Modigliani-Modigliani")
+        table.add_row("Max Drawdown", fmt(metrics.get("max_drawdown"), "{:.2%}"), "Peak-to-trough")
+        table.add_row("VaR 95%", fmt(metrics.get("var_95"), "{:+.2%}"), "Historical quantile")
+        table.add_row("CVaR 95%", fmt(metrics.get("cvar_95"), "{:+.2%}"), "Expected tail loss")
+        table.add_row("VaR 99%", fmt(metrics.get("var_99"), "{:+.2%}"), "Historical quantile")
+        table.add_row("CVaR 99%", fmt(metrics.get("cvar_99"), "{:+.2%}"), "Expected tail loss")
+
+        return Panel(table, title="[bold]Model Metrics[/bold]", box=box.ROUNDED, border_style="blue")
+
+    def _render_return_distribution(self, returns: pd.Series) -> Panel:
+        bins = [-0.10, -0.05, -0.02, -0.01, 0.0, 0.01, 0.02, 0.05, 0.10]
+        labels = ["<-10%", "-10~-5%", "-5~-2%", "-2~-1%", "-1~0%", "0~1%", "1~2%", "2~5%", "5~10%", ">10%"]
+        counts = [0] * (len(bins) + 1)
+
+        for r in returns:
+            idx = 0
+            while idx < len(bins) and r > bins[idx]:
+                idx += 1
+            counts[idx] += 1
+
+        max_count = max(counts) if counts else 1
+
+        table = Table(box=box.SIMPLE, expand=True)
+        table.add_column("Bucket", style="bold white")
+        table.add_column("Freq", justify="right")
+        table.add_column("Distribution", justify="left")
+
+        for label, count in zip(labels, counts):
+            intensity = count / max_count if max_count > 0 else 0
+            blocks = int(round(intensity * 24))
+            blocks = max(1, blocks) if count > 0 else 0
+            color = "red" if label.startswith("-") or label.startswith("<") else "green"
+            bar = "█" * blocks if blocks > 0 else "·"
+            table.add_row(label, f"{count}", f"[{color}]{bar}[/{color}]")
+
+        return Panel(table, title="[bold]Return Distribution[/bold] [dim](3D Bucket View)[/dim]", box=box.ROUNDED, border_style="magenta")
     
     @staticmethod
     def compute_capm_metrics_from_holdings(
@@ -502,8 +826,70 @@ class FinancialToolkit:
             _CAPM_CACHE[key] = {"ts": ts, "data": data}
             return data
 
-import math
-from collections import defaultdict
+    # toolkit.py changes
+
+    @staticmethod
+    def _compute_core_metrics(returns: pd.Series, benchmark_returns: pd.Series = None) -> dict:
+        """Centralized math engine for all UI components."""
+        if returns.empty:
+            return {}
+
+        # Standard Volatility (Annualized)
+        vol = returns.std() * np.sqrt(252)
+        
+        # Sharpe (assuming 0% risk-free rate currently just for dev simplicity)
+        sharpe = (returns.mean() / returns.std()) * np.sqrt(252) if returns.std() != 0 else 0
+
+        metrics = {
+            "volatility_annual": float(vol),
+            "sharpe": float(sharpe),
+            "mean_return": float(returns.mean() * 252),
+        }
+
+        if benchmark_returns is not None and not benchmark_returns.empty:
+            # Align series to ensure correct covariance
+            combined = pd.concat([returns, benchmark_returns], axis=1).dropna()
+            if len(combined) > 5:
+                cov = np.cov(combined.iloc[:, 0], combined.iloc[:, 1])[0, 1]
+                mkt_var = np.var(combined.iloc[:, 1])
+                beta = cov / mkt_var if mkt_var != 0 else 1.0
+                metrics["beta"] = float(beta)
+                
+        return metrics
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 class RegimeModels:
     """
@@ -705,6 +1091,69 @@ class RegimeModels:
                 ]
             },
         }
+
+    @staticmethod
+    def generate_snapshot(
+        ticker: str,
+        benchmark_ticker: str = "SPY",
+        period: str = "1y",
+        interval: str = "1d",
+        risk_free_annual: float = 0.04,
+    ) -> dict:
+        """Generate a Markov regime snapshot using real historical returns."""
+        symbol = (ticker or "").strip().upper()
+        if not symbol:
+            return {"error": "Missing ticker"}
+
+        try:
+            df = yf.download(symbol, period=period, interval=interval, progress=False, auto_adjust=True)
+        except Exception as exc:
+            return {"error": f"Failed to fetch data: {exc}"}
+
+        if df is None or df.empty or "Close" not in df.columns:
+            return {"error": "No historical data available"}
+
+        returns = df["Close"].pct_change().dropna()
+        if returns.empty or len(returns) < 8:
+            return {"error": "Insufficient data for regime analysis"}
+
+        snap = RegimeModels.compute_markov_snapshot(returns.tolist(), horizon=1, label=f"{symbol} ({period})")
+        if "error" in snap:
+            return snap
+
+        bench_returns = pd.Series(dtype=float)
+        if benchmark_ticker:
+            try:
+                bench = yf.download(
+                    str(benchmark_ticker).upper(),
+                    period=period,
+                    interval=interval,
+                    progress=False,
+                    auto_adjust=True,
+                )
+                if bench is not None and not bench.empty and "Close" in bench.columns:
+                    bench_returns = bench["Close"].pct_change().dropna()
+            except Exception:
+                bench_returns = pd.Series(dtype=float)
+
+        metrics = FinancialToolkit._compute_core_metrics(returns, bench_returns)
+
+        if not bench_returns.empty and "beta" in metrics:
+            combined = pd.concat([returns, bench_returns], axis=1).dropna()
+            if len(combined) > 5:
+                avg_p = float(combined.iloc[:, 0].mean() * 252)
+                avg_m = float(combined.iloc[:, 1].mean() * 252)
+                beta = float(metrics.get("beta", 0.0))
+                alpha_annual = avg_p - (risk_free_annual + beta * (avg_m - risk_free_annual))
+                corr = combined.iloc[:, 0].corr(combined.iloc[:, 1])
+                if corr is not None:
+                    metrics["r_squared"] = float(corr * corr)
+                metrics["alpha_annual"] = float(alpha_annual)
+
+        snap["metrics"].update(metrics)
+        snap["ticker"] = symbol
+        snap["benchmark"] = str(benchmark_ticker).upper() if benchmark_ticker else None
+        return snap
     
     @staticmethod
     def _bin_returns_sigma(returns: pd.Series) -> pd.Series:
@@ -789,6 +1238,42 @@ class RegimeModels:
 
         return probs
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 from rich.table import Table
 from rich.panel import Panel
 from rich.align import Align
@@ -819,7 +1304,7 @@ class RegimeRenderer:
         left.add_row()
         left.add_row(
             "State",
-            ChartRenderer.regime_strip(snapshot["current_regime"], width=16)
+            ChartRenderer.regime_strip(snapshot["current_regime"], width=10)
         )
         left.add_row("Model", snapshot["model"])
         left.add_row("Horizon", snapshot["horizon"])
@@ -866,36 +1351,41 @@ class RegimeRenderer:
             Panel(prob_table, box=box.ROUNDED, title="[bold]Regime Probabilities[/bold]")
         )
 
+        labels = list(snapshot["state_probs"].keys())
         matrix = RegimeRenderer._render_transition_heatmap(
             snapshot["transition_matrix"],
-            list(snapshot["state_probs"].keys())
+            labels
+        )
+        trans_surf = RegimeRenderer._render_transition_surface(snapshot["transition_matrix"])
+
+        matrix_grid = Table.grid(expand=True)
+        matrix_grid.add_column(ratio=1)
+        matrix_grid.add_column(ratio=1)
+
+        matrix_grid.add_row(
+            Panel(matrix, title="[bold]Transition Matrix[/bold]", box=box.ROUNDED),
+            Panel(trans_surf, title="[bold]Transition Surface[/bold]", box=box.ROUNDED),
         )
 
         matrix_panel = Panel(
-            matrix,
-            title="[bold]Transition Matrix[/bold]",
+            matrix_grid,
+            title="[bold]Transition Views[/bold] [dim](Matrix • Surface)[/dim]",
             box=box.ROUNDED
         )
 
         # --- Surfaces ---
         surfaces_group = None
         if snapshot.get("stationary") and snapshot.get("evolution"):
-            P = snapshot["transition_matrix"]
-            labels = list(snapshot["state_probs"].keys())
-
-            trans_surf = RegimeRenderer._render_transition_surface(P)
             stat_surf = RegimeRenderer._render_stationary_surface(snapshot["stationary"])
             evo_surf = RegimeRenderer._render_evolution_surface(snapshot["evolution"], labels)
 
             surfaces_group = Group(
-                Panel(trans_surf, title="[bold]Transition Surface[/bold]", box=box.ROUNDED),
                 Panel(stat_surf, title="[bold]Stationary (π)[/bold]", box=box.ROUNDED),
                 Panel(evo_surf, title="[bold]Evolution Surface[/bold]", box=box.ROUNDED),
             )
 
         # --- Matrix (full width) ---
         stack = []
-
         stack.append(matrix_panel)
 
         # --- Surfaces (full width below matrix) ---
@@ -921,40 +1411,54 @@ class RegimeRenderer:
             *stack
         )
 
+        scope = snapshot.get("scope_label")
+        interval = snapshot.get("interval")
+        scope_suffix = ""
+        if scope and interval:
+            scope_suffix = f" [dim]({scope} • {interval})[/dim]"
+        elif scope:
+            scope_suffix = f" [dim]({scope})[/dim]"
+        elif interval:
+            scope_suffix = f" [dim]({interval})[/dim]"
+
         return Panel(
             final,
-            title="[bold gold1]Regime Projection[/bold gold1]",
+            title=f"[bold gold1]Regime Projection[/bold gold1]{scope_suffix}",
             border_style="yellow",
             box=box.HEAVY
         )
 
     @staticmethod
     def _render_transition_heatmap(P: list[list[float]], labels: list[str]) -> Table:
-        heat = Table(box=box.SIMPLE, show_header=True, header_style="bold", pad_edge=False)
-        heat.add_column("FROM \\ TO", no_wrap=True)
+        heat = Table(box=box.SIMPLE, show_header=True, header_style="bold cyan", pad_edge=False)
+        heat.add_column("FROM \\ TO", no_wrap=True, style="dim")
         for lab in labels:
-            heat.add_column(lab[:7], justify="center", no_wrap=True, width=7)
+            heat.add_column(str(lab)[:7], justify="center", no_wrap=True, width=8)
 
-        def cell(p: float) -> Text:
-            p = float(p or 0.0)
+        def cell(p: Any) -> Text:
+            try:
+                p = float(p or 0.0)
+            except (ValueError, TypeError):
+                p = 0.0
 
-            # intensity blocks (5 levels)
-            if p >= 0.60: ch = "█"
-            elif p >= 0.40: ch = "▓"
-            elif p >= 0.25: ch = "▒"
-            elif p >= 0.10: ch = "░"
-            else: ch = "·"
+            if p >= 0.95:   ch, col = "█", "bold red"
+            elif p >= 0.85: ch, col = "▇", "red"
+            elif p >= 0.70: ch, col = "▆", "yellow"
+            elif p >= 0.55: ch, col = "▅", "green"
+            elif p >= 0.40: ch, col = "▄", "cyan"
+            elif p >= 0.25: ch, col = "▃", "blue"
+            elif p >= 0.10: ch, col = "▂", "dim cyan"
+            else:               ch, col = "▁", "dim white"
 
-            blocks = ch * 5
-            pct = f"{p*100:4.1f}%"
-            return Text(f"{blocks}\n{pct}", style="bold white")
+            blocks = f"[{col}]{ch * 6}[/{col}]"
+            return Text.from_markup(f"{blocks}\n[white bold]{p*100:4.1f}%[/white bold]")
 
         for i, row in enumerate(P):
-            r = [labels[i]]
+            row_label = labels[i] if i < len(labels) else "???"
+            r = [row_label]
             for p in row:
-                r.append(cell(float(p)))
+                r.append(cell(p))
             heat.add_row(*r)
-
         return heat
 
     @staticmethod
@@ -963,16 +1467,34 @@ class RegimeRenderer:
         Pseudo-3D surface using stacked blocks. This is a heightmap-like display suitable for terminals.
         """
         n = len(P)
-        surf = Table(box=box.SIMPLE, show_header=False, pad_edge=False)
+        surf = Table(
+            box=box.SIMPLE,
+            show_header=False,
+            pad_edge=False,
+            expand=True,
+            padding=(0, 0),
+        )
         surf.add_column("Surface", no_wrap=True)
 
         # Render each row as a "ridge" of stacked blocks.
         # Height is proportional to probability (0..1) mapped to 0..8 blocks.
         def stack(p: float) -> str:
-            h = int(round(max(0.0, min(1.0, float(p))) * 8.0))
-            if h <= 0:
-                return "·"
-            return "█" * h
+            levels = "▁▂▃▄▅▆▇█"
+            idx = int(round(max(0.0, min(1.0, float(p))) * (len(levels) - 1)))
+            return levels[idx] * 6
+
+        def stack_color(p: float) -> str:
+            if p >= 0.90:
+                return "bold red"
+            if p >= 0.70:
+                return "red"
+            if p >= 0.50:
+                return "yellow"
+            if p >= 0.30:
+                return "green"
+            if p >= 0.15:
+                return "cyan"
+            return "dim white"
 
         i = 0
         lines = []
@@ -981,14 +1503,16 @@ class RegimeRenderer:
             j = 0
             parts = []
             while j < n:
-                parts.append(stack(row[j]).ljust(8))
+                block = stack(row[j])
+                color = stack_color(float(row[j] or 0.0))
+                parts.append(f"[{color}]{block}[/{color}]".ljust(8))
                 j += 1
             lines.append(" ".join(parts))
             i += 1
 
         # Fit into a single column (table rows)
         for ln in lines:
-            surf.add_row(Text(ln, style="bold white"))
+            surf.add_row(Text.from_markup(ln))
 
         return surf
 
@@ -1012,36 +1536,52 @@ class RegimeRenderer:
 
     @staticmethod
     def _render_evolution_surface(evolution: dict, labels: list[str]) -> Table:
-        """
-        Time-evolving probability manifold: rows = time step, cols = regimes.
-        Each cell is intensity-coded.
-        """
         series = evolution.get("series", []) if isinstance(evolution, dict) else []
-        heat = Table(box=box.SIMPLE, show_header=True, header_style="bold", pad_edge=False)
+        heat = Table(box=box.SIMPLE, show_header=True, header_style="bold white", pad_edge=False)
 
-        heat.add_column("t", justify="right", width=3, style="dim")
+        heat.add_column("t (step)", justify="right", width=8, style="dim")
         for lab in labels:
-            heat.add_column(lab[:7], justify="center", no_wrap=True, width=7)
+            heat.add_column(str(lab)[:7], justify="center", no_wrap=True, width=9)
 
-        def cell(p: float) -> Text:
-            p = float(p or 0.0)
-            if p >= 0.60: ch = "█"
-            elif p >= 0.40: ch = "▓"
-            elif p >= 0.25: ch = "▒"
-            elif p >= 0.10: ch = "░"
-            else: ch = "·"
+        def cell(p: Any) -> Text:
+            # 1. Safe float conversion to prevent "Error 0"
+            try:
+                p_val = float(p or 0.0)
+            except (ValueError, TypeError):
+                p_val = 0.0
 
-            blocks = ch * 5
-            pct = f"{p*100:4.1f}%"
-            return Text(f"{blocks}\n{pct}", style="bold white")
+            # 2. Detailed Gradient Logic
+            if p_val >= 0.90:   ch, col = "█", "bold red"
+            elif p_val >= 0.70: ch, col = "█", "red"
+            elif p_val >= 0.50: ch, col = "▓", "yellow"
+            elif p_val >= 0.40: ch, col = "▒", "green"
+            elif p_val >= 0.20: ch, col = "░", "blue"
+            elif p_val >= 0.10: ch, col = "░", "cyan"
+            else:               ch, col = "·", "white"
 
-        t = 0
-        while t < len(series):
-            rowd = series[t]
-            row = [str(t)]
-            for lab in labels:
-                row.append(cell(rowd.get(lab, 0.0)))
-            heat.add_row(*row)
-            t += 1
+            # 3. Assemble: Multiplied blocks on top, percentage on bottom
+            blocks = f"[{col}]{ch * 6}[/{col}]"
+            pct = f"[white bold]{p_val*100:4.1f}%[/white bold]"
+            
+            return Text.from_markup(f"{blocks}\n{pct}")
+
+        # 4. Render each time step
+        for t_idx, probs in enumerate(series):
+            row_label = f"T-{len(series)-t_idx-1}"
+            row_data = [row_label]
+            
+            for i in range(len(labels)):
+                current_label = labels[i]
+                # Handle data whether it is a list of floats or a list of dicts
+                if isinstance(probs, dict):
+                    p_val = probs.get(current_label, 0.0)
+                elif isinstance(probs, (list, tuple)):
+                    p_val = probs[i] if i < len(probs) else 0.0
+                else:
+                    p_val = 0.0
+                    
+                row_data.append(cell(p_val))
+                
+            heat.add_row(*row_data)
 
         return heat

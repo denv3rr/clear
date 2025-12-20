@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import concurrent.futures
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from modules.market_data.finnhub_client import FinnhubWrapper
 from modules.market_data.yfinance_client import YahooWrapper
+import yfinance as yf
 
 class ValuationEngine:
     """\
@@ -113,16 +114,65 @@ class ValuationEngine:
             pass
 
         return {
-        "ticker": t,
-        "price": 0.0,
-        "change": 0.0,
-        "pct": 0.0,
-        "change_pct": 0.0,
-        "currency": "USD",
-        "timestamp": ts,
-        "source": "N/A",
-        "error": f"Could not fetch live price for {t}",
+            "ticker": t,
+            "price": 0.0,
+            "change": 0.0,
+            "pct": 0.0,
+            "change_pct": 0.0,
+            "currency": "USD",
+            "timestamp": ts,
+            "source": "N/A",
+            "error": f"Could not fetch live price for {t}",
         }
+
+    def get_historical_price(self, ticker: str, timestamp: datetime) -> Optional[float]:
+        """Return the closest historical close price near the timestamp."""
+        t = self._normalize_ticker(ticker)
+        if not t or not isinstance(timestamp, datetime):
+            return None
+
+        day_start = datetime(timestamp.year, timestamp.month, timestamp.day)
+        day_end = day_start + timedelta(days=1)
+        interval = "1m" if timestamp.time() != datetime.min.time() else "1d"
+
+        def _fetch(interval_value: str) -> Optional[float]:
+            try:
+                hist = yf.download(
+                    t,
+                    start=day_start,
+                    end=day_end,
+                    interval=interval_value,
+                    progress=False,
+                    auto_adjust=True,
+                )
+            except Exception:
+                return None
+
+            if hist is None or hist.empty or "Close" not in hist.columns:
+                return None
+
+            closes = hist["Close"].dropna()
+            if closes.empty:
+                return None
+
+            if interval_value == "1d":
+                return float(closes.iloc[-1])
+
+            idx = closes.index
+            if hasattr(idx, "tz"):
+                idx = idx.tz_localize(None)
+                closes = closes.copy()
+                closes.index = idx
+
+            deltas = (idx - timestamp).to_series().abs()
+            nearest = deltas.idxmin()
+            return float(closes.loc[nearest])
+
+        price = _fetch(interval)
+        if price is None and interval != "1d":
+            price = _fetch("1d")
+
+        return price
 
     def get_detailed_data(self, ticker: str, period: str = "1mo", interval: str = "1d") -> Dict[str, Any]:
         """\
@@ -365,5 +415,3 @@ class ValuationEngine:
             idx += 1
 
         return out
-
-
