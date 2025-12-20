@@ -145,7 +145,7 @@ class ClientManager:
             self.console.print(UIComponents.risk_profile_full_width(capm))
 
             # Stack 4: Regime
-            self._render_regime_section(history, interval)
+            self._render_regime_section(history, interval, scope_label="Portfolio")
 
             # --- 3. Navigation ---
             options = {
@@ -168,7 +168,7 @@ class ClientManager:
             DataHandler.save_clients(self.clients)
         return None
 
-    def _render_regime_section(self, history, interval):
+    def _render_regime_section(self, history, interval, scope_label: str):
         """Helper to render regime snapshot if data exists."""
         returns = []
         if history and len(history) >= 8:
@@ -177,7 +177,10 @@ class ClientManager:
                 if prev > 0: returns.append((history[i] - prev)/prev)
         
         if len(returns) >= 8:
-            snap = RegimeModels.compute_markov_snapshot(returns, horizon=1, label="Portfolio")
+            scope_text = f"{scope_label} [dim]({interval})[/dim]"
+            snap = RegimeModels.compute_markov_snapshot(returns, horizon=1, label=scope_text)
+            snap["scope_label"] = scope_label
+            snap["interval"] = interval
             self.console.print(RegimeRenderer.render(snap))
 
     # =========================================================================
@@ -259,7 +262,7 @@ class ClientManager:
 
             # Bottom: Risk and Regime parity
             self.console.print(UIComponents.risk_profile_full_width(capm))
-            self._render_regime_section(history, interval)
+            self._render_regime_section(history, interval, scope_label=f"Account: {account.account_name}")
 
             # --- 3. Navigation ---
             options = {

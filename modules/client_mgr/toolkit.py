@@ -1120,9 +1120,19 @@ class RegimeRenderer:
             *stack
         )
 
+        scope = snapshot.get("scope_label")
+        interval = snapshot.get("interval")
+        scope_suffix = ""
+        if scope and interval:
+            scope_suffix = f" [dim]({scope} • {interval})[/dim]"
+        elif scope:
+            scope_suffix = f" [dim]({scope})[/dim]"
+        elif interval:
+            scope_suffix = f" [dim]({interval})[/dim]"
+
         return Panel(
             final,
-            title="[bold gold1]Regime Projection[/bold gold1]",
+            title=f"[bold gold1]Regime Projection[/bold gold1]{scope_suffix}",
             border_style="yellow",
             box=box.HEAVY
         )
@@ -1140,16 +1150,16 @@ class RegimeRenderer:
             except (ValueError, TypeError):
                 p = 0.0
 
-            # 2. Detailed Gradient Logic
-            if p >= 0.90:   ch, col = "█", "bold red"
-            elif p >= 0.70: ch, col = "█", "red"
-            elif p >= 0.50: ch, col = "▓", "yellow"
-            elif p >= 0.40: ch, col = "▒", "green"
-            elif p >= 0.20: ch, col = "░", "blue"
-            elif p >= 0.10: ch, col = "░", "cyan"
-            else:               ch, col = "·", "white"
+            if p >= 0.95:   ch, col = "█", "bold red"
+            elif p >= 0.85: ch, col = "▇", "red"
+            elif p >= 0.70: ch, col = "▆", "yellow"
+            elif p >= 0.55: ch, col = "▅", "green"
+            elif p >= 0.40: ch, col = "▄", "cyan"
+            elif p >= 0.25: ch, col = "▃", "blue"
+            elif p >= 0.10: ch, col = "▂", "dim cyan"
+            else:               ch, col = "▁", "dim white"
 
-            blocks = f"[{col}]{ch * 5}[/{col}]"
+            blocks = f"[{col}]{ch * 6}[/{col}]"
             return Text.from_markup(f"{blocks}\n[white bold]{p*100:4.1f}%[/white bold]")
 
         for i, row in enumerate(P):
@@ -1172,10 +1182,22 @@ class RegimeRenderer:
         # Render each row as a "ridge" of stacked blocks.
         # Height is proportional to probability (0..1) mapped to 0..8 blocks.
         def stack(p: float) -> str:
-            h = int(round(max(0.0, min(1.0, float(p))) * 8.0))
-            if h <= 0:
-                return "·"
-            return "█" * h
+            levels = "▁▂▃▄▅▆▇█"
+            idx = int(round(max(0.0, min(1.0, float(p))) * (len(levels) - 1)))
+            return levels[idx] * 6
+
+        def stack_color(p: float) -> str:
+            if p >= 0.90:
+                return "bold red"
+            if p >= 0.70:
+                return "red"
+            if p >= 0.50:
+                return "yellow"
+            if p >= 0.30:
+                return "green"
+            if p >= 0.15:
+                return "cyan"
+            return "dim white"
 
         i = 0
         lines = []
@@ -1184,14 +1206,16 @@ class RegimeRenderer:
             j = 0
             parts = []
             while j < n:
-                parts.append(stack(row[j]).ljust(8))
+                block = stack(row[j])
+                color = stack_color(float(row[j] or 0.0))
+                parts.append(f"[{color}]{block}[/{color}]".ljust(8))
                 j += 1
             lines.append(" ".join(parts))
             i += 1
 
         # Fit into a single column (table rows)
         for ln in lines:
-            surf.add_row(Text(ln, style="bold white"))
+            surf.add_row(Text.from_markup(ln))
 
         return surf
 
