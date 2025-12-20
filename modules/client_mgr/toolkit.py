@@ -1467,7 +1467,13 @@ class RegimeRenderer:
         Pseudo-3D surface using stacked blocks. This is a heightmap-like display suitable for terminals.
         """
         n = len(P)
-        surf = Table(box=box.SIMPLE, show_header=False, pad_edge=False)
+        surf = Table(
+            box=box.SIMPLE,
+            show_header=False,
+            pad_edge=False,
+            expand=True,
+            padding=(0, 0),
+        )
         surf.add_column("Surface", no_wrap=True)
 
         # Render each row as a "ridge" of stacked blocks.
