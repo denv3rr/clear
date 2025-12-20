@@ -35,7 +35,6 @@
 [Data Sources](#data-sources) •
 [Financial Methods](#financial-methods) •
 [Roadmap](#roadmap) •
-[Contributing](#contributing) •
 [Disclaimer](#disclaimer)
 
 </div>
@@ -94,7 +93,7 @@ Do not commit `.env` files.
 
 - **Client Manager**: client profiles, accounts, holdings, lots, and tax settings
 - **Market Feed**: macro dashboard, tickers, and interval switching
-- **Financial Toolkit**: analytics, CAPM metrics, regime modeling
+- **Financial Tools**: analytics, CAPM metrics, regime modeling
 - **Settings**: API config, device info, preferences
 
 ## Data Sources
