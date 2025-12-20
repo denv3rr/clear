@@ -1441,7 +1441,14 @@ class RegimeRenderer:
             except (ValueError, TypeError):
                 p = 0.0
 
-            ch, col = RegimeRenderer._transition_cell_style(p)
+            if p >= 0.95:   ch, col = "█", "bold red"
+            elif p >= 0.85: ch, col = "▇", "red"
+            elif p >= 0.70: ch, col = "▆", "yellow"
+            elif p >= 0.55: ch, col = "▅", "green"
+            elif p >= 0.40: ch, col = "▄", "cyan"
+            elif p >= 0.25: ch, col = "▃", "blue"
+            elif p >= 0.10: ch, col = "▂", "dim cyan"
+            else:               ch, col = "▁", "dim white"
 
             blocks = f"[{col}]{ch * 6}[/{col}]"
             return Text.from_markup(f"{blocks}\n[white bold]{p*100:4.1f}%[/white bold]")
@@ -1470,6 +1477,19 @@ class RegimeRenderer:
             idx = int(round(max(0.0, min(1.0, float(p))) * (len(levels) - 1)))
             return levels[idx] * 6
 
+        def stack_color(p: float) -> str:
+            if p >= 0.90:
+                return "bold red"
+            if p >= 0.70:
+                return "red"
+            if p >= 0.50:
+                return "yellow"
+            if p >= 0.30:
+                return "green"
+            if p >= 0.15:
+                return "cyan"
+            return "dim white"
+
         i = 0
         lines = []
         while i < n:
@@ -1477,9 +1497,8 @@ class RegimeRenderer:
             j = 0
             parts = []
             while j < n:
-                p = float(row[j] or 0.0)
-                block = stack(p)
-                _, color = RegimeRenderer._transition_cell_style(p)
+                block = stack(row[j])
+                color = stack_color(float(row[j] or 0.0))
                 parts.append(f"[{color}]{block}[/{color}]".ljust(8))
                 j += 1
             lines.append(" ".join(parts))
@@ -1560,21 +1579,3 @@ class RegimeRenderer:
             heat.add_row(*row_data)
 
         return heat
-
-    @staticmethod
-    def _transition_cell_style(p: float) -> tuple[str, str]:
-        if p >= 0.95:
-            return "█", "bold red"
-        if p >= 0.85:
-            return "▇", "red"
-        if p >= 0.70:
-            return "▆", "yellow"
-        if p >= 0.55:
-            return "▅", "green"
-        if p >= 0.40:
-            return "▄", "cyan"
-        if p >= 0.25:
-            return "▃", "blue"
-        if p >= 0.10:
-            return "▂", "dim cyan"
-        return "▁", "dim white"
