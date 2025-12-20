@@ -7,6 +7,7 @@ import io
 import warnings
 import contextlib
 import logging
+from collections import defaultdict
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 
@@ -604,9 +605,6 @@ class FinancialToolkit:
 
 
 
-import math
-from collections import defaultdict
-
 class RegimeModels:
     """
     Collection of regime-based predictive models.
@@ -807,6 +805,69 @@ class RegimeModels:
                 ]
             },
         }
+
+    @staticmethod
+    def generate_snapshot(
+        ticker: str,
+        benchmark_ticker: str = "SPY",
+        period: str = "1y",
+        interval: str = "1d",
+        risk_free_annual: float = 0.04,
+    ) -> dict:
+        """Generate a Markov regime snapshot using real historical returns."""
+        symbol = (ticker or "").strip().upper()
+        if not symbol:
+            return {"error": "Missing ticker"}
+
+        try:
+            df = yf.download(symbol, period=period, interval=interval, progress=False, auto_adjust=True)
+        except Exception as exc:
+            return {"error": f"Failed to fetch data: {exc}"}
+
+        if df is None or df.empty or "Close" not in df.columns:
+            return {"error": "No historical data available"}
+
+        returns = df["Close"].pct_change().dropna()
+        if returns.empty or len(returns) < 8:
+            return {"error": "Insufficient data for regime analysis"}
+
+        snap = RegimeModels.compute_markov_snapshot(returns.tolist(), horizon=1, label=f"{symbol} ({period})")
+        if "error" in snap:
+            return snap
+
+        bench_returns = pd.Series(dtype=float)
+        if benchmark_ticker:
+            try:
+                bench = yf.download(
+                    str(benchmark_ticker).upper(),
+                    period=period,
+                    interval=interval,
+                    progress=False,
+                    auto_adjust=True,
+                )
+                if bench is not None and not bench.empty and "Close" in bench.columns:
+                    bench_returns = bench["Close"].pct_change().dropna()
+            except Exception:
+                bench_returns = pd.Series(dtype=float)
+
+        metrics = FinancialToolkit._compute_core_metrics(returns, bench_returns)
+
+        if not bench_returns.empty and "beta" in metrics:
+            combined = pd.concat([returns, bench_returns], axis=1).dropna()
+            if len(combined) > 5:
+                avg_p = float(combined.iloc[:, 0].mean() * 252)
+                avg_m = float(combined.iloc[:, 1].mean() * 252)
+                beta = float(metrics.get("beta", 0.0))
+                alpha_annual = avg_p - (risk_free_annual + beta * (avg_m - risk_free_annual))
+                corr = combined.iloc[:, 0].corr(combined.iloc[:, 1])
+                if corr is not None:
+                    metrics["r_squared"] = float(corr * corr)
+                metrics["alpha_annual"] = float(alpha_annual)
+
+        snap["metrics"].update(metrics)
+        snap["ticker"] = symbol
+        snap["benchmark"] = str(benchmark_ticker).upper() if benchmark_ticker else None
+        return snap
     
     @staticmethod
     def _bin_returns_sigma(returns: pd.Series) -> pd.Series:
@@ -890,64 +951,6 @@ class RegimeModels:
             probs = next_probs
 
         return probs
-
-    # modules/client_mgr/toolkit.py
-
-class RegimeModels:
-    @staticmethod
-    def generate_snapshot(ticker: str) -> dict:
-        """
-        The 'Single Source of Truth' for regime and risk metrics.
-        Calculates volatility and beta once to ensure all UI components match.
-        """
-        try:
-            # Fetch 1 year of daily data for robust volatility
-            df = yf.download(ticker, period="1y", interval="1d", progress=False)
-            if df.empty:
-                return {"error": "No data"}
-
-            returns = df['Close'].pct_change().dropna()
-            
-            # --- MODULAR MATH ---
-            # Standard Annualized Volatility
-            vol_annual = float(returns.std() * np.sqrt(252))
-            # Sharpe Ratio (Assuming 0% risk-free rate)
-            sharpe = float((returns.mean() / returns.std()) * np.sqrt(252)) if returns.std() != 0 else 0
-            
-            # Simplified Beta against SPY
-            spy = yf.download("SPY", period="1y", interval="1d", progress=False)
-            beta = 1.0
-            if not spy.empty:
-                spy_rets = spy['Close'].pct_change().dropna()
-                common = pd.concat([returns, spy_rets], axis=1).dropna()
-                if len(common) > 20:
-                    cov = np.cov(common.iloc[:,0], common.iloc[:,1])[0,1]
-                    var = np.var(common.iloc[:,1])
-                    beta = float(cov / var) if var != 0 else 1.0
-
-            # Mock Regime detection (Replace with your HMM logic)
-            # We use the recent trend to 'guess' a regime for the UI
-            recent_avg = returns.tail(20).mean() * 252
-            if recent_avg > 0.15: regime = "Strong Up"
-            elif recent_avg > 0.05: regime = "Mild Up"
-            elif recent_avg < -0.10: regime = "Strong Down"
-            else: regime = "Flat / Sideways"
-
-            return {
-                "ticker": ticker,
-                "current_regime": regime,
-                "confidence": 0.85,
-                "metrics": {
-                    "volatility_annual": vol_annual,
-                    "beta": beta,
-                    "sharpe": sharpe,
-                    "alpha_annual": (returns.mean() * 252) - (beta * 0.10), # Estimated alpha
-                    "r_squared": 0.88
-                },
-                "state_probs": {"Strong Up": 0.1, "Mild Up": 0.6, "Flat": 0.2, "Down": 0.1}
-            }
-        except Exception as e:
-            return {"error": str(e)}
 
 
 

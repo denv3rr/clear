@@ -2,7 +2,7 @@
 
 from rich.console import Console
 from rich.layout import Layout
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from datetime import datetime
 
 # --- Internal Modules ---
@@ -68,7 +68,9 @@ class ClientManager:
             # 4. Handle Action
             if choice == "MAIN_MENU": break
             if choice == "1": self.add_client_workflow()
-            elif choice == "2": self.select_client_workflow()
+            elif choice == "2":
+                if self.select_client_workflow() == "MAIN_MENU":
+                    break
             elif choice == "3": self.delete_client_workflow()
             
             # Save state on loop exit/action completion
@@ -82,10 +84,11 @@ class ClientManager:
         cid = InputSafe.get_string("Enter Client ID (partial):")
         client = next((c for c in self.clients if c.client_id.startswith(cid)), None)
         if client:
-            self.client_dashboard_loop(client)
+            return self.client_dashboard_loop(client)
         else:
             self.console.print("[red]Client not found.[/red]")
             InputSafe.pause()
+        return None
 
     def client_dashboard_loop(self, client: Client):
         """Displays specific client portfolio and handles client-level actions."""
@@ -153,13 +156,17 @@ class ClientManager:
             }
             choice = Navigator.show_options(options)
 
-            if choice == "MAIN_MENU": break
+            if choice == "MAIN_MENU":
+                return "MAIN_MENU"
             if choice == "1": self.edit_client_workflow(client)
-            elif choice == "2": self.manage_accounts_router(client)
+            elif choice == "2":
+                if self.manage_accounts_router(client) == "MAIN_MENU":
+                    return "MAIN_MENU"
             elif choice == "3": FinancialToolkit(client).run()
             elif choice == "4": self._change_interval_workflow(client)
             
             DataHandler.save_clients(self.clients)
+        return None
 
     def _render_regime_section(self, history, interval):
         """Helper to render regime snapshot if data exists."""
@@ -199,7 +206,9 @@ class ClientManager:
             elif choice.isdigit():
                 idx = int(choice) - 1
                 if 0 <= idx < len(client.accounts):
-                    self.manage_holdings_loop(client, client.accounts[idx])
+                    if self.manage_holdings_loop(client, client.accounts[idx]) == "MAIN_MENU":
+                        return "MAIN_MENU"
+        return None
 
     def manage_holdings_loop(self, client: Client, account: Account):
         """Detailed view for a single account."""
@@ -215,14 +224,10 @@ class ClientManager:
             total_val, enriched = self.valuation_engine.calculate_portfolio_value(
                 account.holdings, history_period=hp, history_interval=hi
             )
-            
-            # Calculate manual value to satisfy the new modular component requirement
-            manual_total = sum(item.get('total_value', 0.0) for item in account.manual_holdings)
-            
-            # SYNCED CALL: Passing both total and manual values
-            summary_panel = UIComponents.portfolio_summary_panel(
-                account.current_value, 
-                manual_val=manual_total
+            account.current_value = total_val
+
+            manual_total, manual_list = self.valuation_engine.calculate_manual_holdings_value(
+                account.manual_holdings
             )
 
             # Metrics for THIS account
@@ -233,10 +238,6 @@ class ClientManager:
                 account.holdings, benchmark_ticker="SPY", period=CAPM_PERIOD.get(interval, "1y")
             )
 
-            # History for chart
-            history = self.valuation_engine.generate_synthetic_portfolio_history(
-                enriched, account.holdings, interval=interval
-            )
             n_points = INTERVAL_POINTS.get(interval, 22)
             spark_data = history[-n_points:] if history else []
 
@@ -249,7 +250,7 @@ class ClientManager:
             ))
 
             # Top: Account Specific Summary
-            self.console.print(UIComponents.account_detail_overview(total_val, manual_val, history[-30:]))
+            self.console.print(UIComponents.account_detail_overview(total_val, manual_total, history[-30:]))
 
             # Middle: Detailed Holdings
             self.console.print(UIComponents.holdings_table(account, enriched, total_val))
@@ -268,12 +269,13 @@ class ClientManager:
             }
             choice = Navigator.show_options(options)
 
-            if choice == "MAIN_MENU": break
+            if choice == "MAIN_MENU": return "MAIN_MENU"
             if choice == "1": self.add_holding_workflow(account)
             elif choice == "2": self.remove_holding_workflow(account)
             elif choice == "3": self.edit_account_workflow(account)
             
             DataHandler.save_clients(self.clients)
+        return None
 
     # =========================================================================
     # WORKFLOWS (Logic Wrappers)
@@ -342,17 +344,17 @@ class ClientManager:
         
         qty = InputSafe.get_float("Quantity:")
         
-        # ... (Lot creation logic from original manager.py) ...
-        # For brevity in this response, assume logic is preserved here
-        # Key update: call account.sync_holdings_from_lots() at end
-        
-        if method == "1":
-            q = self.valuation_engine.get_quote_data(ticker)
-            price = float(q.get('price', 0))
-            account.lots.setdefault(ticker, []).append({
-                "qty": qty, "basis": price, "timestamp": str(datetime.now())
-            })
-        # ... etc for other methods
+        basis, ts_label = self._resolve_lot_basis(ticker, method)
+        if basis is None:
+            self.console.print("[red]Unable to resolve cost basis.[/red]")
+            InputSafe.pause()
+            return
+
+        account.lots.setdefault(ticker, []).append({
+            "qty": qty,
+            "basis": basis,
+            "timestamp": ts_label
+        })
         
         account.sync_holdings_from_lots()
         self.console.print("[green]Holding Updated.[/green]")
@@ -371,3 +373,31 @@ class ClientManager:
             if ticker in account.lots: del account.lots[ticker]
             self.console.print("[green]Removed.[/green]")
         InputSafe.pause()
+
+    def _resolve_lot_basis(self, ticker: str, method: str) -> Tuple[Optional[float], str]:
+        """Resolve lot basis based on user-selected method."""
+        if method == "1":
+            quote = self.valuation_engine.get_quote_data(ticker)
+            price = float(quote.get("price", 0.0) or 0.0)
+            if price <= 0:
+                price = InputSafe.get_float("Enter current price ($):", min_val=0.01)
+            return price, datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        if method == "2":
+            while True:
+                ts_str = InputSafe.get_string("Timestamp (MM/DD/YY HH:MM:SS):")
+                try:
+                    ts = datetime.strptime(ts_str, "%m/%d/%y %H:%M:%S")
+                except ValueError:
+                    self.console.print("[red]Invalid format. Use MM/DD/YY HH:MM:SS[/red]")
+                    continue
+
+                price = self.valuation_engine.get_historical_price(ticker, ts)
+                if price is None or price <= 0:
+                    self.console.print("[yellow]Unable to fetch historical price. Enter manually.[/yellow]")
+                    price = InputSafe.get_float("Enter historical price ($):", min_val=0.01)
+
+                return price, ts.strftime("%Y-%m-%d %H:%M:%S")
+
+        price = InputSafe.get_float("Enter custom cost basis ($):", min_val=0.01)
+        return price, "CUSTOM"
