@@ -262,6 +262,7 @@ class YahooWrapper:
     _FAST_CACHE: Dict[str, Tuple[int, Any]] = {}
     _FAST_TTL = 10 
 
+
     @classmethod
     def _get_fast_cache(cls, key: str):
         data = cls._FAST_CACHE.get(key)
@@ -394,7 +395,11 @@ class YahooWrapper:
                 "high": float(high),
                 "low": float(low),
                 "volume": int(volume),
-                "history": closes.tail(40).tolist(),
+                "history": closes.tolist(),
+                "history_dates": [
+                    (idx.to_pydatetime().replace(tzinfo=None) if hasattr(idx, "to_pydatetime") else idx).strftime("%Y-%m-%d %H:%M:%S")
+                    for idx in closes.index
+                ],
             }
 
             YahooWrapper._DETAILED_CACHE[cache_key] = (YahooWrapper._now(), data)
@@ -499,7 +504,7 @@ class YahooWrapper:
                         "high": float(h_val),
                         "low": float(l_val),
                         "volume": int(v_val),
-                        "history": closes.tail(20).tolist(),
+                        "history": closes.tolist(),
                     })
                 except Exception:
                     missing.append(sym)

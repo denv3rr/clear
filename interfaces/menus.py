@@ -20,7 +20,7 @@ class MainMenu:
         self.text_fx = TextEffectManager()
         self.settings_module = SettingsModule()
 
-    def _build_main_menu_frame(self) -> Panel:
+    def _build_main_menu_frame(self, panel_width: int) -> Panel:
         """Helper to build the main menu Rich panel."""
         menu_options = [
             ("1", "Client Manager", "View portfolios, add clients, manage accounts"),
@@ -44,7 +44,7 @@ class MainMenu:
             box=box.ROUNDED,
             padding=(1, 5),
             border_style="blue",
-            width=200
+            width=panel_width
         )
         return panel
 
@@ -62,7 +62,8 @@ class MainMenu:
         Renders the menu and returns the user's selected action key.
         """
         
-        main_panel = self._build_main_menu_frame()
+        panel_width = min(140, max(72, self.console.width - 8))
+        main_panel = self._build_main_menu_frame(panel_width)
         self.console.print(Align.center(main_panel))
         
         action_map = {
@@ -72,8 +73,7 @@ class MainMenu:
             "0": "exit"
         }
 
-        panel_width = 200
-        inner_content_offset = 28
+        inner_content_offset = max(8, int(panel_width * 0.14))
         terminal_width = self.console.width
         
         # 1. Calculate the base left padding needed to center the 200-width panel

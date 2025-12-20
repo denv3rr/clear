@@ -94,13 +94,16 @@ class ClientManager:
         """Displays specific client portfolio and handles client-level actions."""
         while True:
             # --- 1. Fetch & Calculate Data ---
-            interval = getattr(client, "active_interval", "1M")
+            interval = str(getattr(client, "active_interval", "1M") or "1M").upper()
             
             # Aggregate holdings
             all_holdings = {}
+            all_lots = {}
             for acc in client.accounts:
                 for t, q in acc.holdings.items():
                     all_holdings[t] = all_holdings.get(t, 0) + q
+                for t, lots in (acc.lots or {}).items():
+                    all_lots.setdefault(t, []).extend(lots or [])
 
             # Market Valuation
             hp = HISTORY_PERIOD.get(interval, "1mo")
@@ -117,7 +120,7 @@ class ClientManager:
 
             # History & Charts
             history = self.valuation_engine.generate_synthetic_portfolio_history(
-                enriched_data, all_holdings, interval=interval
+                enriched_data, all_holdings, interval=interval, lot_map=all_lots
             )
             n_points = INTERVAL_POINTS.get(interval, 22)
             spark_data = history[-n_points:] if history else []
@@ -126,12 +129,16 @@ class ClientManager:
             capm = FinancialToolkit.compute_capm_metrics_from_holdings(
                 all_holdings, benchmark_ticker="SPY", period=CAPM_PERIOD.get(interval, "1y")
             )
+            auto_risk = FinancialToolkit.assess_risk_profile(capm)
+            if client.risk_profile_source != "manual":
+                client.risk_profile = auto_risk
+                client.risk_profile_source = "auto"
 
             # --- 2. Render UI (via Components) ---
             Navigator.clear()
             self.console.print(UIComponents.header(
                 f"CLIENT: {client.name}", 
-                subtitle=f"ID: {client.client_id} | Interval: {interval}",
+                subtitle=f"ID: {client.client_id} | Interval: {interval} | Risk: {client.risk_profile}",
                 breadcrumbs="Clients > Dashboard"
             ))
 
@@ -178,7 +185,12 @@ class ClientManager:
         
         if len(returns) >= 8:
             scope_text = f"{scope_label} [dim]({interval})[/dim]"
-            snap = RegimeModels.compute_markov_snapshot(returns, horizon=1, label=scope_text)
+            snap = RegimeModels.compute_markov_snapshot(
+                returns,
+                horizon=1,
+                label=scope_text,
+                interval=interval,
+            )
             snap["scope_label"] = scope_label
             snap["interval"] = interval
             self.console.print(RegimeRenderer.render(snap))
@@ -216,7 +228,7 @@ class ClientManager:
     def manage_holdings_loop(self, client: Client, account: Account):
         """Detailed view for a single account."""
         while True:
-            interval = getattr(client, "active_interval", "1M")
+            interval = str(getattr(client, "active_interval", "1M") or "1M").upper()
             account.active_interval = interval # Sync
 
             # 1. Fetch Data
@@ -235,7 +247,7 @@ class ClientManager:
 
             # Metrics for THIS account
             history = self.valuation_engine.generate_synthetic_portfolio_history(
-                enriched, account.holdings, interval=interval
+                enriched, account.holdings, interval=interval, lot_map=account.lots
             )
             capm = FinancialToolkit.compute_capm_metrics_from_holdings(
                 account.holdings, benchmark_ticker="SPY", period=CAPM_PERIOD.get(interval, "1y")
@@ -287,8 +299,7 @@ class ClientManager:
     def add_client_workflow(self):
         name = InputSafe.get_string("Client Name:")
         if not name: return
-        risk = InputSafe.get_option(["Conservative", "Moderate", "Aggressive"], prompt_text="Risk Profile")
-        new_client = Client(name=name, risk_profile=risk)
+        new_client = Client(name=name, risk_profile="Unassigned")
         new_client.accounts.append(Account(account_name="Primary Brokerage"))
         self.clients.append(new_client)
         self.console.print("[green]Client Added.[/green]")
@@ -297,7 +308,12 @@ class ClientManager:
     def edit_client_workflow(self, client: Client):
         new_name = InputSafe.get_string(f"New Name [{client.name}]:")
         if new_name: client.name = new_name
-        # Simple Logic...
+        new_risk = InputSafe.get_string(
+            f"Risk Profile [{client.risk_profile}] (free text, leave empty to keep):"
+        )
+        if new_risk:
+            client.risk_profile = new_risk.strip()
+            client.risk_profile_source = "manual"
         InputSafe.pause()
 
     def delete_client_workflow(self):
@@ -310,7 +326,11 @@ class ClientManager:
 
     def _change_interval_workflow(self, client):
         opts = list(INTERVAL_POINTS.keys())
-        choice = InputSafe.get_option(opts, prompt_text="Select Interval")
+        self.console.print("[dim]Select Interval ([0] Back)[/dim]")
+        choice = InputSafe.get_option(opts + ["0"], prompt_text="[>]")
+        if choice == "0":
+            return
+        choice = str(choice).upper()
         client.active_interval = choice
         for acc in client.accounts: acc.active_interval = choice
 
@@ -318,8 +338,31 @@ class ClientManager:
     def add_account_workflow(self, client):
         name = InputSafe.get_string("Account Name:")
         if not name: return
-        typ = InputSafe.get_option(["Taxable", "IRA", "401k", "Crypto"], prompt_text="Type")
-        client.accounts.append(Account(account_name=name, account_type=typ))
+        self.console.print("[bold]Account Type[/bold] ([0] Back, Enter to skip)")
+        self.console.print("[1] Taxable  [2] IRA  [3] 401k  [4] Trust  [5] Crypto  [M] Manual")
+        choice = InputSafe.get_string("[>] Type:")
+        if choice.strip() == "0":
+            return
+        if not choice.strip():
+            account_type = "Unspecified"
+        else:
+            key = choice.strip().lower()
+            if key == "m":
+                manual = InputSafe.get_string("Custom Type:")
+                if not manual:
+                    account_type = "Unspecified"
+                else:
+                    account_type = manual.strip()
+            else:
+                type_map = {
+                    "1": "Taxable",
+                    "2": "IRA",
+                    "3": "401k",
+                    "4": "Trust",
+                    "5": "Crypto",
+                }
+                account_type = type_map.get(key, choice.strip())
+        client.accounts.append(Account(account_name=name, account_type=account_type))
 
     def remove_account_workflow(self, client):
         # Logic to remove account...
@@ -342,22 +385,28 @@ class ClientManager:
             return
 
         # Acquisition Logic
-        self.console.print("[1] Current Price [2] Historical [3] Custom Basis")
-        method = InputSafe.get_option(["1", "2", "3"])
+        self.console.print("[1] Current Price [2] Historical [3] Custom Basis [0] Back")
+        method = InputSafe.get_option(["1", "2", "3", "0"])
+        if method == "0":
+            return
         
         qty = InputSafe.get_float("Quantity:")
         
-        basis, ts_label = self._resolve_lot_basis(ticker, method)
+        basis, ts_label, source = self._resolve_lot_basis(ticker, method)
         if basis is None:
             self.console.print("[red]Unable to resolve cost basis.[/red]")
             InputSafe.pause()
             return
 
-        account.lots.setdefault(ticker, []).append({
+        lot_entry = {
             "qty": qty,
             "basis": basis,
             "timestamp": ts_label
-        })
+        }
+        if source:
+            lot_entry["source"] = source
+
+        account.lots.setdefault(ticker, []).append(lot_entry)
         
         account.sync_holdings_from_lots()
         self.console.print("[green]Holding Updated.[/green]")
@@ -377,14 +426,14 @@ class ClientManager:
             self.console.print("[green]Removed.[/green]")
         InputSafe.pause()
 
-    def _resolve_lot_basis(self, ticker: str, method: str) -> Tuple[Optional[float], str]:
+    def _resolve_lot_basis(self, ticker: str, method: str) -> Tuple[Optional[float], str, str]:
         """Resolve lot basis based on user-selected method."""
         if method == "1":
             quote = self.valuation_engine.get_quote_data(ticker)
             price = float(quote.get("price", 0.0) or 0.0)
             if price <= 0:
                 price = InputSafe.get_float("Enter current price ($):", min_val=0.01)
-            return price, datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            return price, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "MARKET"
 
         if method == "2":
             while True:
@@ -400,7 +449,7 @@ class ClientManager:
                     self.console.print("[yellow]Unable to fetch historical price. Enter manually.[/yellow]")
                     price = InputSafe.get_float("Enter historical price ($):", min_val=0.01)
 
-                return price, ts.strftime("%Y-%m-%d %H:%M:%S")
+                return price, ts.strftime("%Y-%m-%d %H:%M:%S"), "HISTORICAL"
 
         price = InputSafe.get_float("Enter custom cost basis ($):", min_val=0.01)
-        return price, "CUSTOM"
+        return price, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "CUSTOM"

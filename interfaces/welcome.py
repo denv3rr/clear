@@ -1,5 +1,6 @@
 import time
 import os
+import json
 os.environ["TTE_DEBUG"] = "0"
 
 from rich.console import Console
@@ -35,6 +36,20 @@ class StartupScreen:
                 "cpu_cores": "N/A",
                 "python_version": "N/A",
             }
+
+        data["cwd"] = os.getcwd()
+        data["data_file"] = os.path.join(data["cwd"], "data", "clients.json")
+        data["settings_file"] = os.path.join(data["cwd"], "config", "settings.json")
+
+        clients_count = "N/A"
+        if os.path.exists(data["data_file"]):
+            try:
+                with open(data["data_file"], "r") as f:
+                    payload = json.load(f)
+                if isinstance(payload, list):
+                    clients_count = str(len(payload))
+            except Exception:
+                clients_count = "N/A"
 
         # --- 1. ASCII Art ---
         ascii_art_clear = r"""
@@ -114,16 +129,20 @@ class StartupScreen:
         left_col.add_row("[+] USER:", data['user'])
         left_col.add_row("[+] OS:", data['os'])
         left_col.add_row("[+] LOCAL IP:", data['ip'])
+        left_col.add_row("[+] WORKDIR:", data.get("cwd", "N/A"))
         
         # Inner table for Hardware/Python (Right Column - 4 rows)
         right_col = Table.grid(padding=(0, 2))
         right_col.add_column(style="bold cyan", min_width=12, justify="left")
         right_col.add_column(style="white", justify="left")
         
+        psutil_status = "YES" if data.get("psutil_available") else "NO"
         right_col.add_row("[+] PYTHON:", data.get('python_version', 'N/A'))
+        right_col.add_row("[+] PSUTIL:", psutil_status)
         right_col.add_row("[+] CPU CORES:", str(data.get('cpu_cores', 'N/A')))
         right_col.add_row("[+] CPU USAGE:", data.get('cpu_usage', 'N/A'))
         right_col.add_row("[+] RAM USAGE:", data.get('mem_usage', 'N/A'))
+        right_col.add_row("[+] CLIENTS:", clients_count)
         
         # 2 inner tables added to the 2-column grid
         two_col_metrics_grid.add_row(left_col, right_col)
@@ -138,6 +157,10 @@ class StartupScreen:
         sys_info_grid_content.add_row("")
         sys_info_grid_content.add_row(f"[bold cyan][+][/bold cyan] [bold cyan]SYSTEM TIME: [/bold cyan]  {data['login_time']}")
         sys_info_grid_content.add_row(f"[bold cyan][+][/bold cyan] [bold cyan]FINNHUB KEY: [/bold cyan]  [{color}]{status}[/{color}]")
+        data_flag = "FOUND" if os.path.exists(data.get("data_file", "")) else "MISSING"
+        settings_flag = "FOUND" if os.path.exists(data.get("settings_file", "")) else "MISSING"
+        sys_info_grid_content.add_row(f"[bold cyan][+][/bold cyan] [bold cyan]DATA FILE: [/bold cyan]  {data_flag}")
+        sys_info_grid_content.add_row(f"[bold cyan][+][/bold cyan] [bold cyan]SETTINGS FILE: [/bold cyan]  {settings_flag}")
 
         sys_info_grid = Panel(
             sys_info_grid_content,

@@ -33,15 +33,6 @@ class MarketFeed:
         ]
         self.interval_idx = 0
 
-    def _get_trend_arrow(self, change: float) -> Text:
-        """Returns a colored trend arrow based on change value."""
-        if change > 0:
-            return Text("▲", style="bold green")
-        elif change < 0:
-            return Text("▼", style="bold red")
-        else:
-            return Text("▶", style="dim white")
-
     def toggle_interval(self):
         """Cycles to the next interval option."""
         self.interval_idx = (self.interval_idx + 1) % len(self.interval_options)
@@ -155,7 +146,7 @@ class MarketFeed:
             pct = float(item.get("pct", 0.0) or 0.0)
             c_color = "green" if change >= 0 else "red"
 
-            trend_arrow = self._get_trend_arrow(change)
+            trend_arrow = ChartRenderer.get_trend_arrow(change)
             history = item.get("history", []) or []
             sparkline = ChartRenderer.generate_sparkline(history, length=20)
             spark_color = "green" if (history and history[-1] >= history[0]) else ("red" if history else "dim")

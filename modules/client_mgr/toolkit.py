@@ -424,12 +424,40 @@ class FinancialToolkit:
         self.console.print(self._render_return_distribution(returns))
         InputSafe.pause()
 
+    @staticmethod
+    def assess_risk_profile(metrics: Dict[str, Any], min_points: int = 30) -> str:
+        """
+        Classifies risk profile based on CAPM beta when sufficient data exists.
+        Returns "Not Assessed" if inputs are insufficient.
+        """
+        if not metrics or metrics.get("error"):
+            return "Not Assessed"
+        points = int(metrics.get("points", 0) or 0)
+        beta = metrics.get("beta")
+        if points < min_points or beta is None:
+            return "Not Assessed"
+
+        try:
+            beta_val = float(beta)
+        except Exception:
+            return "Not Assessed"
+
+        # Heuristic thresholds commonly used for beta-based risk buckets.
+        if beta_val < 0.8:
+            return "Conservative"
+        if beta_val <= 1.2:
+            return "Moderate"
+        return "Aggressive"
+
     def _select_interval(self) -> Optional[str]:
         options = list(TOOLKIT_PERIOD.keys())
         self.console.print("\n[bold white]Select Interval[/bold white]")
         for opt in options:
             self.console.print(f"[{opt}]")
-        choice = InputSafe.get_option(options, prompt_text="[>]")
+        self.console.print("[0] Back")
+        choice = InputSafe.get_option(options + ["0"], prompt_text="[>]")
+        if choice == "0":
+            return None
         return choice.upper()
 
     def _aggregate_holdings(self) -> Dict[str, float]:
@@ -696,7 +724,14 @@ class FinancialToolkit:
                 warnings.simplefilter("ignore", category=FutureWarning)
                 warnings.simplefilter("ignore", category=UserWarning)
                 with contextlib.redirect_stderr(io.StringIO()):
-                    df = yf.download(download_list, period=period, interval="1d", progress=False, group_by="column")
+                    df = yf.download(
+                        download_list,
+                        period=period,
+                        interval="1d",
+                        progress=False,
+                        group_by="column",
+                        auto_adjust=True,
+                    )
                     if df is None or df.empty:
                         data = {"error": "No market data returned", "beta": None, "alpha_annual": None, "r_squared": None, "sharpe": None, "vol_annual": None, "points": 0}
                         _CAPM_CACHE[key] = {"ts": ts, "data": data}
@@ -916,6 +951,25 @@ class RegimeModels:
         "1Y": 252,
     }
 
+    ANNUALIZATION = {
+        "1W": 252.0 * 6.5,  # 60m bars, approx 6.5 trading hours/day
+        "1M": 252.0,
+        "3M": 252.0,
+        "6M": 252.0,
+        "1Y": 252.0,
+        "1D": 252.0,
+        "1WK": 52.0,
+        "1MO": 12.0,
+        "60M": 252.0 * 6.5,
+    }
+
+    @staticmethod
+    def _annualization_factor(interval: str | None) -> float:
+        if not interval:
+            return 252.0
+        key = str(interval).upper().strip()
+        return float(RegimeModels.ANNUALIZATION.get(key, 252.0))
+
     @staticmethod
     def _stationary_distribution(P: list[list[float]], tol: float = 1e-12, max_iter: int = 5000) -> list[float]:
         """
@@ -1026,7 +1080,12 @@ class RegimeModels:
                 if prev > 0:
                     returns.append((curr - prev) / prev)
 
-        snap = RegimeModels.compute_markov_snapshot(returns, horizon=1, label=f"{label} ({interval})")
+        snap = RegimeModels.compute_markov_snapshot(
+            returns,
+            horizon=1,
+            label=f"{label} ({interval})",
+            interval=interval,
+        )
         snap["interval"] = interval
         return snap
 
@@ -1034,7 +1093,8 @@ class RegimeModels:
     def compute_markov_snapshot(
         returns: list[float],
         horizon: int = 1,
-        label: str = "1D"
+        label: str = "1D",
+        interval: str | None = None,
     ) -> dict:
         if not returns or len(returns) < 8:
             return {"error": "Insufficient data for regime analysis"}
@@ -1051,9 +1111,15 @@ class RegimeModels:
         next_state = max(probs, key=probs.get)
 
         avg_return = sum(returns) / len(returns)
-        volatility = math.sqrt(
-            sum((r - avg_return) ** 2 for r in returns) / len(returns)
-        )
+        if len(returns) > 1:
+            volatility = math.sqrt(
+                sum((r - avg_return) ** 2 for r in returns) / (len(returns) - 1)
+            )
+        else:
+            volatility = 0.0
+        ann_factor = RegimeModels._annualization_factor(interval)
+        avg_return_annual = avg_return * ann_factor
+        volatility_annual = volatility * math.sqrt(ann_factor)
 
         # --- Surfaces (pure Markov; interval-compatible) ---
         pi = RegimeModels._stationary_distribution(P)
@@ -1077,8 +1143,10 @@ class RegimeModels:
             },
             "stability": P[current_state][current_state],
             "metrics": {
-                "avg_return": avg_return,
-                "volatility": volatility
+                "avg_return": avg_return_annual,
+                "volatility": volatility_annual,
+                "avg_return_raw": avg_return,
+                "volatility_raw": volatility,
             },
             "stationary": {
                 RegimeModels.STATE_LABELS[i]: pi[i] for i in range(n)
@@ -1117,7 +1185,12 @@ class RegimeModels:
         if returns.empty or len(returns) < 8:
             return {"error": "Insufficient data for regime analysis"}
 
-        snap = RegimeModels.compute_markov_snapshot(returns.tolist(), horizon=1, label=f"{symbol} ({period})")
+        snap = RegimeModels.compute_markov_snapshot(
+            returns.tolist(),
+            horizon=1,
+            label=f"{symbol} ({period})",
+            interval=interval,
+        )
         if "error" in snap:
             return snap
 
@@ -1288,6 +1361,19 @@ class RegimeRenderer:
     """
 
     @staticmethod
+    def _fmt_pct(value: Any, decimals: int = 2) -> str:
+        try:
+            p = float(value or 0.0)
+        except (ValueError, TypeError):
+            p = 0.0
+        if p < 1.0:
+            cap = 100.0 - (10 ** (-decimals))
+            pct = min(p * 100.0, cap)
+        else:
+            pct = 100.0
+        return f"{pct:.{decimals}f}%"
+
+    @staticmethod
     def render(snapshot: dict) -> Panel:
         if "error" in snapshot:
             return Panel(
@@ -1309,15 +1395,15 @@ class RegimeRenderer:
         left.add_row("Model", snapshot["model"])
         left.add_row("Horizon", snapshot["horizon"])
         left.add_row("Current Regime", snapshot["current_regime"])
-        left.add_row("Confidence", f"{snapshot['confidence']*100:.1f}%")
-        left.add_row("Stability", f"{snapshot['stability']*100:.1f}%")
+        left.add_row("Confidence", RegimeRenderer._fmt_pct(snapshot["confidence"]))
+        left.add_row("Stability", RegimeRenderer._fmt_pct(snapshot["stability"]))
         left.add_row(
-            "Avg Return",
-            f"{snapshot['metrics']['avg_return']*100:.2f}%"
+            "Avg Return (Ann.)",
+            RegimeRenderer._fmt_pct(snapshot["metrics"]["avg_return"])
         )
         left.add_row(
-            "Volatility",
-            f"{snapshot['metrics']['volatility']*100:.2f}%"
+            "Volatility (Ann.)",
+            RegimeRenderer._fmt_pct(snapshot["metrics"]["volatility"])
         )
 
         # --- RIGHT: regime probabilities ---
@@ -1338,7 +1424,7 @@ class RegimeRenderer:
             color = "green" if "Up" in name else "red" if "Down" in name else "yellow"
             prob_table.add_row(
                 name,
-                f"{p*100:.1f}%",
+                RegimeRenderer._fmt_pct(p),
                 f"[{color}]{bar}[/{color}]"
             )
 
@@ -1451,7 +1537,7 @@ class RegimeRenderer:
             else:               ch, col = "▁", "dim white"
 
             blocks = f"[{col}]{ch * 6}[/{col}]"
-            return Text.from_markup(f"{blocks}\n[white bold]{p*100:4.1f}%[/white bold]")
+            return Text.from_markup(f"{blocks}\n[white bold]{RegimeRenderer._fmt_pct(p)}[/white bold]")
 
         for i, row in enumerate(P):
             row_label = labels[i] if i < len(labels) else "???"
@@ -1467,6 +1553,7 @@ class RegimeRenderer:
         Pseudo-3D surface using stacked blocks. This is a heightmap-like display suitable for terminals.
         """
         n = len(P)
+        cell_width = max(6, int(90 / max(1, n)))
         surf = Table(
             box=box.SIMPLE,
             show_header=False,
@@ -1474,14 +1561,14 @@ class RegimeRenderer:
             expand=True,
             padding=(0, 0),
         )
-        surf.add_column("Surface", no_wrap=True)
+        surf.add_column("Surface", ratio=1, no_wrap=True)
 
         # Render each row as a "ridge" of stacked blocks.
         # Height is proportional to probability (0..1) mapped to 0..8 blocks.
         def stack(p: float) -> str:
             levels = "▁▂▃▄▅▆▇█"
             idx = int(round(max(0.0, min(1.0, float(p))) * (len(levels) - 1)))
-            return levels[idx] * 6
+            return levels[idx] * cell_width
 
         def stack_color(p: float) -> str:
             if p >= 0.90:
@@ -1505,7 +1592,7 @@ class RegimeRenderer:
             while j < n:
                 block = stack(row[j])
                 color = stack_color(float(row[j] or 0.0))
-                parts.append(f"[{color}]{block}[/{color}]".ljust(8))
+                parts.append(f"[{color}]{block}[/{color}]".ljust(cell_width + 2))
                 j += 1
             lines.append(" ".join(parts))
             i += 1
@@ -1530,7 +1617,7 @@ class RegimeRenderer:
             p = float(p or 0.0)
             bar = ChartRenderer.generate_bar(p, width=18)
             color = "green" if "Up" in name else "red" if "Down" in name else "yellow"
-            tab.add_row(name, f"{p*100:.1f}%", f"[{color}]{bar}[/{color}]")
+            tab.add_row(name, RegimeRenderer._fmt_pct(p), f"[{color}]{bar}[/{color}]")
 
         return tab
 
@@ -1561,7 +1648,7 @@ class RegimeRenderer:
 
             # 3. Assemble: Multiplied blocks on top, percentage on bottom
             blocks = f"[{col}]{ch * 6}[/{col}]"
-            pct = f"[white bold]{p_val*100:4.1f}%[/white bold]"
+            pct = f"[white bold]{RegimeRenderer._fmt_pct(p_val)}[/white bold]"
             
             return Text.from_markup(f"{blocks}\n{pct}")
 

@@ -3,6 +3,7 @@ import os
 import time
 import shutil
 import socket
+import json
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -17,12 +18,45 @@ class SettingsModule:
     def __init__(self):
         self.console = Console()
         self.text_fx = TextEffectManager()
-        
-        self.settings = {
+
+        self.settings_file = os.path.join(os.getcwd(), "config", "settings.json")
+        self.settings = self._load_settings()
+        stored_key = self.settings.get("credentials", {}).get("finnhub_key")
+        if stored_key and not os.getenv("FINNHUB_API_KEY"):
+            os.environ["FINNHUB_API_KEY"] = stored_key
+
+    def _default_settings(self):
+        return {
             "display": {"theme": "default", "color_highlight": "blue", "show_animations": True},
             "network": {"refresh_interval": 60, "timeout": 5, "retries": 3},
-            "system": {"cache_size_mb": 512, "log_level": "INFO"}
+            "system": {"cache_size_mb": 512, "log_level": "INFO"},
+            "credentials": {"smtp": {}, "finnhub_key": ""}
         }
+
+    def _load_settings(self):
+        defaults = self._default_settings()
+        if not os.path.exists(self.settings_file):
+            return defaults
+        try:
+            with open(self.settings_file, "r") as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                return defaults
+            # Shallow merge defaults
+            for k, v in defaults.items():
+                if k not in data or not isinstance(data.get(k), dict):
+                    data[k] = v
+            return data
+        except Exception:
+            return defaults
+
+    def _save_settings(self):
+        try:
+            os.makedirs(os.path.dirname(self.settings_file), exist_ok=True)
+            with open(self.settings_file, "w") as f:
+                json.dump(self.settings, f, indent=4)
+        except Exception as e:
+            self.console.print(f"[red]Error saving settings: {e}[/red]")
 
     # --- 1. API & Security ---
     def _menu_api_security(self):
@@ -35,6 +69,7 @@ class SettingsModule:
                 "1": "Update Finnhub API Key",
                 "2": "Update SMTP/Email Credentials",
                 "3": "Clear All Stored Credentials",
+                "4": "View Stored Credential Status",
                 "0": "Back"
             }
             
@@ -45,6 +80,7 @@ class SettingsModule:
             if choice == "1": self._update_finnhub_key()
             if choice == "2": self._update_smtp_creds()
             if choice == "3": self._clear_credentials()
+            if choice == "4": self._show_credential_status()
 
     def _update_finnhub_key(self):
         self.console.print("\n--- [bold]Update Finnhub Key[/bold] ---")
@@ -70,23 +106,51 @@ class SettingsModule:
                     f.write(f"FINNHUB_API_KEY={new_key}\n")
             
             os.environ["FINNHUB_API_KEY"] = new_key
+            self.settings["credentials"]["finnhub_key"] = new_key
+            self._save_settings()
             self.console.print("[green]Key updated successfully.[/green]")
         except Exception as e:
             self.console.print(f"[red]Error saving key: {e}[/red]")
         InputSafe.pause()
 
     def _update_smtp_creds(self):
-        self.console.print("\n[dim]Feature: SMTP Configuration[/dim]")
-        email = InputSafe.get_string("Enter Sender Email:")
-        self.console.print(f"[yellow]Stored email '{email}' to session config (dummy).[/yellow]")
+        self.console.print("\n--- [bold]SMTP Configuration[/bold] ---")
+        host = InputSafe.get_string("SMTP Host (leave empty to cancel):")
+        if not host:
+            return
+        port = InputSafe.get_float("SMTP Port:", min_val=1, max_val=65535)
+        username = InputSafe.get_string("SMTP Username:")
+        sender = InputSafe.get_string("Sender Email:")
+        use_tls = InputSafe.get_yes_no("Use TLS?")
+        password = InputSafe.get_string("SMTP Password (stored in settings file):")
+
+        self.settings["credentials"]["smtp"] = {
+            "host": host,
+            "port": int(port),
+            "username": username,
+            "sender": sender,
+            "use_tls": bool(use_tls),
+            "password": password,
+        }
+        self._save_settings()
+        self.console.print("[green]SMTP credentials saved.[/green]")
         InputSafe.pause()
 
     def _clear_credentials(self):
         if InputSafe.get_yes_no("Are you sure you want to clear ALL cached keys?"):
             os.environ.pop("FINNHUB_API_KEY", None)
+            self.settings["credentials"] = {"smtp": {}, "finnhub_key": ""}
+            self._save_settings()
             self.console.print("[red]Credentials cleared from active session.[/red]")
         InputSafe.pause()
 
+    def _show_credential_status(self):
+        self.console.print("\n--- [bold]Credential Status[/bold] ---")
+        finnhub_set = bool(self.settings.get("credentials", {}).get("finnhub_key"))
+        smtp_set = bool(self.settings.get("credentials", {}).get("smtp"))
+        self.console.print(f"Finnhub Key: {'SET' if finnhub_set else 'MISSING'}")
+        self.console.print(f"SMTP Profile: {'SET' if smtp_set else 'MISSING'}")
+        InputSafe.pause()
 
     # --- 2. Display & UX ---
     def _menu_display_ux(self):
@@ -113,6 +177,7 @@ class SettingsModule:
                 if c: self.settings['display']['color_highlight'] = c
             if choice == "2":
                 self.settings['display']['show_animations'] = not self.settings['display']['show_animations']
+            self._save_settings()
 
 
     # --- 3. System & Performance ---
@@ -144,6 +209,7 @@ class SettingsModule:
             if choice == "3":
                 val = InputSafe.get_float("Enter MB (1-1024):", 1, 1024)
                 self.settings['system']['cache_size_mb'] = int(val)
+            self._save_settings()
 
     # --- 4. Diagnostics ---
     def _run_deep_diagnostics(self):
@@ -259,6 +325,7 @@ class SettingsModule:
                 "2": "🎨 Display & UX",
                 "3": "⚡ System & Performance",
                 "4": "🩺 Run Quick Diagnostics",
+                "5": "💾 Reset Settings to Defaults",
                 "0": "🔙 Return to Main"
             }
             
@@ -275,3 +342,7 @@ class SettingsModule:
             elif choice == "2": self._menu_display_ux()
             elif choice == "3": self._menu_system_perf()
             elif choice == "4": self._run_deep_diagnostics()
+            elif choice == "5":
+                if InputSafe.get_yes_no("Reset settings to defaults?"):
+                    self.settings = self._default_settings()
+                    self._save_settings()

@@ -43,6 +43,35 @@ class ValuationEngine:
     def _normalize_ticker(raw: str) -> str:
         return (raw or "").strip().upper()
 
+    @staticmethod
+    def _parse_timestamp(raw: Any) -> Optional[datetime]:
+        if raw is None:
+            return None
+        text = str(raw).strip()
+        if not text:
+            return None
+
+        upper = text.upper()
+        if upper == "LEGACY":
+            return None
+        if upper.startswith("CUSTOM"):
+            text = text.replace("CUSTOM", "").strip(" ()")
+
+        if text.endswith("Z"):
+            text = text[:-1]
+
+        try:
+            return datetime.fromisoformat(text)
+        except Exception:
+            pass
+
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%m/%d/%y %H:%M:%S"):
+            try:
+                return datetime.strptime(text, fmt)
+            except Exception:
+                continue
+        return None
+
     # -------------------------------
     # Public: Quote & history fetches
     # -------------------------------
@@ -189,6 +218,7 @@ class ValuationEngine:
                 data["pct"] = float(data.get("pct", 0.0) or 0.0)
                 data["change"] = float(data.get("change", 0.0) or 0.0)
                 data["price"] = float(data.get("price", 0.0) or 0.0)
+                data["history_dates"] = data.get("history_dates", []) or []
                 return data
         except Exception as ex:
             self._log("warning", f"Yahoo detailed fetch failed for {t}: {ex}")
@@ -207,6 +237,7 @@ class ValuationEngine:
             "low": 0.0,
             "volume": 0,
             "history": [],
+            "history_dates": [],
         }
 
     # -------------------------------
@@ -280,6 +311,7 @@ class ValuationEngine:
                     "pct": pct,
                     "change_pct": pct,  # manager reads change_pct in a few places
                     "history": data.get("history", []) or [],
+                    "history_dates": data.get("history_dates", []) or [],
                     "mkt_cap": data.get("mkt_cap", None),
                 }
 
@@ -368,6 +400,7 @@ class ValuationEngine:
         enriched_data: dict,
         holdings: dict,
         interval: str = "1M",
+        lot_map: Optional[Dict[str, List[Dict[str, Any]]]] = None,
     ) -> list[float]:
         """\
         Reconstructs the portfolio's aggregate history (for a main dashboard chart).
@@ -378,6 +411,10 @@ class ValuationEngine:
 
         if not enriched_data or not holdings:
             return []
+
+        lot_history = self._generate_lot_weighted_history(enriched_data, holdings, lot_map)
+        if lot_history:
+            return lot_history
 
         histories: List[List[float]] = []
         quantities: List[float] = []
@@ -413,5 +450,101 @@ class ValuationEngine:
                 j += 1
             out.append(total)
             idx += 1
+
+        return out
+
+    def _generate_lot_weighted_history(
+        self,
+        enriched_data: Dict[str, Any],
+        holdings: Dict[str, float],
+        lot_map: Optional[Dict[str, List[Dict[str, Any]]]],
+    ) -> List[float]:
+        if not lot_map:
+            return []
+
+        series_by_ticker: Dict[str, Dict[datetime, float]] = {}
+        all_dates: set[datetime] = set()
+
+        for raw_ticker, info in enriched_data.items():
+            prices = info.get("history", []) or []
+            dates = info.get("history_dates", []) or []
+            if not prices or not dates or len(prices) != len(dates):
+                continue
+
+            parsed_dates: List[datetime] = []
+            for d in dates:
+                ts = self._parse_timestamp(d)
+                if ts is None:
+                    parsed_dates = []
+                    break
+                parsed_dates.append(ts)
+
+            if not parsed_dates or len(parsed_dates) != len(prices):
+                continue
+
+            ticker = self._normalize_ticker(raw_ticker)
+            series = {}
+            for ts, price in zip(parsed_dates, prices):
+                try:
+                    series[ts] = float(price or 0.0)
+                except Exception:
+                    series[ts] = 0.0
+            series_by_ticker[ticker] = series
+            all_dates.update(parsed_dates)
+
+        if not series_by_ticker or not all_dates:
+            return []
+
+        sorted_dates = sorted(all_dates)
+        earliest_date = sorted_dates[0]
+
+        lots_by_ticker: Dict[str, List[Tuple[datetime, float]]] = {}
+        for raw_ticker, lots in (lot_map or {}).items():
+            ticker = self._normalize_ticker(raw_ticker)
+            entries: List[Tuple[datetime, float]] = []
+            for lot in lots or []:
+                if not isinstance(lot, dict):
+                    continue
+                try:
+                    qty = float(lot.get("qty", 0.0) or 0.0)
+                except Exception:
+                    qty = 0.0
+                ts = self._parse_timestamp(lot.get("timestamp"))
+                if ts is None:
+                    ts = earliest_date
+                entries.append((ts, qty))
+            if entries:
+                entries.sort(key=lambda x: x[0])
+                lots_by_ticker[ticker] = entries
+
+        holdings_map: Dict[str, float] = {}
+        for raw_ticker, qty in (holdings or {}).items():
+            ticker = self._normalize_ticker(raw_ticker)
+            try:
+                holdings_map[ticker] = holdings_map.get(ticker, 0.0) + float(qty or 0.0)
+            except Exception:
+                holdings_map[ticker] = holdings_map.get(ticker, 0.0)
+
+        out: List[float] = []
+        for dt in sorted_dates:
+            total = 0.0
+            any_price = False
+            for ticker, series in series_by_ticker.items():
+                if dt not in series:
+                    continue
+                any_price = True
+                price = series.get(dt, 0.0)
+                if ticker in lots_by_ticker:
+                    qty = 0.0
+                    for ts, q in lots_by_ticker[ticker]:
+                        if ts <= dt:
+                            qty += q
+                        else:
+                            break
+                else:
+                    qty = holdings_map.get(ticker, 0.0)
+                total += price * qty
+            if any_price:
+                out.append(total)
 
         return out

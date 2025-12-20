@@ -22,6 +22,25 @@ class Account:
     # Lot-based structure: { "TICKER": [ {"qty": float, "basis": float, "timestamp": "YYYY-MM-DD | H:M:S"}, ... ] }
     lots: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
 
+    @staticmethod
+    def _normalize_lots(raw_lots: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
+        normalized: Dict[str, List[Dict[str, Any]]] = {}
+        for raw_ticker, lot_list in (raw_lots or {}).items():
+            ticker = str(raw_ticker).strip().upper()
+            fixed_lots = []
+
+            for lot in lot_list or []:
+                if not isinstance(lot, dict):
+                    continue
+                if not lot.get("timestamp"):
+                    lot["timestamp"] = "LEGACY"
+                fixed_lots.append(lot)
+
+            if fixed_lots:
+                normalized[ticker] = fixed_lots
+
+        return normalized
+
     def sync_holdings_from_lots(self):
         """Calculates aggregate holdings quantity from the sum of all lots.
 
@@ -48,55 +67,32 @@ class Account:
         self.holdings = new_holdings
 
     @staticmethod
-    def from_dict(data: Dict[str, Any]) -> "Client":
-        client = Client(
-            client_id=data.get("client_id", str(uuid.uuid4())),
-            name=data.get("name", "New Client"),
-            risk_profile=data.get("risk_profile", "Moderate"),
-            active_interval=data.get("active_interval", "1M"),
-            accounts=[]
+    def from_dict(data: Dict[str, Any]) -> "Account":
+        lots = Account._normalize_lots(data.get("lots", {}) or {})
+
+        holdings_raw = data.get("holdings", {}) or {}
+        holdings: Dict[str, float] = {}
+        for raw_ticker, qty in holdings_raw.items():
+            ticker = str(raw_ticker).strip().upper()
+            try:
+                holdings[ticker] = holdings.get(ticker, 0.0) + float(qty or 0.0)
+            except Exception:
+                holdings[ticker] = holdings.get(ticker, 0.0)
+
+        account = Account(
+            account_id=data.get("account_id", str(uuid.uuid4())),
+            account_name=data.get("account_name", "Brokerage Account"),
+            account_type=data.get("account_type", "Taxable"),
+            current_value=data.get("current_value", 0.0),
+            holdings=holdings,
+            manual_holdings=data.get("manual_holdings", []) or [],
+            active_interval=str(data.get("active_interval", "1M") or "1M").upper(),
+            lots=lots,
         )
 
-        for acc_data in data.get("accounts", []):
-            # -----------------------------
-            # LOT MIGRATION
-            # -----------------------------
-            raw_lots = acc_data.get("lots", {}) or {}
-            normalized_lots: Dict[str, List[Dict[str, Any]]] = {}
-
-            for raw_ticker, lot_list in raw_lots.items():
-                ticker = str(raw_ticker).strip().upper()
-                fixed_lots = []
-
-                for lot in lot_list or []:
-                    if not isinstance(lot, dict):
-                        continue
-
-                    # Backfill missing timestamp
-                    if not lot.get("timestamp"):
-                        lot["timestamp"] = "LEGACY"
-
-                    fixed_lots.append(lot)
-
-                normalized_lots[ticker] = fixed_lots
-
-            client.accounts.append(
-                Account(
-                    account_id=acc_data.get("account_id", str(uuid.uuid4())),
-                    account_name=acc_data.get("account_name", "Brokerage Account"),
-                    account_type=acc_data.get("account_type", "Taxable"),
-                    current_value=acc_data.get("current_value", 0.0),
-                    holdings=acc_data.get("holdings", {}) or {},
-                    manual_holdings=acc_data.get("manual_holdings", []) or [],
-                    active_interval=acc_data.get(
-                        "active_interval",
-                        data.get("active_interval", "1M")
-                    ),
-                    lots=normalized_lots,
-                )
-            )
-
-        return client
+        if lots:
+            account.sync_holdings_from_lots()
+        return account
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -116,7 +112,8 @@ class Client:
     """Client model storing accounts and profile."""
     client_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     name: str = "New Client"
-    risk_profile: str = "Moderate"
+    risk_profile: str = "Unassigned"
+    risk_profile_source: str = "auto"
     active_interval: str = "1M"
     accounts: List[Account] = field(default_factory=list)
 
@@ -125,6 +122,7 @@ class Client:
             "client_id": self.client_id,
             "name": self.name,
             "risk_profile": self.risk_profile,
+            "risk_profile_source": self.risk_profile_source,
             "active_interval": self.active_interval,
             "accounts": [a.to_dict() for a in self.accounts]
         }
@@ -134,23 +132,17 @@ class Client:
         client = Client(
             client_id=data.get("client_id", str(uuid.uuid4())),
             name=data.get("name", "New Client"),
-            risk_profile=data.get("risk_profile", "Moderate"),
-            active_interval=data.get("active_interval", "1M"),
+            risk_profile=data.get("risk_profile", "Unassigned"),
+            risk_profile_source=data.get("risk_profile_source", "auto"),
+            active_interval=str(data.get("active_interval", "1M") or "1M").upper(),
             accounts=[]
         )
 
         for acc_data in data.get("accounts", []):
-            client.accounts.append(
-                Account(
-                    account_id=acc_data.get("account_id", str(uuid.uuid4())),
-                    account_name=acc_data.get("account_name", "Brokerage Account"),
-                    account_type=acc_data.get("account_type", "Taxable"),
-                    current_value=acc_data.get("current_value", 0.0),
-                    holdings=acc_data.get("holdings", {}) or {},
-                    manual_holdings=acc_data.get("manual_holdings", []) or [],
-                    active_interval=acc_data.get("active_interval", data.get("active_interval", "1M")),
-                    lots=acc_data.get("lots", {}) or {},
-                )
-            )
+            account = Account.from_dict({
+                **(acc_data or {}),
+                "active_interval": acc_data.get("active_interval", data.get("active_interval", "1M"))
+            })
+            client.accounts.append(account)
 
         return client
