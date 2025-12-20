@@ -44,7 +44,11 @@
 
 ## Overview
 
-Clear is a terminal-first portfolio management and analytics suite focused on fast, readable client dashboards, regime modeling, and market context. It is designed for iterative expansion across client workflows, risk analytics, and international tax settings.
+A terminal-first portfolio management and analytics suite.
+<!--
+Fast, readable client dashboards, regime modeling, and market context.
+Designed for iterative expansion across client workflows, risk analytics, and international tax settings when needed.
+-->
 
 ## Features
 
@@ -194,10 +198,10 @@ Source: https://www.investor.gov/introduction-investing/general-resources/news-a
 - Global market ticker enhancements and sidebar UX
 - Additional analytics models (drawdown, factor exposure)
 
-## Contributing
-
-Issues and suggestions are welcome. If you add modules or analytics, include clear output labels and describe data sources and assumptions.
-
 ## Disclaimer
 
-This project is for informational and educational use only and does not provide financial, legal, or tax advice.
+All content is provided **'as is'** without warranty; users should consult with a qualified professional before making any investment or financial decisions.
+
+This project is for **informational use** and does not provide financial, legal, or tax advice.
+
+No information presented should be construed as an offer to buy or sell securities. **The author assumes no liability for financial losses or decisions made based on the contents of this project**.
