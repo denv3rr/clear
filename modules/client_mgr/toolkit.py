@@ -1065,36 +1065,41 @@ class RegimeRenderer:
             Panel(prob_table, box=box.ROUNDED, title="[bold]Regime Probabilities[/bold]")
         )
 
+        labels = list(snapshot["state_probs"].keys())
         matrix = RegimeRenderer._render_transition_heatmap(
             snapshot["transition_matrix"],
-            list(snapshot["state_probs"].keys())
+            labels
+        )
+        trans_surf = RegimeRenderer._render_transition_surface(snapshot["transition_matrix"])
+
+        matrix_grid = Table.grid(expand=True)
+        matrix_grid.add_column(ratio=1)
+        matrix_grid.add_column(ratio=1)
+
+        matrix_grid.add_row(
+            Panel(matrix, title="[bold]Transition Matrix[/bold]", box=box.ROUNDED),
+            Panel(trans_surf, title="[bold]Transition Surface[/bold]", box=box.ROUNDED),
         )
 
         matrix_panel = Panel(
-            matrix,
-            title="[bold]Transition Matrix[/bold]",
+            matrix_grid,
+            title="[bold]Transition Views[/bold] [dim](Matrix • Surface)[/dim]",
             box=box.ROUNDED
         )
 
         # --- Surfaces ---
         surfaces_group = None
         if snapshot.get("stationary") and snapshot.get("evolution"):
-            P = snapshot["transition_matrix"]
-            labels = list(snapshot["state_probs"].keys())
-
-            trans_surf = RegimeRenderer._render_transition_surface(P)
             stat_surf = RegimeRenderer._render_stationary_surface(snapshot["stationary"])
             evo_surf = RegimeRenderer._render_evolution_surface(snapshot["evolution"], labels)
 
             surfaces_group = Group(
-                Panel(trans_surf, title="[bold]Transition Surface[/bold]", box=box.ROUNDED),
                 Panel(stat_surf, title="[bold]Stationary (π)[/bold]", box=box.ROUNDED),
                 Panel(evo_surf, title="[bold]Evolution Surface[/bold]", box=box.ROUNDED),
             )
 
         # --- Matrix (full width) ---
         stack = []
-
         stack.append(matrix_panel)
 
         # --- Surfaces (full width below matrix) ---
