@@ -9,7 +9,6 @@ from rich.rule import Rule
 from rich.layout import Layout
 
 from modules.client_mgr.client_model import Client, Account
-from modules.client_mgr.toolkit import *
 
 from utils.charts import ChartRenderer
 
@@ -59,19 +58,6 @@ class UIComponents:
     @staticmethod
     def portfolio_summary_panel(market_val: float, manual_val: float, spark_data: list = None) -> Panel:
         """Dashboard panel showing Total AUM and a Sparkline."""
-        # 1. GENERATE THE DATA
-        primary_ticker = "SPY" # Or account's largest holding
-        snapshot = RegimeModels.generate_snapshot(primary_ticker)
-        
-        # 2. SYNC WITH RISK PROFILE
-        # We pull the 'metrics' dict out of the snapshot
-        risk_metrics = snapshot.get('metrics', {})
-        risk_panel = UIComponents.portfolio_summary_panel(risk_metrics)
-        
-        # 3. SYNC WITH REGIME SUMMARY
-        regime_panel = RegimeRenderer.render_summary(snapshot)
-
-        market_val = total_val - manual_val
         combined = market_val + manual_val
         
         # Left Side: Numeric Breakdown
@@ -82,8 +68,8 @@ class UIComponents:
         grid.add_row("Market Assets", f"[bold green]${market_val:,.2f}[/bold green]")
         if manual_val > 0:
             grid.add_row("Off-Market", f"[bold magenta]${manual_val:,.2f}[/bold magenta]")
-            grid.add_row(Rule(style="dim"))
-            grid.add_row("Total Net Worth", f"[bold white]${combined:,.2f}[/bold white]")
+        grid.add_row(Rule(style="dim"))
+        grid.add_row("Total Net Worth", f"[bold white]${combined:,.2f}[/bold white]")
 
         # Right Side: Sparkline Chart
         content = grid
@@ -128,29 +114,20 @@ class UIComponents:
     @staticmethod
     def capm_metrics_panel(metrics: dict) -> Panel:
         """Compact CAPM/Risk display."""
-        # 1. GENERATE THE DATA
-        primary_ticker = "SPY" # Or account's largest holding
-        snapshot = RegimeModels.generate_snapshot(primary_ticker)
-        
-        # 2. SYNC WITH RISK PROFILE
-        # We pull the 'metrics' dict out of the snapshot
-        risk_metrics = snapshot.get('metrics', {})
-        risk_panel = UIComponents.portfolio_summary_panel(risk_metrics)
-        
-        # 3. SYNC WITH REGIME SUMMARY
-        regime_panel = RegimeRenderer.render_summary(snapshot)
-
         if not metrics or metrics.get('error'):
             return Panel("[dim]Insufficient data for risk models.[/dim]", title="Risk Metrics", border_style="dim")
+
+        def _fmt(value: float, fmt: str, fallback: str = "N/A") -> str:
+            return fallback if value is None else fmt.format(value)
 
         table = Table(box=box.SIMPLE, expand=True, show_header=False)
         table.add_column("Metric", style="bold")
         table.add_column("Value", justify="right")
         table.add_column("Desc", style="dim italic")
         
-        table.add_row("Beta", f"{metrics.get('beta', 0.0):.2f}", "Volatility vs Market")
-        table.add_row("Alpha", f"{metrics.get('alpha_annual', 0.0):.2%}", "Excess Return")
-        table.add_row("Sharpe", f"{metrics.get('sharpe', 0.0):.2f}", "Risk-Adjusted")
+        table.add_row("Beta", _fmt(metrics.get('beta'), "{:.2f}"), "Volatility vs Market")
+        table.add_row("Alpha", _fmt(metrics.get('alpha_annual'), "{:+.2%}"), "Excess Return")
+        table.add_row("Sharpe", _fmt(metrics.get('sharpe'), "{:.2f}"), "Risk-Adjusted")
         
         return Panel(table, title="[bold blue]Risk Profile (CAPM)[/bold blue]", box=box.ROUNDED)
 
@@ -250,21 +227,12 @@ class UIComponents:
     @staticmethod
     def risk_profile_full_width(metrics: dict) -> Panel:
         """Detailed risk analysis panel with high-fidelity financial metrics."""
-        # 1. GENERATE THE DATA
-        primary_ticker = "SPY" # Or account's largest holding
-        snapshot = RegimeModels.generate_snapshot(primary_ticker)
-        
-        # 2. SYNC WITH RISK PROFILE
-        # We pull the 'metrics' dict out of the snapshot
-        risk_metrics = snapshot.get('metrics', {})
-        risk_panel = UIComponents.portfolio_summary_panel(risk_metrics)
-        
-        # 3. SYNC WITH REGIME SUMMARY
-        regime_panel = RegimeRenderer.render_summary(snapshot)
-
         if not metrics or metrics.get('error'):
             return Panel("[dim]Insufficient historical data for risk modeling.[/dim]", 
                             title="Risk & Volatility Analysis", border_style="dim")
+
+        def _fmt(value: float, fmt: str, fallback: str = "N/A") -> str:
+            return fallback if value is None else fmt.format(value)
 
         table = Table(box=box.SIMPLE, expand=True)
         table.add_column("Metric", style="bold cyan")
@@ -276,13 +244,13 @@ class UIComponents:
         beta = metrics.get('beta', 1.0)
         alpha = metrics.get('alpha_annual', 0.0)
         r_sq = metrics.get('r_squared', 0.0)
-        vol = metrics.get('volatility_annual', metrics.get('volatility', 0.0))
+        vol = metrics.get('vol_annual', metrics.get('volatility_annual', metrics.get('volatility', 0.0)))
         sharpe = metrics.get('sharpe', 0.0)
 
-        table.add_row("Beta (Systemic Risk)", f"{beta:.2f}", "1.00", "Sensitivity to market moves")
-        table.add_row("Alpha (Jensen's)", f"{alpha:+.2%}", "0.00%", "Excess return vs risk-adjusted")
-        table.add_row("R-Squared", f"{r_sq:.2f}", "1.00", "Correlation/Reliability of Beta")
-        table.add_row("Volatility (σ)", f"{vol:.2%}", "15%", "Annualized standard deviation")
-        table.add_row("Sharpe Ratio", f"{sharpe:.2f}", "N/A", "Risk-adjusted return efficiency")
+        table.add_row("Beta (Systemic Risk)", _fmt(beta, "{:.2f}"), "1.00", "Sensitivity to market moves")
+        table.add_row("Alpha (Jensen's)", _fmt(alpha, "{:+.2%}"), "0.00%", "Excess return vs risk-adjusted")
+        table.add_row("R-Squared", _fmt(r_sq, "{:.2f}"), "1.00", "Correlation/Reliability of Beta")
+        table.add_row("Volatility (σ)", _fmt(vol, "{:.2%}"), "15%", "Annualized standard deviation")
+        table.add_row("Sharpe Ratio", _fmt(sharpe, "{:.2f}"), "N/A", "Risk-adjusted return efficiency")
 
         return Panel(table, title="[bold gold1]Annualized Risk Profile[/bold gold1]", box=box.ROUNDED)
