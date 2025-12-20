@@ -1,16 +1,16 @@
-from rich.console import Console
+from rich.console import Console, Group
 from rich.table import Table
 from rich.panel import Panel
 from rich.align import Align
 from rich import box
 from rich.text import Text
-from rich.console import Group
-from rich.layout import Layout
 
 from utils.input import InputSafe
+from interfaces.navigator import Navigator
 from modules.market_data.finnhub_client import FinnhubWrapper
 from modules.market_data.yfinance_client import YahooWrapper
 from utils.charts import ChartRenderer
+from interfaces.shell import ShellRenderer
 
 class MarketFeed:
     def __init__(self):
@@ -44,26 +44,30 @@ class MarketFeed:
     def run(self):
         """Standard interaction loop for the Market Module."""
         while True:
-            self.console.clear()
-            print("\x1b[3J", end="")
-            
             # Display current settings in the view
             current_label = self.interval_options[self.interval_idx][0]
             
-            self.display_futures(view_label=current_label)
-
-            self.console.print("\n[bold gold1]MARKET ACTIONS MENU:[/bold gold1]")
-            self.console.print("[1] 🔍 Ticker Search")
-            self.console.print("[2] 🔄 Force Refresh")
-            self.console.print(f"[3] 📅 Change Interval (Current: [cyan]{current_label}[/cyan])")
-            self.console.print("[0] 🔙 Return to Main Menu")
+            panel = self.display_futures(view_label=current_label)
+            options = {
+                "1": "Ticker Search",
+                "2": "Force Refresh",
+                "3": f"Change Interval ({current_label})",
+                "0": "Return to Main Menu",
+            }
+            ShellRenderer.render(
+                Group(panel),
+                context_actions=options,
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+                show_header=False,
+            )
+            choice = InputSafe.get_option(list(options.keys()) + ["m", "x"], prompt_text="[>]").lower()
             
-            choice = InputSafe.get_option(["1", "2", "3", "0"], prompt_text="[>]")
-            
-            if choice == "0":
-                self.console.clear()
-                print("\x1b[3J", end="")
+            if choice == "0" or choice == "m":
                 break
+            elif choice == "x":
+                Navigator.exit_app()
             elif choice == "1":
                 self.stock_lookup_loop()
             elif choice == "2":
@@ -75,8 +79,6 @@ class MarketFeed:
 
     def display_futures(self, view_label="1D"):
         """Renders categorized macro data inside a clean panel with Sparklines."""
-        self.console.print(f"[dim]Fetching Global Data ({view_label})...[/dim]")
-
         raw_data = self.yahoo.get_macro_snapshot(
             period=self.current_period,
             interval=self.current_interval
@@ -96,8 +98,7 @@ class MarketFeed:
                 if len(missing) > 20:
                     msg.append(f" (+{len(missing) - 20} more)", style="dim")
 
-            self.console.print(Panel(msg, border_style="yellow", title="[bold]Macro Dashboard[/bold]"))
-            return
+            return Panel(msg, border_style="yellow", title="[bold]Macro Dashboard[/bold]")
 
         # Define explicit category order
         cat_order = ["Indices", "Big Tech", "US Sectors", "Commodities", "FX", "Rates", "Crypto", "Macro ETFs"]
@@ -173,18 +174,17 @@ class MarketFeed:
             shown = ", ".join(missing[:12])
             footer = f"[dim]Skipped symbols (no data): {shown}" + ("…[/dim]" if len(missing) > 12 else "[/dim]")
 
+        subtitle = f"[dim]Interval: {view_label} | Period: {self.current_period} | Bars: {self.current_interval}[/dim]"
         ticker_panel = Panel(
             Align.center(table),
             title=f"[bold gold1]MACRO DASHBOARD ([bold green]{view_label}[/bold green])[/bold gold1]",
             border_style="yellow",
             box=box.ROUNDED,
             padding=(0, 2),
-            subtitle=footer
+            subtitle=subtitle if not footer else f"{subtitle}\n{footer}"
         )
 
-        self.console.clear()
-        print("\x1b[3J", end="")
-        self.console.print(ticker_panel)
+        return ticker_panel
 
     def stock_lookup_loop(self):
         """
@@ -273,7 +273,7 @@ class MarketFeed:
                 self.console.print(main_panel)
                 
                 self.console.print("[bold cyan]OPTIONS:[/bold cyan] [I] Change Interval | [N] New Search | [0] Back")
-                action = InputSafe.get_option(["i", "n", "0"], prompt_text="[>]").lower()
+                action = InputSafe.get_option(["i", "n", "0", "m", "x"], prompt_text="[>]").lower()
 
                 if action == "i":
                     local_interval_idx = (local_interval_idx + 1) % len(self.interval_options)
@@ -282,3 +282,7 @@ class MarketFeed:
                     break 
                 elif action == "0":
                     return
+                elif action == "m":
+                    return
+                elif action == "x":
+                    Navigator.exit_app()

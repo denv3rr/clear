@@ -92,5 +92,5 @@ if __name__ == "__main__":
         print("\n>> Goodbye.\n")
         sys.exit(0)
     except Exception as e:
-        console.print(f"\n[red]>> CRITICAL ERROR: {e}[/red]")
+        console.print(f"\n>> CRITICAL ERROR: {e}", style="bold red", markup=False)
         sys.exit(1)

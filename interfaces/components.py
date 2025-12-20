@@ -254,3 +254,72 @@ class UIComponents:
         table.add_row("Sharpe Ratio", _fmt(sharpe, "{:.2f}"), "N/A", "Risk-adjusted return efficiency")
 
         return Panel(table, title="[bold gold1]Annualized Risk Profile[/bold gold1]", box=box.ROUNDED)
+
+    @staticmethod
+    def client_tax_profile_panel(client: Client) -> Panel:
+        profile = getattr(client, "tax_profile", {}) or {}
+        table = Table(box=box.SIMPLE, expand=True, show_header=False)
+        table.add_column("Field", style="bold cyan")
+        table.add_column("Value", justify="right")
+
+        table.add_row("Residency", profile.get("residency_country", "") or "N/A")
+        table.add_row("Tax Country", profile.get("tax_country", "") or "N/A")
+        table.add_row("Reporting CCY", profile.get("reporting_currency", "USD") or "USD")
+        table.add_row("Treaty Country", profile.get("treaty_country", "") or "N/A")
+        table.add_row("Tax ID", profile.get("tax_id", "") or "N/A")
+
+        return Panel(table, title="[bold gold1]Client Tax Profile[/bold gold1]", box=box.ROUNDED)
+
+    @staticmethod
+    def account_tax_settings_panel(account: Account) -> Panel:
+        settings = getattr(account, "tax_settings", {}) or {}
+        table = Table(box=box.SIMPLE, expand=True, show_header=False)
+        table.add_column("Field", style="bold cyan")
+        table.add_column("Value", justify="right")
+
+        table.add_row("Jurisdiction", settings.get("jurisdiction", "") or "N/A")
+        table.add_row("Account CCY", settings.get("account_currency", "USD") or "USD")
+        rate = settings.get("withholding_rate")
+        rate_text = f"{float(rate):.2f}%" if rate is not None else "N/A"
+        table.add_row("Withholding", rate_text)
+        table.add_row("Tax Exempt", "Yes" if settings.get("tax_exempt") else "No")
+
+        return Panel(table, title="[bold gold1]Account Tax Settings[/bold gold1]", box=box.ROUNDED)
+
+    @staticmethod
+    def tax_estimate_panel(tax_result: dict, title: str) -> Panel:
+        table = Table(box=box.SIMPLE, expand=True, show_header=False)
+        table.add_column("Field", style="bold cyan")
+        table.add_column("Value", justify="right")
+
+        if not tax_result:
+            return Panel("[dim]Tax estimates unavailable.[/dim]", title=title, box=box.ROUNDED)
+
+        currency = tax_result.get("currency", "USD") or "USD"
+        total = float(tax_result.get("total_unrealized", 0.0) or 0.0)
+        estimated = tax_result.get("estimated_tax", None)
+        effective = tax_result.get("effective_rate", None)
+        by_term = tax_result.get("by_term", {}) or {}
+        jurisdiction = tax_result.get("jurisdiction", "DEFAULT")
+
+        table.add_row("Jurisdiction", str(jurisdiction))
+        table.add_row("Currency", currency)
+        table.add_row("Unrealized Gain", f"{total:,.2f}")
+        if estimated is None:
+            table.add_row("Estimated Tax", "N/A")
+        else:
+            table.add_row("Estimated Tax", f"{float(estimated):,.2f}")
+        if effective is None:
+            table.add_row("Effective Rate", "N/A")
+        else:
+            table.add_row("Effective Rate", f"{float(effective):.2f}%")
+
+        table.add_row("Short-Term Gain", f"{float(by_term.get('short_term', 0.0) or 0.0):,.2f}")
+        table.add_row("Long-Term Gain", f"{float(by_term.get('long_term', 0.0) or 0.0):,.2f}")
+        table.add_row("Unknown-Term", f"{float(by_term.get('unknown_term', 0.0) or 0.0):,.2f}")
+
+        warnings = tax_result.get("warnings", []) or []
+        if warnings:
+            table.add_row("Notes", "; ".join(sorted(set(warnings))[:2]))
+
+        return Panel(table, title=f"[bold gold1]{title}[/bold gold1]", box=box.ROUNDED)

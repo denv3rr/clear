@@ -8,11 +8,14 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich import box
+from rich.console import Group
 
 from utils.input import InputSafe
 from utils.text_fx import TextEffectManager
 from utils.system import SystemHost 
 from utils.charts import ChartRenderer
+from interfaces.shell import ShellRenderer
+from interfaces.navigator import Navigator
 
 class SettingsModule:
     def __init__(self):
@@ -61,10 +64,7 @@ class SettingsModule:
     # --- 1. API & Security ---
     def _menu_api_security(self):
         while True:
-            self.console.clear()
-            print("\x1b[3J", end="")
-            
-            # Modular Menu Definition
+            # Context actions
             options = {
                 "1": "Update Finnhub API Key",
                 "2": "Update SMTP/Email Credentials",
@@ -73,10 +73,25 @@ class SettingsModule:
                 "0": "Back"
             }
             
-            InputSafe.display_options(options, title="🔒 API & SECURITY SETTINGS")
-            choice = InputSafe.get_option(list(options.keys())) # Uses default [>] prompt
+            status = Table(box=box.SIMPLE, show_header=False)
+            status.add_column("Field", style="bold cyan")
+            status.add_column("Value", justify="right")
+            status.add_row("Finnhub Key", "SET" if os.getenv("FINNHUB_API_KEY") else "MISSING")
+            status.add_row("SMTP Profile", "SET" if self.settings.get("credentials", {}).get("smtp") else "MISSING")
+            panel = Panel(status, title="🔒 API & SECURITY SETTINGS", box=box.ROUNDED)
+            choice = ShellRenderer.render_and_prompt(
+                Group(panel),
+                context_actions=options,
+                valid_choices=list(options.keys()) + ["m", "x"],
+                prompt_label="[>]",
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+            )
             
             if choice == "0": break
+            if choice == "m": break
+            if choice == "x": Navigator.exit_app()
             if choice == "1": self._update_finnhub_key()
             if choice == "2": self._update_smtp_creds()
             if choice == "3": self._clear_credentials()
@@ -155,23 +170,35 @@ class SettingsModule:
     # --- 2. Display & UX ---
     def _menu_display_ux(self):
         while True:
-            self.console.clear()
-            print("\x1b[3J", end="")
-            
-            # Dynamic options based on current settings
             hl = self.settings['display']['color_highlight']
             anim = self.settings['display']['show_animations']
             
+            # Context actions
             options = {
                 "1": f"Highlight Color (Current: [bold {hl}]{hl}[/])",
                 "2": f"UI Animations (Current: {anim})",
                 "0": "Back"
             }
             
-            InputSafe.display_options(options, title="🎨 DISPLAY & UX SETTINGS")
-            choice = InputSafe.get_option(list(options.keys()))
+            status = Table(box=box.SIMPLE, show_header=False)
+            status.add_column("Field", style="bold cyan")
+            status.add_column("Value", justify="right")
+            status.add_row("Highlight Color", hl)
+            status.add_row("Animations", str(anim))
+            panel = Panel(status, title="🎨 DISPLAY & UX SETTINGS", box=box.ROUNDED)
+            choice = ShellRenderer.render_and_prompt(
+                Group(panel),
+                context_actions=options,
+                valid_choices=list(options.keys()) + ["m", "x"],
+                prompt_label="[>]",
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+            )
             
             if choice == "0": break
+            if choice == "m": break
+            if choice == "x": Navigator.exit_app()
             if choice == "1":
                 c = InputSafe.get_string("Enter color (blue, green, magenta, gold1):")
                 if c: self.settings['display']['color_highlight'] = c
@@ -183,12 +210,10 @@ class SettingsModule:
     # --- 3. System & Performance ---
     def _menu_system_perf(self):
         while True:
-            self.console.clear()
-            print("\x1b[3J", end="")
-            
             net = self.settings['network']
             sys_conf = self.settings['system']
             
+            # Context actions
             options = {
                 "1": f"Data Refresh Interval: [bold]{net['refresh_interval']}s[/bold]",
                 "2": f"API Request Timeout: [bold]{net['timeout']}s[/bold]",
@@ -196,10 +221,26 @@ class SettingsModule:
                 "0": "Back"
             }
 
-            InputSafe.display_options(options, title="⚡ SYSTEM & PERFORMANCE")
-            choice = InputSafe.get_option(list(options.keys()))
+            status = Table(box=box.SIMPLE, show_header=False)
+            status.add_column("Field", style="bold cyan")
+            status.add_column("Value", justify="right")
+            status.add_row("Refresh Interval", f"{net['refresh_interval']}s")
+            status.add_row("Timeout", f"{net['timeout']}s")
+            status.add_row("Cache Size", f"{sys_conf['cache_size_mb']} MB")
+            panel = Panel(status, title="⚡ SYSTEM & PERFORMANCE", box=box.ROUNDED)
+            choice = ShellRenderer.render_and_prompt(
+                Group(panel),
+                context_actions=options,
+                valid_choices=list(options.keys()) + ["m", "x"],
+                prompt_label="[>]",
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+            )
             
             if choice == "0": break
+            if choice == "m": break
+            if choice == "x": Navigator.exit_app()
             if choice == "1":
                 val = InputSafe.get_float("Enter seconds (10-3600):", 10, 3600)
                 self.settings['network']['refresh_interval'] = int(val)
@@ -213,8 +254,6 @@ class SettingsModule:
 
     # --- 4. Diagnostics ---
     def _run_deep_diagnostics(self):
-        self.console.clear()
-        print("\x1b[3J", end="")
         self.console.print("\n[bold]SYSTEM DIAGNOSTICS[/bold]")
         
         results = {}
@@ -315,9 +354,7 @@ class SettingsModule:
     # --- Main Loop ---
     def run(self):
         while True:
-            self.console.clear()
-            print("\x1b[3J", end="")
-            self.console.print(self._build_info_panel())
+            panel = self._build_info_panel()
             
             # Modular Menu Implementation
             options = {
@@ -329,15 +366,25 @@ class SettingsModule:
                 "0": "🔙 Return to Main"
             }
             
-            # Using centralized renderer
-            InputSafe.display_options(options)
-            
-            choice = InputSafe.get_option(list(options.keys()))
+            choice = ShellRenderer.render_and_prompt(
+                Group(panel),
+                context_actions=options,
+                valid_choices=list(options.keys()) + ["m", "x"],
+                prompt_label="[>]",
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+            )
 
             from interfaces.menus import MainMenu as m # for cls/clear
             if choice == "0":
                 m.clear_console()
                 break
+            if choice == "m":
+                m.clear_console()
+                break
+            if choice == "x":
+                Navigator.exit_app()
             elif choice == "1": self._menu_api_security()
             elif choice == "2": self._menu_display_ux()
             elif choice == "3": self._menu_system_perf()

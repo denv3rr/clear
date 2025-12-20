@@ -6,10 +6,12 @@ from rich.panel import Panel
 from rich.align import Align
 from rich.text import Text
 from rich import box
+from rich.console import Group
 
 from utils.input import InputSafe
 from utils.text_fx import TextEffectManager
 from interfaces.settings import SettingsModule
+from interfaces.shell import ShellRenderer
 
 class MainMenu:
     """
@@ -62,30 +64,30 @@ class MainMenu:
         Renders the menu and returns the user's selected action key.
         """
         
-        panel_width = min(140, max(72, self.console.width - 8))
-        main_panel = self._build_main_menu_frame(panel_width)
-        self.console.print(Align.center(main_panel))
-        
         action_map = {
             "1": "client_mgr",
             "2": "market_data",
             "3": "settings",
-            "0": "exit"
+            "0": "exit",
+            "x": "exit"
         }
-
-        inner_content_offset = max(8, int(panel_width * 0.14))
-        terminal_width = self.console.width
-        
-        # 1. Calculate the base left padding needed to center the 200-width panel
-        base_left_padding = max(0, (terminal_width - panel_width) // 2)
-        
-        # 2. Add the inner content offset (6) to align the prompt with the menu text
-        total_left_padding = base_left_padding + inner_content_offset
-        
-        # Prepend the spaces to the prompt text
-        padded_prompt = Text(" " * total_left_padding + "[>]")
-        
-        choice = InputSafe.get_option(list(action_map.keys()), prompt_text=padded_prompt)
+        panel_width = min(140, max(72, self.console.width - 8))
+        main_panel = self._build_main_menu_frame(panel_width)
+        choice = ShellRenderer.render_and_prompt(
+            Group(Align.center(main_panel)),
+            context_actions={
+                "1": "Client Manager",
+                "2": "Markets",
+                "3": "Settings",
+                "0": "Exit"
+            },
+            valid_choices=list(action_map.keys()),
+            prompt_label="[>]",
+            show_main=False,
+            show_back=False,
+            show_exit=True,
+            preserve_previous=True,
+        )
         
         action = action_map[choice]
 

@@ -412,9 +412,14 @@ class ValuationEngine:
         if not enriched_data or not holdings:
             return []
 
-        lot_history = self._generate_lot_weighted_history(enriched_data, holdings, lot_map)
-        if lot_history:
-            return lot_history
+        dates, values = self.generate_portfolio_history_series(
+            enriched_data=enriched_data,
+            holdings=holdings,
+            interval=interval,
+            lot_map=lot_map,
+        )
+        if values:
+            return values
 
         histories: List[List[float]] = []
         quantities: List[float] = []
@@ -453,14 +458,73 @@ class ValuationEngine:
 
         return out
 
-    def _generate_lot_weighted_history(
+    def generate_portfolio_history_series(
+        self,
+        enriched_data: Dict[str, Any],
+        holdings: Dict[str, float],
+        interval: str = "1M",
+        lot_map: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+    ) -> Tuple[List[datetime], List[float]]:
+        """
+        Returns a (dates, values) series using actual history timestamps when available.
+        """
+        if not enriched_data or not holdings:
+            return [], []
+
+        lot_series = self._generate_lot_weighted_history_series(
+            enriched_data=enriched_data,
+            holdings=holdings,
+            lot_map=lot_map,
+        )
+        if lot_series[1]:
+            return lot_series
+
+        # Fallback: index-aligned aggregation (no timestamp alignment).
+        histories: List[List[float]] = []
+        quantities: List[float] = []
+
+        for t, info in enriched_data.items():
+            hist = info.get("history", []) or []
+            if not hist:
+                continue
+            try:
+                qty = float(info.get("quantity", holdings.get(t, 0.0)) or 0.0)
+            except Exception:
+                qty = 0.0
+            histories.append([float(x) for x in hist if x is not None])
+            quantities.append(qty)
+
+        if not histories:
+            return [], []
+
+        min_len = min(len(h) for h in histories if h)
+        if min_len <= 0:
+            return [], []
+
+        out: List[float] = []
+        idx = 0
+        while idx < min_len:
+            total = 0.0
+            j = 0
+            while j < len(histories):
+                try:
+                    total += histories[j][idx] * quantities[j]
+                except Exception:
+                    pass
+                j += 1
+            out.append(total)
+            idx += 1
+
+        return [], out
+
+    def _generate_lot_weighted_history_series(
         self,
         enriched_data: Dict[str, Any],
         holdings: Dict[str, float],
         lot_map: Optional[Dict[str, List[Dict[str, Any]]]],
-    ) -> List[float]:
+    ) -> Tuple[List[datetime], List[float]]:
         if not lot_map:
-            return []
+            return [], []
 
         series_by_ticker: Dict[str, Dict[datetime, float]] = {}
         all_dates: set[datetime] = set()
@@ -493,7 +557,7 @@ class ValuationEngine:
             all_dates.update(parsed_dates)
 
         if not series_by_ticker or not all_dates:
-            return []
+            return [], []
 
         sorted_dates = sorted(all_dates)
         earliest_date = sorted_dates[0]
@@ -525,15 +589,27 @@ class ValuationEngine:
             except Exception:
                 holdings_map[ticker] = holdings_map.get(ticker, 0.0)
 
+        # Forward-fill prices per ticker to honor real timestamps
+        price_paths: Dict[str, List[Optional[float]]] = {}
+        for ticker, series in series_by_ticker.items():
+            last_price = None
+            path: List[Optional[float]] = []
+            for dt in sorted_dates:
+                if dt in series:
+                    last_price = series.get(dt, 0.0)
+                path.append(last_price)
+            price_paths[ticker] = path
+
         out: List[float] = []
-        for dt in sorted_dates:
+        kept_dates: List[datetime] = []
+        for idx, dt in enumerate(sorted_dates):
             total = 0.0
             any_price = False
-            for ticker, series in series_by_ticker.items():
-                if dt not in series:
+            for ticker in series_by_ticker.keys():
+                price = price_paths.get(ticker, [None])[idx]
+                if price is None:
                     continue
                 any_price = True
-                price = series.get(dt, 0.0)
                 if ticker in lots_by_ticker:
                     qty = 0.0
                     for ts, q in lots_by_ticker[ticker]:
@@ -546,5 +622,6 @@ class ValuationEngine:
                 total += price * qty
             if any_price:
                 out.append(total)
+                kept_dates.append(dt)
 
-        return out
+        return kept_dates, out

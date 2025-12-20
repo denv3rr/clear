@@ -1,0 +1,112 @@
+{
+    "DEFAULT": {
+        "long_term_days": 365,
+        "rates": {
+            "short_term": null,
+            "long_term": null,
+            "ordinary_income": null,
+            "withholding_default": null
+        },
+        "apply_withholding_to_gains": false,
+        "currency": "USD"
+    },
+    "US": {
+        "long_term_days": 365,
+        "rates": {
+            "short_term": null,
+            "long_term": null,
+            "ordinary_income": null,
+            "withholding_default": null
+        },
+        "apply_withholding_to_gains": false,
+        "currency": "USD"
+    },
+    "CA": {
+        "long_term_days": 365,
+        "rates": {
+            "short_term": null,
+            "long_term": null,
+            "ordinary_income": null,
+            "withholding_default": null
+        },
+        "apply_withholding_to_gains": false,
+        "currency": "CAD"
+    },
+    "UK": {
+        "long_term_days": 365,
+        "rates": {
+            "short_term": null,
+            "long_term": null,
+            "ordinary_income": null,
+            "withholding_default": null
+        },
+        "apply_withholding_to_gains": false,
+        "currency": "GBP"
+    },
+    "EU": {
+        "long_term_days": 365,
+        "rates": {
+            "short_term": null,
+            "long_term": null,
+            "ordinary_income": null,
+            "withholding_default": null
+        },
+        "apply_withholding_to_gains": false,
+        "currency": "EUR"
+    },
+    "AU": {
+        "long_term_days": 365,
+        "rates": {
+            "short_term": null,
+            "long_term": null,
+            "ordinary_income": null,
+            "withholding_default": null
+        },
+        "apply_withholding_to_gains": false,
+        "currency": "AUD"
+    },
+    "JP": {
+        "long_term_days": 365,
+        "rates": {
+            "short_term": null,
+            "long_term": null,
+            "ordinary_income": null,
+            "withholding_default": null
+        },
+        "apply_withholding_to_gains": false,
+        "currency": "JPY"
+    },
+    "SG": {
+        "long_term_days": 365,
+        "rates": {
+            "short_term": null,
+            "long_term": null,
+            "ordinary_income": null,
+            "withholding_default": null
+        },
+        "apply_withholding_to_gains": false,
+        "currency": "SGD"
+    },
+    "HK": {
+        "long_term_days": 365,
+        "rates": {
+            "short_term": null,
+            "long_term": null,
+            "ordinary_income": null,
+            "withholding_default": null
+        },
+        "apply_withholding_to_gains": false,
+        "currency": "HKD"
+    },
+    "CH": {
+        "long_term_days": 365,
+        "rates": {
+            "short_term": null,
+            "long_term": null,
+            "ordinary_income": null,
+            "withholding_default": null
+        },
+        "apply_withholding_to_gains": false,
+        "currency": "CHF"
+    }
+}

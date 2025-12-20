@@ -277,16 +277,18 @@ class FinancialToolkit:
         
         beta = covariance / variance
         
+        ann_factor = FinancialToolkit._annualization_factor_from_index(portfolio_daily_ret)
+
         # Calculate Alpha (Annualized)
-        # Avg Daily Return - (RiskFree + Beta * (Avg Market Return - RiskFree))
+        # Avg Period Return - (RiskFree + Beta * (Avg Market Return - RiskFree))
         # Assuming RFR ~ 4.0% annualized
-        risk_free_daily = 0.04 / 252 
+        risk_free_daily = 0.04 / ann_factor
         
         avg_port_ret = np.mean(portfolio_daily_ret)
         avg_mkt_ret = np.mean(benchmark_daily_ret)
         
         alpha_daily = avg_port_ret - (risk_free_daily + beta * (avg_mkt_ret - risk_free_daily))
-        alpha_annualized = alpha_daily * 252
+        alpha_annualized = alpha_daily * ann_factor
 
         # R-Squared (Correlation Squared)
         correlation = np.corrcoef(portfolio_daily_ret, benchmark_daily_ret)[0][1]
@@ -302,7 +304,11 @@ class FinancialToolkit:
         results.add_row("Beta", f"{beta:.2f}", "Volatility relative to S&P 500")
         results.add_row("Alpha (Annual)", f"{alpha_annualized:.2%}", "Excess return vs. risk taken")
         results.add_row("R-Squared", f"{r_squared:.2f}", "Correlation to benchmark")
-        results.add_row("Sharpe (Est.)", f"{(avg_port_ret/np.std(portfolio_daily_ret)*(252**0.5)):.2f}", "Risk-adjusted return")
+        results.add_row(
+            "Sharpe (Est.)",
+            f"{(avg_port_ret/np.std(portfolio_daily_ret)*(ann_factor**0.5)):.2f}",
+            "Risk-adjusted return"
+        )
 
         self.console.print(Align.center(results))
         
@@ -425,6 +431,22 @@ class FinancialToolkit:
         InputSafe.pause()
 
     @staticmethod
+    def _annualization_factor_from_index(returns: pd.Series) -> float:
+        try:
+            idx = returns.index
+            if not isinstance(idx, pd.DatetimeIndex) or len(idx) < 2:
+                return 252.0
+            deltas = idx.to_series().diff().dropna().dt.total_seconds()
+            deltas = deltas[deltas > 0]
+            if deltas.empty:
+                return 252.0
+            avg_delta = float(deltas.mean())
+            seconds_per_year = 365.25 * 24 * 60 * 60
+            return seconds_per_year / avg_delta
+        except Exception:
+            return 252.0
+
+    @staticmethod
     def assess_risk_profile(metrics: Dict[str, Any], min_points: int = 30) -> str:
         """
         Classifies risk profile based on CAPM beta when sufficient data exists.
@@ -536,7 +558,7 @@ class FinancialToolkit:
         benchmark_returns: Optional[pd.Series],
         risk_free_annual: float,
     ) -> Dict[str, Any]:
-        ann_factor = 252.0
+        ann_factor = FinancialToolkit._annualization_factor_from_index(returns)
         rf_daily = risk_free_annual / ann_factor
         avg_daily = float(returns.mean())
         std_daily = float(returns.std(ddof=1))
@@ -637,7 +659,7 @@ class FinancialToolkit:
         def fmt(value: Any, fmt_str: str, fallback: str = "N/A") -> str:
             return fallback if value is None else fmt_str.format(value)
 
-        table.add_row("Annual Return (μ)", fmt(metrics.get("mean_annual"), "{:+.2%}"), "Avg daily return * 252")
+        table.add_row("Annual Return (μ)", fmt(metrics.get("mean_annual"), "{:+.2%}"), "Avg period return * ann. factor")
         table.add_row("Volatility (σ)", fmt(metrics.get("vol_annual"), "{:.2%}"), "Annualized std dev")
         table.add_row("Sharpe Ratio", fmt(metrics.get("sharpe"), "{:.2f}"), "Risk-adjusted return")
         table.add_row("Sortino Ratio", fmt(metrics.get("sortino"), "{:.2f}"), "Downside-adjusted")
@@ -784,6 +806,7 @@ class FinancialToolkit:
                 _CAPM_CACHE[key] = {"ts": ts, "data": data}
                 return data
 
+            ann_factor = FinancialToolkit._annualization_factor_from_index(joined["p"])
             p = joined["p"].values
             m = joined["m"].values
 
@@ -791,7 +814,7 @@ class FinancialToolkit:
             cov_pm = float(np.cov(p, m, ddof=1)[0][1])
             beta = (cov_pm / var_m) if var_m > 0 else None
 
-            rf_daily = float(risk_free_annual) / 252.0
+            rf_daily = float(risk_free_annual) / ann_factor
             avg_p = float(np.mean(p))
             avg_m = float(np.mean(m))
 
@@ -799,25 +822,25 @@ class FinancialToolkit:
             alpha_annual = None
             if beta is not None:
                 alpha_daily = avg_p - (rf_daily + beta * (avg_m - rf_daily))
-                alpha_annual = alpha_daily * 252.0
+                alpha_annual = alpha_daily * ann_factor
 
             corr = float(np.corrcoef(p, m)[0][1])
             r_squared = corr * corr
 
             std_p = float(np.std(p, ddof=1))
-            sharpe = ((avg_p - rf_daily) / std_p * (252.0 ** 0.5)) if std_p > 0 else None
-            vol_annual = std_p * (252.0 ** 0.5)
+            sharpe = ((avg_p - rf_daily) / std_p * (ann_factor ** 0.5)) if std_p > 0 else None
+            vol_annual = std_p * (ann_factor ** 0.5)
 
             # --- Additional Risk Metrics ---
 
             # Downside deviation (for Sortino)
             neg = p[p < rf_daily]
             downside_std = float(np.std(neg, ddof=1)) if len(neg) > 1 else None
-            downside_vol_annual = downside_std * (252.0 ** 0.5) if downside_std else None
+            downside_vol_annual = downside_std * (ann_factor ** 0.5) if downside_std else None
 
             sortino = None
             if downside_std and downside_std > 0:
-                sortino = (avg_p - rf_daily) / downside_std * (252.0 ** 0.5)
+                sortino = (avg_p - rf_daily) / downside_std * (ann_factor ** 0.5)
 
             # Jensen's Alpha (alias of CAPM alpha)
             jensen_alpha = alpha_annual
@@ -827,13 +850,13 @@ class FinancialToolkit:
             te = float(np.std(excess, ddof=1))
             information_ratio = None
             if te > 0:
-                information_ratio = (avg_p - avg_m) / te * (252.0 ** 0.5)
+                information_ratio = (avg_p - avg_m) / te * (ann_factor ** 0.5)
 
             # M-squared (Modigliani-Modigliani)
             std_m = float(np.std(m, ddof=1))
             m_squared = None
             if std_p > 0:
-                m_squared = ((avg_p - rf_daily) / std_p) * std_m * 252.0 + risk_free_annual
+                m_squared = ((avg_p - rf_daily) / std_p) * std_m * ann_factor + risk_free_annual
 
             data = {
                 "error": "",
@@ -870,15 +893,16 @@ class FinancialToolkit:
             return {}
 
         # Standard Volatility (Annualized)
-        vol = returns.std() * np.sqrt(252)
+        ann_factor = FinancialToolkit._annualization_factor_from_index(returns)
+        vol = returns.std() * np.sqrt(ann_factor)
         
         # Sharpe (assuming 0% risk-free rate currently just for dev simplicity)
-        sharpe = (returns.mean() / returns.std()) * np.sqrt(252) if returns.std() != 0 else 0
+        sharpe = (returns.mean() / returns.std()) * np.sqrt(ann_factor) if returns.std() != 0 else 0
 
         metrics = {
             "volatility_annual": float(vol),
             "sharpe": float(sharpe),
-            "mean_return": float(returns.mean() * 252),
+            "mean_return": float(returns.mean() * ann_factor),
         }
 
         if benchmark_returns is not None and not benchmark_returns.empty:
@@ -971,6 +995,25 @@ class RegimeModels:
         return float(RegimeModels.ANNUALIZATION.get(key, 252.0))
 
     @staticmethod
+    def _annualization_from_timestamps(timestamps: list) -> Optional[float]:
+        if not timestamps or len(timestamps) < 2:
+            return None
+        deltas = []
+        for i in range(1, len(timestamps)):
+            a = timestamps[i - 1]
+            b = timestamps[i]
+            if not hasattr(a, "timestamp") or not hasattr(b, "timestamp"):
+                continue
+            delta = (b - a).total_seconds()
+            if delta > 0:
+                deltas.append(delta)
+        if not deltas:
+            return None
+        avg_delta = sum(deltas) / len(deltas)
+        seconds_per_year = 365.25 * 24 * 60 * 60
+        return seconds_per_year / avg_delta
+
+    @staticmethod
     def _stationary_distribution(P: list[list[float]], tol: float = 1e-12, max_iter: int = 5000) -> list[float]:
         """
         Power-iteration stationary distribution for a row-stochastic Markov chain.
@@ -1024,7 +1067,12 @@ class RegimeModels:
         return pi
 
     @staticmethod
-    def _evolution_surface(P: list[list[float]], current_state: int, steps: int) -> list[list[float]]:
+    def _evolution_surface(
+        P: list[list[float]],
+        current_state: int,
+        steps: int,
+        include_initial: bool = False
+    ) -> list[list[float]]:
         """
         Returns a matrix (steps+1) x n where row t is the state probability vector at time t,
         starting from a one-hot distribution at current_state.
@@ -1033,11 +1081,11 @@ class RegimeModels:
         if n <= 0:
             return []
 
-        # t=0
         out = []
         probs = [0.0] * n
         probs[current_state] = 1.0
-        out.append(probs[:])
+        if include_initial:
+            out.append(probs[:])
 
         t = 0
         while t < steps:
@@ -1095,6 +1143,7 @@ class RegimeModels:
         horizon: int = 1,
         label: str = "1D",
         interval: str | None = None,
+        timestamps: list | None = None,
     ) -> dict:
         if not returns or len(returns) < 8:
             return {"error": "Insufficient data for regime analysis"}
@@ -1117,14 +1166,14 @@ class RegimeModels:
             )
         else:
             volatility = 0.0
-        ann_factor = RegimeModels._annualization_factor(interval)
+        ann_factor = RegimeModels._annualization_from_timestamps(timestamps) or RegimeModels._annualization_factor(interval)
         avg_return_annual = avg_return * ann_factor
         volatility_annual = volatility * math.sqrt(ann_factor)
 
         # --- Surfaces (pure Markov; interval-compatible) ---
         pi = RegimeModels._stationary_distribution(P)
         evo_steps = 12
-        evo = RegimeModels._evolution_surface(P, current_state, evo_steps)
+        evo = RegimeModels._evolution_surface(P, current_state, evo_steps, include_initial=False)
 
         #
         return {
@@ -1142,6 +1191,7 @@ class RegimeModels:
                 "probability": probs[next_state]
             },
             "stability": P[current_state][current_state],
+            "samples": len(returns),
             "metrics": {
                 "avg_return": avg_return_annual,
                 "volatility": volatility_annual,
@@ -1190,6 +1240,7 @@ class RegimeModels:
             horizon=1,
             label=f"{symbol} ({period})",
             interval=interval,
+            timestamps=list(df.index),
         )
         if "error" in snap:
             return snap
@@ -1214,8 +1265,9 @@ class RegimeModels:
         if not bench_returns.empty and "beta" in metrics:
             combined = pd.concat([returns, bench_returns], axis=1).dropna()
             if len(combined) > 5:
-                avg_p = float(combined.iloc[:, 0].mean() * 252)
-                avg_m = float(combined.iloc[:, 1].mean() * 252)
+                ann_factor = FinancialToolkit._annualization_factor_from_index(combined.iloc[:, 0])
+                avg_p = float(combined.iloc[:, 0].mean() * ann_factor)
+                avg_m = float(combined.iloc[:, 1].mean() * ann_factor)
                 beta = float(metrics.get("beta", 0.0))
                 alpha_annual = avg_p - (risk_free_annual + beta * (avg_m - risk_free_annual))
                 corr = combined.iloc[:, 0].corr(combined.iloc[:, 1])
@@ -1397,6 +1449,8 @@ class RegimeRenderer:
         left.add_row("Current Regime", snapshot["current_regime"])
         left.add_row("Confidence", RegimeRenderer._fmt_pct(snapshot["confidence"]))
         left.add_row("Stability", RegimeRenderer._fmt_pct(snapshot["stability"]))
+        if "samples" in snapshot:
+            left.add_row("Samples", str(snapshot.get("samples")))
         left.add_row(
             "Avg Return (Ann.)",
             RegimeRenderer._fmt_pct(snapshot["metrics"]["avg_return"])
@@ -1553,11 +1607,13 @@ class RegimeRenderer:
         Pseudo-3D surface using stacked blocks. This is a heightmap-like display suitable for terminals.
         """
         n = len(P)
-        cell_width = max(6, int(90 / max(1, n)))
+        console_width = Console().width
+        target_width = max(30, (console_width // 2) - 8)
+        cell_width = max(6, int((target_width - (n - 1)) / max(1, n)))
         surf = Table(
             box=box.SIMPLE,
             show_header=False,
-            pad_edge=False,
+            pad_edge=True,
             expand=True,
             padding=(0, 0),
         )
@@ -1592,7 +1648,7 @@ class RegimeRenderer:
             while j < n:
                 block = stack(row[j])
                 color = stack_color(float(row[j] or 0.0))
-                parts.append(f"[{color}]{block}[/{color}]".ljust(cell_width + 2))
+                parts.append(f"[{color}]{block}[/{color}]")
                 j += 1
             lines.append(" ".join(parts))
             i += 1
@@ -1624,6 +1680,22 @@ class RegimeRenderer:
     @staticmethod
     def _render_evolution_surface(evolution: dict, labels: list[str]) -> Table:
         series = evolution.get("series", []) if isinstance(evolution, dict) else []
+        series_to_render = series
+        if series:
+            try:
+                first = series[0]
+                if isinstance(first, dict):
+                    vals = list(first.values())
+                elif isinstance(first, (list, tuple)):
+                    vals = list(first)
+                else:
+                    vals = []
+                if vals:
+                    max_p = max(float(v or 0.0) for v in vals)
+                    if max_p >= 0.999 and len(series) > 1:
+                        series_to_render = series[1:]
+            except Exception:
+                series_to_render = series
         heat = Table(box=box.SIMPLE, show_header=True, header_style="bold white", pad_edge=False)
 
         heat.add_column("t (step)", justify="right", width=8, style="dim")
@@ -1653,8 +1725,9 @@ class RegimeRenderer:
             return Text.from_markup(f"{blocks}\n{pct}")
 
         # 4. Render each time step
-        for t_idx, probs in enumerate(series):
-            row_label = f"T-{len(series)-t_idx-1}"
+        total = len(series_to_render)
+        for t_idx, probs in enumerate(series_to_render):
+            row_label = f"T-{total-t_idx-1}"
             row_data = [row_label]
             
             for i in range(len(labels)):

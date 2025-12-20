@@ -21,6 +21,15 @@ class Account:
 
     # Lot-based structure: { "TICKER": [ {"qty": float, "basis": float, "timestamp": "YYYY-MM-DD | H:M:S"}, ... ] }
     lots: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
+    ownership_type: str = "Individual"
+    custodian: str = ""
+    tags: List[str] = field(default_factory=list)
+    tax_settings: Dict[str, Any] = field(default_factory=lambda: {
+        "jurisdiction": "",
+        "account_currency": "USD",
+        "withholding_rate": None,
+        "tax_exempt": False,
+    })
 
     @staticmethod
     def _normalize_lots(raw_lots: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
@@ -88,6 +97,15 @@ class Account:
             manual_holdings=data.get("manual_holdings", []) or [],
             active_interval=str(data.get("active_interval", "1M") or "1M").upper(),
             lots=lots,
+            ownership_type=data.get("ownership_type", "Individual"),
+            custodian=data.get("custodian", ""),
+            tags=data.get("tags", []) or [],
+            tax_settings=data.get("tax_settings", {}) or {
+                "jurisdiction": "",
+                "account_currency": "USD",
+                "withholding_rate": None,
+                "tax_exempt": False,
+            },
         )
 
         if lots:
@@ -103,7 +121,11 @@ class Account:
             "holdings": self.holdings,
             "lots": self.lots,
             "manual_holdings": self.manual_holdings,
-            "active_interval": self.active_interval
+            "active_interval": self.active_interval,
+            "ownership_type": self.ownership_type,
+            "custodian": self.custodian,
+            "tags": self.tags,
+            "tax_settings": self.tax_settings,
         }
 
 
@@ -112,9 +134,16 @@ class Client:
     """Client model storing accounts and profile."""
     client_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     name: str = "New Client"
-    risk_profile: str = "Unassigned"
+    risk_profile: str = "Not Assessed"
     risk_profile_source: str = "auto"
     active_interval: str = "1M"
+    tax_profile: Dict[str, Any] = field(default_factory=lambda: {
+        "residency_country": "",
+        "tax_country": "",
+        "reporting_currency": "USD",
+        "treaty_country": "",
+        "tax_id": "",
+    })
     accounts: List[Account] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -124,17 +153,29 @@ class Client:
             "risk_profile": self.risk_profile,
             "risk_profile_source": self.risk_profile_source,
             "active_interval": self.active_interval,
+            "tax_profile": self.tax_profile,
             "accounts": [a.to_dict() for a in self.accounts]
         }
 
     @staticmethod
     def from_dict(data: Dict[str, Any]) -> "Client":
+        raw_risk = data.get("risk_profile", "Not Assessed")
+        raw_source = data.get("risk_profile_source", "auto")
+        if (not raw_risk or raw_risk == "Unassigned") and raw_source != "manual":
+            raw_risk = "Not Assessed"
         client = Client(
             client_id=data.get("client_id", str(uuid.uuid4())),
             name=data.get("name", "New Client"),
-            risk_profile=data.get("risk_profile", "Unassigned"),
-            risk_profile_source=data.get("risk_profile_source", "auto"),
+            risk_profile=raw_risk,
+            risk_profile_source=raw_source,
             active_interval=str(data.get("active_interval", "1M") or "1M").upper(),
+            tax_profile=data.get("tax_profile", {}) or {
+                "residency_country": "",
+                "tax_country": "",
+                "reporting_currency": "USD",
+                "treaty_country": "",
+                "tax_id": "",
+            },
             accounts=[]
         )
 

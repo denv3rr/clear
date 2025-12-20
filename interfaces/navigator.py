@@ -12,7 +12,7 @@ class Navigator:
     console = Console()
 
     @staticmethod
-    def show_options(local_options: dict, title: str = "ACTIONS", auto_clear: bool = False) -> str:
+    def show_options(local_options: dict, title: str = "ACTIONS", auto_clear: bool = False, show_menu: bool = True) -> str:
         """
         Displays a menu with Local options + Global options (Main Menu, Exit).
         Returns the key selected by the user.
@@ -31,7 +31,8 @@ class Navigator:
         combined_options = {**local_options, **global_opts}
 
         # 3. Display & Get Input
-        InputSafe.display_options(combined_options, title=title)
+        if show_menu:
+            InputSafe.display_options(combined_options, title=title)
         
         # Helper to get valid keys including case-insensitivity
         choice = InputSafe.get_option(list(combined_options.keys()), prompt_text="[>]").upper()
@@ -46,8 +47,9 @@ class Navigator:
 
     @staticmethod
     def exit_app():
-        Navigator.console.print("\n[bold red]>> Exiting Application...[/bold red]")
-        sys.exit(0)
+        if InputSafe.get_yes_no("Exit application?"):
+            Navigator.console.print("\n[bold red]>> Exiting Application...[/bold red]")
+            sys.exit(0)
 
     @staticmethod
     def clear():
