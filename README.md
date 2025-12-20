@@ -43,7 +43,8 @@
 
 ## Overview
 
-A terminal-first portfolio management and analytics suite.
+A portfolio management and analytics CLI.
+
 <!--
 Fast, readable client dashboards, regime modeling, and market context.
 Designed for iterative expansion across client workflows, risk analytics, and international tax settings when needed.
