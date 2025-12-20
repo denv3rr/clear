@@ -1,3 +1,5 @@
+import time
+
 from rich.console import Console, Group
 from rich.table import Table
 from rich.panel import Panel
@@ -9,14 +11,19 @@ from utils.input import InputSafe
 from interfaces.navigator import Navigator
 from modules.market_data.finnhub_client import FinnhubWrapper
 from modules.market_data.yfinance_client import YahooWrapper
+from modules.market_data.trackers import GlobalTrackers
+from utils.clear_access import ClearAccessManager
 from utils.charts import ChartRenderer
 from interfaces.shell import ShellRenderer
+from utils.scroll_text import build_scrolling_line
 
 class MarketFeed:
     def __init__(self):
         self.console = Console()
         self.finnhub = FinnhubWrapper()
         self.yahoo = YahooWrapper()
+        self.trackers = GlobalTrackers()
+        self.clear_access = ClearAccessManager()
         
         # Default View State
         self.current_period = "1d"
@@ -52,6 +59,7 @@ class MarketFeed:
                 "1": "Ticker Search",
                 "2": "Force Refresh",
                 "3": f"Change Interval ({current_label})",
+                "4": "Global Trackers",
                 "0": "Return to Main Menu",
             }
             ShellRenderer.render(
@@ -76,6 +84,225 @@ class MarketFeed:
                 continue 
             elif choice == "3":
                 new_label = self.toggle_interval()
+            elif choice == "4":
+                self.run_global_trackers()
+
+    def run_global_trackers(self):
+        mode = "combined"
+        cadence_options = [5, 10, 15, 30]
+        cadence_idx = 1
+        paused = False
+        last_refresh = 0.0
+        snapshot = self.trackers.get_snapshot(mode=mode)
+        category_filter = "all"
+
+        try:
+            import msvcrt
+            use_live = True
+        except Exception:
+            use_live = False
+
+        if not use_live:
+            panel = self.trackers.render(mode=mode, snapshot=snapshot)
+            options = {
+                "1": "Flights",
+                "2": "Shipping",
+                "3": "Combined",
+                "4": "Refresh",
+                "0": "Back",
+            }
+            ShellRenderer.render(
+                Group(panel),
+                context_actions=options,
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+                show_header=False,
+            )
+            choice = InputSafe.get_option(list(options.keys()) + ["m", "x"], prompt_text="[>]").lower()
+            if choice in ("0", "m"):
+                return
+            if choice == "x":
+                Navigator.exit_app()
+            return
+
+        from rich.live import Live
+        from rich.table import Table
+        from rich.panel import Panel
+        from rich.text import Text
+        from rich import box
+
+        options = {
+            "1": "Flights",
+            "2": "Shipping",
+            "3": "Combined",
+            "4": "Refresh",
+            "5": "Clear Access",
+            "C": "Cadence",
+            "F": "Category Filter",
+            "A": "Filter: All",
+            "SPC": "Pause/Resume",
+            "0": "Back",
+        }
+
+        def _available_categories(data: dict) -> list[str]:
+            categories = sorted({str(pt.get("category", "")).lower() for pt in data.get("points", []) if pt.get("category")})
+            return ["all"] + categories if categories else ["all"]
+
+        def build_layout():
+            filtered = GlobalTrackers.apply_category_filter(snapshot, category_filter)
+            max_rows = max(8, self.console.height - 18)
+            panel = self.trackers.render(
+                mode=mode,
+                snapshot=filtered,
+                filter_label=category_filter,
+                max_rows=max_rows,
+            )
+            access_label = "Active" if self.clear_access.has_access() else "Inactive"
+            options["5"] = f"Clear Access ({access_label})"
+            sidebar = ShellRenderer._build_sidebar(
+                {k: v for k, v in options.items() if k in ("1", "2", "3", "4", "5", "C", "F", "A", "SPC", "0")},
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+            )
+            status = "PAUSED" if paused else "LIVE"
+            cadence = cadence_options[cadence_idx]
+            footer = Text.assemble(
+                ("[>]", "dim"),
+                (" ", "dim"),
+                (status, "bold green" if status == "LIVE" else "bold yellow"),
+                (" | Cadence: ", "dim"),
+                (f"{cadence}s", "bold cyan"),
+                (" | 1/2/3 mode 4 refresh 5 access C cadence F filter A all Space pause 0 back M main X exit", "dim"),
+            )
+            mode_hint = Text.assemble(
+                ("Mode: ", "dim"),
+                ("1", "bold bright_white"),
+                (" Flights  ", "cyan"),
+                ("2", "bold bright_white"),
+                (" Shipping  ", "cyan"),
+                ("3", "bold bright_white"),
+                (" Combined", "cyan"),
+            )
+            footer_panel = Panel(Group(footer, mode_hint), box=box.SQUARE, border_style="dim")
+
+            layout = Table.grid(expand=True)
+            layout.add_column(ratio=1)
+            body = Table.grid(expand=True)
+            body.add_column(width=30)
+            body.add_column(ratio=1)
+            body.add_row(sidebar, Group(panel))
+            layout.add_row(body)
+            layout.add_row(footer_panel)
+            return layout
+
+        dirty = True
+        with Live(build_layout(), console=self.console, refresh_per_second=1, screen=True) as live:
+            while True:
+                now = time.time()
+                cadence = cadence_options[cadence_idx]
+                if not paused and (now - last_refresh) >= cadence:
+                    self.trackers.refresh(force=True)
+                    snapshot = self.trackers.get_snapshot(mode=mode)
+                    last_refresh = now
+                    dirty = True
+
+                if msvcrt.kbhit():
+                    ch = msvcrt.getwch()
+                    if ch in ("\r", "\n"):
+                        pass
+                    elif ch == " ":
+                        paused = not paused
+                        dirty = True
+                    else:
+                        key = ch.lower()
+                        if key == "0":
+                            return
+                        if key == "m":
+                            return
+                        if key == "x":
+                            Navigator.exit_app()
+                        if key == "1":
+                            mode = "flights"
+                            snapshot = self.trackers.get_snapshot(mode=mode)
+                            category_filter = "all"
+                            dirty = True
+                        elif key == "2":
+                            mode = "ships"
+                            snapshot = self.trackers.get_snapshot(mode=mode)
+                            category_filter = "all"
+                            dirty = True
+                        elif key == "3":
+                            mode = "combined"
+                            snapshot = self.trackers.get_snapshot(mode=mode)
+                            category_filter = "all"
+                            dirty = True
+                        elif key == "4":
+                            self.trackers.refresh(force=True)
+                            snapshot = self.trackers.get_snapshot(mode=mode)
+                            last_refresh = time.time()
+                            dirty = True
+                        elif key == "5":
+                            self._clear_access_flow()
+                            dirty = True
+                        elif key == "c":
+                            cadence_idx = (cadence_idx + 1) % len(cadence_options)
+                            dirty = True
+                        elif key == "f":
+                            categories = _available_categories(snapshot)
+                            if category_filter not in categories:
+                                category_filter = "all"
+                            idx = categories.index(category_filter)
+                            category_filter = categories[(idx + 1) % len(categories)]
+                            dirty = True
+                        elif key == "a":
+                            category_filter = "all"
+                            dirty = True
+                if dirty:
+                    live.update(build_layout(), refresh=True)
+                    dirty = False
+                time.sleep(0.1)
+
+    def _clear_access_flow(self):
+        from rich.panel import Panel
+        from rich.text import Text
+        from rich import box
+        import webbrowser
+
+        status = "Active" if self.clear_access.has_access() else "Inactive"
+        info = Text()
+        info.append("Clear Access\n", style="bold")
+        info.append(f"Status: {status}\n\n", style="dim")
+        info.append("Purchase Link:\n", style="bold cyan")
+        info.append(f"{self.clear_access.PRODUCT_URL}\n\n", style="white")
+        info.append("After purchase, paste your access code below.\n", style="dim")
+
+        panel = Panel(info, title="Clear Access", box=box.ROUNDED, border_style="cyan")
+        ShellRenderer.render(
+            Group(panel),
+            context_actions={"1": "Open Purchase Link", "2": "Enter Access Code", "3": "Clear Code", "0": "Back"},
+            show_main=True,
+            show_back=True,
+            show_exit=True,
+            show_header=False,
+        )
+        choice = InputSafe.get_option(["1", "2", "3", "0", "m", "x"], prompt_text="[>]").lower()
+        if choice in ("0", "m"):
+            return
+        if choice == "x":
+            Navigator.exit_app()
+        if choice == "1":
+            try:
+                webbrowser.open(self.clear_access.PRODUCT_URL)
+            except Exception:
+                return
+        elif choice == "2":
+            code = InputSafe.get_string("Enter Clear Access code:")
+            if code:
+                self.clear_access.set_code(code)
+        elif choice == "3":
+            self.clear_access.clear_code()
 
     def display_futures(self, view_label="1D"):
         """Renders categorized macro data inside a clean panel with Sparklines."""

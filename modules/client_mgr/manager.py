@@ -6,6 +6,7 @@ from rich.table import Table
 from rich.text import Text
 from typing import List, Optional, Tuple
 from datetime import datetime
+import time
 
 # --- Internal Modules ---
 from modules.client_mgr.client_model import Client, Account
@@ -39,6 +40,7 @@ class ClientManager:
         self.clients: List[Client] = DataHandler.load_clients()
         self.valuation_engine = ValuationEngine()
         self.tax_engine = TaxEngine()
+        self._list_val_cache = {}
 
     # =========================================================================
     # MAIN LOOP & LIST VIEW
@@ -48,17 +50,9 @@ class ClientManager:
         """Entry point for the Manager module."""
         while True:
             # 1. Prepare Data for List View
-            # We recalculate total values for the list display
             val_map = {}
             for c in self.clients:
-                val = 0.0
-                for acc in c.accounts:
-                    # Simple valuation for the list view
-                    v, _ = self.valuation_engine.calculate_portfolio_value(
-                        acc.holdings, history_period="1mo", history_interval="1d"
-                    )
-                    val += v
-                val_map[c.client_id] = val
+                val_map[c.client_id] = self._get_cached_list_value(c)
 
             # 2. Render List View
             content = Group(
@@ -78,6 +72,8 @@ class ClientManager:
                 show_main=True,
                 show_back=False,
                 show_exit=True,
+                show_header=False,
+                live_input=False,
             )
 
             # 3. Navigation
@@ -95,6 +91,30 @@ class ClientManager:
             
             # Save state on loop exit/action completion
             DataHandler.save_clients(self.clients)
+
+    def _client_holdings_fingerprint(self, client: Client) -> tuple:
+        holdings = {}
+        for acc in client.accounts:
+            for ticker, qty in (acc.holdings or {}).items():
+                holdings[ticker] = holdings.get(ticker, 0.0) + float(qty or 0.0)
+        return tuple(sorted((t, round(q, 6)) for t, q in holdings.items()))
+
+    def _get_cached_list_value(self, client: Client, ttl_seconds: int = 30) -> float:
+        cache = self._list_val_cache.get(client.client_id)
+        now = time.time()
+        fp = self._client_holdings_fingerprint(client)
+        if cache:
+            if cache.get("fp") == fp and (now - cache.get("ts", 0)) < ttl_seconds:
+                return float(cache.get("value", 0.0) or 0.0)
+
+        total = 0.0
+        for acc in client.accounts:
+            v, _ = self.valuation_engine.calculate_portfolio_value(
+                acc.holdings, history_period="1mo", history_interval="1d"
+            )
+            total += float(v or 0.0)
+        self._list_val_cache[client.client_id] = {"fp": fp, "ts": now, "value": total}
+        return total
 
     # =========================================================================
     # CLIENT DASHBOARD CONTROLLER
@@ -203,6 +223,8 @@ class ClientManager:
                 show_main=True,
                 show_back=False,
                 show_exit=True,
+                show_header=False,
+                live_input=False,
             )
 
             # --- 3. Navigation ---
@@ -317,6 +339,7 @@ class ClientManager:
                 show_main=True,
                 show_back=True,
                 show_exit=True,
+                show_header=False,
             )
 
             choice = InputSafe.get_string("[>] Select Account # or Action:").upper()
@@ -414,6 +437,8 @@ class ClientManager:
                 show_main=True,
                 show_back=False,
                 show_exit=True,
+                show_header=False,
+                live_input=False,
             )
 
             # --- 3. Navigation ---

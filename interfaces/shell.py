@@ -9,6 +9,7 @@ from rich import box
 from rich.live import Live
 
 from modules.market_data.yfinance_client import YahooWrapper
+from utils.scroll_text import build_scrolling_line
 
 
 class TickerStrip:
@@ -158,6 +159,7 @@ class ShellRenderer:
         show_exit: bool = True,
         preserve_previous: bool = False,
         show_header: bool = True,
+        live_input: bool = True,
     ) -> str:
         console = Console()
         width = console.width
@@ -165,7 +167,7 @@ class ShellRenderer:
 
         try:
             import msvcrt
-            use_live = True
+            use_live = live_input
         except Exception:
             use_live = False
 
@@ -195,7 +197,14 @@ class ShellRenderer:
             footer_text = Text.from_markup(f"{prompt_label} {input_text}")
             if error_text:
                 footer_text.append(f"  {error_text}", style="red")
-            footer = Panel(footer_text, box=box.SQUARE, border_style="dim")
+            help_line = f"Options: {', '.join([str(c).upper() for c in valid_choices])}"
+            help_text = build_scrolling_line(
+                help_line,
+                preset="prompt",
+                width=len(help_line),
+                highlights=[str(c).upper() for c in valid_choices],
+            )
+            footer = Panel(Group(footer_text, help_text), box=box.SQUARE, border_style="dim")
 
             layout = Table.grid(expand=True)
             layout.add_column(ratio=1)

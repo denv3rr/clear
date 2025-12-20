@@ -1608,8 +1608,8 @@ class RegimeRenderer:
         """
         n = len(P)
         console_width = Console().width
-        target_width = max(30, (console_width // 2) - 8)
-        cell_width = max(6, int((target_width - (n - 1)) / max(1, n)))
+        target_width = max(10, console_width // 2)
+        cell_width = max(2, int((target_width - max(0, n - 1)) / max(1, n)) // 2)
         surf = Table(
             box=box.SIMPLE,
             show_header=False,
