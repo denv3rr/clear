@@ -151,10 +151,9 @@ class FinancialToolkit:
             self.console.print("[1] 🔢 CAPM Analysis (Alpha, Beta, R²)")
             self.console.print("[2] 📉 Black-Scholes Option Pricing")
             self.console.print("[3] 📊 Multi-Model Risk Dashboard")
-            self.console.print("[4] 🎲 Monte Carlo Simulation")
             self.console.print("[0] 🔙 Return to Client Dashboard")
             
-            choice = InputSafe.get_option(["1", "2", "3", "4", "0"], prompt_text="[>]")
+            choice = InputSafe.get_option(["1", "2", "3", "0"], prompt_text="[>]")
             
             if choice == "0":
                 break
@@ -164,8 +163,6 @@ class FinancialToolkit:
                 self._run_black_scholes()
             elif choice == "3":
                 self._run_multi_model_dashboard()
-            elif choice == "4":
-                self._run_monte_carlo()
 
     # --- REAL-TIME DATA ANALYSIS TOOLS ---
 
@@ -427,69 +424,6 @@ class FinancialToolkit:
         self.console.print(self._render_return_distribution(returns))
         InputSafe.pause()
 
-    def _run_monte_carlo(self):
-        """Run a Monte Carlo simulation for portfolio growth."""
-        self.console.clear()
-        print("\x1b[3J", end="")
-        self.console.print("[bold blue]MONTE CARLO SIMULATION[/bold blue]")
-
-        interval = self._select_interval()
-        if not interval:
-            return
-
-        holdings = self._aggregate_holdings()
-        if not holdings:
-            self.console.print("[yellow]No holdings available for simulation.[/yellow]")
-            InputSafe.pause()
-            return
-
-        sim_count = int(InputSafe.get_float("Number of simulations:", min_val=100))
-        horizon_days = int(InputSafe.get_float("Horizon (trading days):", min_val=10))
-        use_t = InputSafe.get_yes_no("Use Student-t shocks? (y/n):")
-        df_t = 6.0
-        if use_t:
-            df_t = InputSafe.get_float("Degrees of freedom (e.g. 6):", min_val=2)
-
-        period = TOOLKIT_PERIOD.get(interval, "1y")
-        returns, benchmark_returns, meta = self._get_portfolio_and_benchmark_returns(
-            holdings,
-            benchmark_ticker=self.benchmark_ticker,
-            period=period,
-            interval=TOOLKIT_INTERVAL.get(interval, "1d"),
-        )
-        if returns is None or returns.empty:
-            self.console.print("[yellow]Insufficient market data for this interval.[/yellow]")
-            InputSafe.pause()
-            return
-
-        mu = float(returns.mean())
-        sigma = float(returns.std(ddof=1))
-        if sigma <= 0:
-            self.console.print("[yellow]Volatility is zero; simulation not meaningful.[/yellow]")
-            InputSafe.pause()
-            return
-
-        sims = self._simulate_monte_carlo(
-            mu=mu,
-            sigma=sigma,
-            horizon=horizon_days,
-            n_sims=sim_count,
-            use_t=use_t,
-            df_t=float(df_t),
-        )
-
-        title = f"[bold gold1]Monte Carlo Paths[/bold gold1] [dim]({interval})[/dim]"
-        header = Panel(
-            Align.center(f"[bold white]{self.client.name}[/bold white] | [dim]{meta}[/dim]"),
-            title=title,
-            border_style="magenta",
-            box=box.ROUNDED,
-        )
-        self.console.print(header)
-        self.console.print(self._render_monte_carlo_summary(sims))
-        self.console.print(self._render_monte_carlo_percentiles(sims))
-        InputSafe.pause()
-
     def _select_interval(self) -> Optional[str]:
         options = list(TOOLKIT_PERIOD.keys())
         self.console.print("\n[bold white]Select Interval[/bold white]")
@@ -721,74 +655,6 @@ class FinancialToolkit:
             table.add_row(label, f"{count}", f"[{color}]{bar}[/{color}]")
 
         return Panel(table, title="[bold]Return Distribution[/bold] [dim](3D Bucket View)[/dim]", box=box.ROUNDED, border_style="magenta")
-
-    def _simulate_monte_carlo(
-        self,
-        mu: float,
-        sigma: float,
-        horizon: int,
-        n_sims: int,
-        use_t: bool,
-        df_t: float,
-    ) -> np.ndarray:
-        if use_t:
-            shocks = np.random.standard_t(df_t, size=(n_sims, horizon))
-            shocks = shocks / np.sqrt(df_t / (df_t - 2.0))
-        else:
-            shocks = np.random.standard_normal(size=(n_sims, horizon))
-
-        returns = mu + sigma * shocks
-        paths = np.cumprod(1.0 + returns, axis=1)
-        return paths
-
-    def _render_monte_carlo_summary(self, sims: np.ndarray) -> Panel:
-        terminal = sims[:, -1]
-        mean = float(np.mean(terminal))
-        median = float(np.median(terminal))
-        p10 = float(np.percentile(terminal, 10))
-        p90 = float(np.percentile(terminal, 90))
-
-        table = Table(box=box.SIMPLE, expand=True)
-        table.add_column("Metric", style="bold cyan")
-        table.add_column("Value", justify="right")
-        table.add_column("Notes", style="dim")
-
-        table.add_row("Terminal Mean", f"{mean:,.3f}x", "Expected multiple")
-        table.add_row("Terminal Median", f"{median:,.3f}x", "Median multiple")
-        table.add_row("10th Percentile", f"{p10:,.3f}x", "Downside")
-        table.add_row("90th Percentile", f"{p90:,.3f}x", "Upside")
-
-        return Panel(table, title="[bold]Simulation Summary[/bold]", box=box.ROUNDED, border_style="blue")
-
-    def _render_monte_carlo_percentiles(self, sims: np.ndarray) -> Panel:
-        horizon = sims.shape[1]
-        steps = [0, horizon // 4, horizon // 2, (3 * horizon) // 4, horizon - 1]
-        table = Table(box=box.SIMPLE, expand=True)
-        table.add_column("Step", style="bold white")
-        table.add_column("P10", justify="right")
-        table.add_column("P50", justify="right")
-        table.add_column("P90", justify="right")
-        table.add_column("Distribution", justify="left")
-
-        for step in steps:
-            slice_vals = sims[:, step]
-            p10 = float(np.percentile(slice_vals, 10))
-            p50 = float(np.percentile(slice_vals, 50))
-            p90 = float(np.percentile(slice_vals, 90))
-
-            spread = max(p90 - p10, 1e-6)
-            mid = (p50 - p10) / spread
-            left = int(round(mid * 20))
-            bar = "█" * left + "░" * (20 - left)
-            table.add_row(
-                f"T+{step}",
-                f"{p10:,.3f}x",
-                f"{p50:,.3f}x",
-                f"{p90:,.3f}x",
-                f"[cyan]{bar}[/cyan]",
-            )
-
-        return Panel(table, title="[bold]Percentile Path[/bold] [dim](Monte Carlo)[/dim]", box=box.ROUNDED, border_style="magenta")
     
     @staticmethod
     def compute_capm_metrics_from_holdings(
@@ -1575,7 +1441,14 @@ class RegimeRenderer:
             except (ValueError, TypeError):
                 p = 0.0
 
-            ch, col = RegimeRenderer._transition_cell_style(p)
+            if p >= 0.95:   ch, col = "█", "bold red"
+            elif p >= 0.85: ch, col = "▇", "red"
+            elif p >= 0.70: ch, col = "▆", "yellow"
+            elif p >= 0.55: ch, col = "▅", "green"
+            elif p >= 0.40: ch, col = "▄", "cyan"
+            elif p >= 0.25: ch, col = "▃", "blue"
+            elif p >= 0.10: ch, col = "▂", "dim cyan"
+            else:               ch, col = "▁", "dim white"
 
             blocks = f"[{col}]{ch * 6}[/{col}]"
             return Text.from_markup(f"{blocks}\n[white bold]{p*100:4.1f}%[/white bold]")
@@ -1610,6 +1483,19 @@ class RegimeRenderer:
             idx = int(round(max(0.0, min(1.0, float(p))) * (len(levels) - 1)))
             return levels[idx] * 6
 
+        def stack_color(p: float) -> str:
+            if p >= 0.90:
+                return "bold red"
+            if p >= 0.70:
+                return "red"
+            if p >= 0.50:
+                return "yellow"
+            if p >= 0.30:
+                return "green"
+            if p >= 0.15:
+                return "cyan"
+            return "dim white"
+
         i = 0
         lines = []
         while i < n:
@@ -1617,9 +1503,8 @@ class RegimeRenderer:
             j = 0
             parts = []
             while j < n:
-                p = float(row[j] or 0.0)
-                block = stack(p)
-                _, color = RegimeRenderer._transition_cell_style(p)
+                block = stack(row[j])
+                color = stack_color(float(row[j] or 0.0))
                 parts.append(f"[{color}]{block}[/{color}]".ljust(8))
                 j += 1
             lines.append(" ".join(parts))
@@ -1700,21 +1585,3 @@ class RegimeRenderer:
             heat.add_row(*row_data)
 
         return heat
-
-    @staticmethod
-    def _transition_cell_style(p: float) -> tuple[str, str]:
-        if p >= 0.95:
-            return "█", "bold red"
-        if p >= 0.85:
-            return "▇", "red"
-        if p >= 0.70:
-            return "▆", "yellow"
-        if p >= 0.55:
-            return "▅", "green"
-        if p >= 0.40:
-            return "▄", "cyan"
-        if p >= 0.25:
-            return "▃", "blue"
-        if p >= 0.10:
-            return "▂", "dim cyan"
-        return "▁", "dim white"
