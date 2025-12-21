@@ -5,7 +5,6 @@
 ![GitHub Created At](https://img.shields.io/github/created-at/denv3rr/clear)
 ![Last Commit](https://img.shields.io/github/last-commit/denv3rr/clear)
 ![Issues](https://img.shields.io/github/issues/denv3rr/clear)
-![License](https://img.shields.io/github/license/denv3rr/clear)
 ![Top Language](https://img.shields.io/github/languages/top/denv3rr/clear)
 ![Website](https://img.shields.io/website?url=https%3A%2F%2Fseperet.com&label=seperet.com)
 
@@ -22,7 +21,6 @@
   </a>
 </div>
 
----
 
 <div align="center">
 
