@@ -123,11 +123,19 @@ class UIComponents:
         table = Table(box=box.SIMPLE, expand=True, show_header=False)
         table.add_column("Metric", style="bold")
         table.add_column("Value", justify="right")
+        table.add_column("Heat", justify="center", width=6)
         table.add_column("Desc", style="dim italic")
         
-        table.add_row("Beta", _fmt(metrics.get('beta'), "{:.2f}"), "Volatility vs Market")
-        table.add_row("Alpha", _fmt(metrics.get('alpha_annual'), "{:+.2%}"), "Excess Return")
-        table.add_row("Sharpe", _fmt(metrics.get('sharpe'), "{:.2f}"), "Risk-Adjusted")
+        beta = metrics.get('beta', 0.0)
+        alpha = metrics.get('alpha_annual', 0.0)
+        sharpe = metrics.get('sharpe', 0.0)
+        beta_heat = ChartRenderer.generate_heatmap_bar(min(abs(float(beta or 0.0)) / 2.0, 1.0), width=6)
+        alpha_heat = ChartRenderer.generate_heatmap_bar(min(abs(float(alpha or 0.0)) * 5.0, 1.0), width=6)
+        sharpe_heat = ChartRenderer.generate_heatmap_bar(min(max(float(sharpe or 0.0), 0.0) / 2.0, 1.0), width=6)
+
+        table.add_row("Beta", _fmt(beta, "{:.2f}"), beta_heat, "Volatility vs Market")
+        table.add_row("Alpha", _fmt(alpha, "{:+.2%}"), alpha_heat, "Excess Return")
+        table.add_row("Sharpe", _fmt(sharpe, "{:.2f}"), sharpe_heat, "Risk-Adjusted")
         
         return Panel(table, title="[bold blue]Risk Profile (CAPM)[/bold blue]", box=box.ROUNDED)
 
@@ -238,6 +246,7 @@ class UIComponents:
         table.add_column("Metric", style="bold cyan")
         table.add_column("Value", justify="right")
         table.add_column("Benchmark (SPY)", justify="right", style="dim")
+        table.add_column("Heat", justify="center", width=8)
         table.add_column("Interpretation", style="italic")
 
         # Extract values calculated from real historical series
@@ -247,11 +256,17 @@ class UIComponents:
         vol = metrics.get('vol_annual', metrics.get('volatility_annual', metrics.get('volatility', 0.0)))
         sharpe = metrics.get('sharpe', 0.0)
 
-        table.add_row("Beta (Systemic Risk)", _fmt(beta, "{:.2f}"), "1.00", "Sensitivity to market moves")
-        table.add_row("Alpha (Jensen's)", _fmt(alpha, "{:+.2%}"), "0.00%", "Excess return vs risk-adjusted")
-        table.add_row("R-Squared", _fmt(r_sq, "{:.2f}"), "1.00", "Correlation/Reliability of Beta")
-        table.add_row("Volatility (σ)", _fmt(vol, "{:.2%}"), "15%", "Annualized standard deviation")
-        table.add_row("Sharpe Ratio", _fmt(sharpe, "{:.2f}"), "N/A", "Risk-adjusted return efficiency")
+        beta_heat = ChartRenderer.generate_heatmap_bar(min(abs(float(beta or 0.0)) / 2.0, 1.0), width=8)
+        alpha_heat = ChartRenderer.generate_heatmap_bar(min(abs(float(alpha or 0.0)) * 5.0, 1.0), width=8)
+        r2_heat = ChartRenderer.generate_heatmap_bar(min(max(float(r_sq or 0.0), 0.0), 1.0), width=8)
+        vol_heat = ChartRenderer.generate_heatmap_bar(min(float(vol or 0.0) / 0.5, 1.0), width=8)
+        sharpe_heat = ChartRenderer.generate_heatmap_bar(min(max(float(sharpe or 0.0), 0.0) / 2.0, 1.0), width=8)
+
+        table.add_row("Beta (Systemic Risk)", _fmt(beta, "{:.2f}"), "1.00", beta_heat, "Sensitivity to market moves")
+        table.add_row("Alpha (Jensen's)", _fmt(alpha, "{:+.2%}"), "0.00%", alpha_heat, "Excess return vs risk-adjusted")
+        table.add_row("R-Squared", _fmt(r_sq, "{:.2f}"), "1.00", r2_heat, "Correlation/Reliability of Beta")
+        table.add_row("Volatility (σ)", _fmt(vol, "{:.2%}"), "15%", vol_heat, "Annualized standard deviation")
+        table.add_row("Sharpe Ratio", _fmt(sharpe, "{:.2f}"), "N/A", sharpe_heat, "Risk-adjusted return efficiency")
 
         return Panel(table, title="[bold gold1]Annualized Risk Profile[/bold gold1]", box=box.ROUNDED)
 

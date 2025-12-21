@@ -48,6 +48,9 @@ class ClearApp:
         elif action == "market_data":
             # Use the already initialized instance
             self.market_feed.run()
+
+        elif action == "intel_reports":
+            self.market_feed.run_intel_reports()
             
         elif action == "fin_tools":
             self.placeholder_module("Financial Math Toolkit")

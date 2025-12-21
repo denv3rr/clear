@@ -24,6 +24,37 @@ def check_and_install_packages():
     with open(req_file, "r") as f:
         packages = [line.strip() for line in f if line.strip() and not line.startswith("#")]
 
+    def _parse_version(text: str):
+        return tuple(int(part) for part in text.split(".") if part.isdigit())
+
+    def _marker_allows(line: str) -> bool:
+        if ";" not in line:
+            return True
+        marker = line.split(";", 1)[1].strip()
+        if not marker.startswith("python_version"):
+            return True
+        parts = marker.split()
+        if len(parts) != 3:
+            return True
+        _, op, raw = parts
+        version = raw.strip("\"' ")
+        py_ver = _parse_version(platform.python_version())
+        target = _parse_version(version)
+        if op == "<":
+            return py_ver < target
+        if op == "<=":
+            return py_ver <= target
+        if op == ">":
+            return py_ver > target
+        if op == ">=":
+            return py_ver >= target
+        if op == "==":
+            return py_ver == target
+        return True
+
+    def _strip_marker(line: str) -> str:
+        return line.split(";", 1)[0].strip()
+
     missing = []
     
     # Map for known discrepancies between pip name and import name
@@ -34,7 +65,9 @@ def check_and_install_packages():
     }
 
     for pkg in packages:
-        pkg_name = pkg.split("=")[0].split(">")[0].split("<")[0]
+        if not _marker_allows(pkg):
+            continue
+        pkg_name = _strip_marker(pkg).split("=")[0].split(">")[0].split("<")[0]
         import_name = pkg_map.get(pkg_name, pkg_name)
 
         if importlib.util.find_spec(import_name) is None:

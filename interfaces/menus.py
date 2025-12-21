@@ -12,6 +12,8 @@ from utils.input import InputSafe
 from utils.text_fx import TextEffectManager
 from interfaces.settings import SettingsModule
 from interfaces.shell import ShellRenderer
+from utils.system import SystemHost
+from interfaces.menu_layout import build_sidebar, compact_for_width
 
 class MainMenu:
     """
@@ -22,31 +24,60 @@ class MainMenu:
         self.text_fx = TextEffectManager()
         self.settings_module = SettingsModule()
 
-    def _build_main_menu_frame(self, panel_width: int) -> Panel:
-        """Helper to build the main menu Rich panel."""
-        menu_options = [
-            ("1", "Client Manager", "View portfolios, add clients, manage accounts"),
-            ("2", "Markets", "Tickers, Futures, Commodities ([green]LIVE[/green])"),
-            ("3", "Settings", "API Config, User Preferences"),
-            ("0", "Exit", "Securely close the session")
-        ]
+    def _build_bulletin_panel(self, panel_width: int) -> Panel:
+        """Main menu bulletin board with status and hints."""
+        data = {}
+        try:
+            data = SystemHost.get_info() or {}
+        except Exception:
+            data = {}
 
-        # Build Rich Table
-        table = Table(box=None, padding=(0, 2), collapse_padding=True, show_header=False)
-        table.add_column("Key", style="bold gold1", width=4, justify="right")
-        table.add_column("Module", style="bold white")
-        table.add_column("Description", style="italic grey70")
+        user = data.get("user", "User")
+        host = data.get("hostname", "Host")
+        os_name = data.get("os", "Unknown OS")
+        cpu = data.get("cpu_usage", "N/A")
+        mem = data.get("mem_usage", "N/A")
 
-        for key, name, desc in menu_options:
-            table.add_row(key, name, desc)
+        finnhub_ok = "YES" if os.getenv("FINNHUB_API_KEY") else "NO"
+        opensky_ok = "YES" if os.getenv("OPENSKY_USERNAME") and os.getenv("OPENSKY_PASSWORD") else "NO"
+        shipping_ok = "YES" if os.getenv("SHIPPING_DATA_URL") else "NO"
 
-        # Wrap in a Panel
+        title = Text()
+        title.append("Welcome back, ", style="bold white")
+        title.append(user, style="bold cyan")
+        title.append(".", style="bold white")
+
+        stats = Table.grid(padding=(0, 1))
+        stats.add_column(style="bold cyan", width=14)
+        stats.add_column(style="white")
+        stats.add_row("Host", str(host))
+        stats.add_row("OS", str(os_name))
+        stats.add_row("CPU", str(cpu))
+        stats.add_row("Memory", str(mem))
+        stats.add_row("Finnhub Key", finnhub_ok)
+        stats.add_row("OpenSky Creds", opensky_ok)
+        stats.add_row("Shipping URL", shipping_ok)
+
+        hints = Table.grid(padding=(0, 1))
+        hints.add_column(style="bold gold1", width=10)
+        hints.add_column(style="dim")
+        hints.add_row("Tip", "Press 2 for Markets, then 5 for Global Trackers.")
+        hints.add_row("Tip", "Use G in Trackers for the GUI map.")
+        hints.add_row("Tip", "Macro Dashboard loads on demand from Markets.")
+
+        layout = Table.grid(expand=True)
+        layout.add_column(ratio=1)
+        layout.add_row(Align.center(title))
+        layout.add_row(Align.center(stats))
+        layout.add_row(Align.center(hints))
+
         panel = Panel(
-            Align.center(table),
+            Align.center(layout),
             box=box.ROUNDED,
             padding=(1, 5),
             border_style="blue",
-            width=panel_width
+            width=panel_width,
+            title="Bulletin",
         )
         return panel
 
@@ -68,25 +99,39 @@ class MainMenu:
             "1": "client_mgr",
             "2": "market_data",
             "3": "settings",
+            "4": "intel_reports",
             "0": "exit",
             "x": "exit"
         }
         panel_width = min(140, max(72, self.console.width - 8))
-        main_panel = self._build_main_menu_frame(panel_width)
+        main_panel = self._build_bulletin_panel(panel_width)
+        compact = compact_for_width(self.console.width)
+        sidebar = build_sidebar(
+            [
+                ("Modules", {
+                    "1": "Client Manager",
+                    "2": "Markets",
+                    "3": "Settings",
+                    "4": "Intel Reports",
+                }),
+                ("Session", {"0": "Exit"}),
+            ],
+            show_main=False,
+            show_back=False,
+            show_exit=False,
+            compact=compact,
+        )
         choice = ShellRenderer.render_and_prompt(
             Group(Align.center(main_panel)),
-            context_actions={
-                "1": "Client Manager",
-                "2": "Markets",
-                "3": "Settings",
-                "0": "Exit"
-            },
+            context_actions={},
             valid_choices=list(action_map.keys()),
-            prompt_label="[>]",
+            prompt_label=">",
             show_main=False,
             show_back=False,
             show_exit=True,
             preserve_previous=True,
+            show_header=False,
+            sidebar_override=sidebar,
         )
         
         action = action_map[choice]

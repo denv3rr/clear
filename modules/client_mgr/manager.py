@@ -19,6 +19,7 @@ from modules.client_mgr.tax import TaxEngine
 from interfaces.components import UIComponents
 from interfaces.navigator import Navigator
 from interfaces.shell import ShellRenderer
+from interfaces.menu_layout import build_sidebar, build_status_header, compact_for_width
 from utils.input import InputSafe
 
 # --- Configuration Constants ---
@@ -55,7 +56,21 @@ class ClientManager:
                 val_map[c.client_id] = self._get_cached_list_value(c)
 
             # 2. Render List View
+            cache_age = "-"
+            if self._list_val_cache:
+                last_ts = max(c.get("ts", 0) for c in self._list_val_cache.values())
+                if last_ts:
+                    cache_age = f"{int(time.time() - last_ts)}s"
+            status_panel = build_status_header(
+                "Status",
+                [
+                    ("Clients", str(len(self.clients))),
+                    ("Val Cache", cache_age),
+                ],
+                compact=compact_for_width(self.console.width),
+            )
             content = Group(
+                status_panel,
                 UIComponents.header("CLIENT MANAGER", breadcrumbs="Main > Clients"),
                 UIComponents.client_list_table(self.clients, val_map),
             )
@@ -64,16 +79,25 @@ class ClientManager:
                 "2": "Select Client (ID)",
                 "3": "Delete Client",
             }
+            compact = compact_for_width(self.console.width)
+            sidebar = build_sidebar(
+                [("Clients", options)],
+                show_main=True,
+                show_back=False,
+                show_exit=True,
+                compact=compact,
+            )
             choice = ShellRenderer.render_and_prompt(
                 content,
                 context_actions=options,
                 valid_choices=list(options.keys()) + ["m", "x"],
-                prompt_label="[>]",
+                prompt_label=">",
                 show_main=True,
                 show_back=False,
                 show_exit=True,
                 show_header=False,
                 live_input=False,
+                sidebar_override=sidebar,
             )
 
             # 3. Navigation
@@ -190,7 +214,17 @@ class ClientManager:
                 holdings=all_holdings,
                 lots=all_lots,
             )
+            status_panel = build_status_header(
+                "Status",
+                [
+                    ("Interval", interval),
+                    ("Accounts", str(len(client.accounts))),
+                    ("Holdings", str(len(all_holdings))),
+                ],
+                compact=compact_for_width(self.console.width),
+            )
             content = Group(
+                status_panel,
                 UIComponents.header(
                     f"CLIENT: {client.name}",
                     subtitle=f"ID: {client.client_id} | Interval: {interval} | Risk: {client.risk_profile}",
@@ -215,16 +249,25 @@ class ClientManager:
                 "3": "Financial Toolkit",
                 "4": "Change Interval",
             }
+            compact = compact_for_width(self.console.width)
+            sidebar = build_sidebar(
+                [("Client", options)],
+                show_main=True,
+                show_back=False,
+                show_exit=True,
+                compact=compact,
+            )
             choice = ShellRenderer.render_and_prompt(
                 content,
                 context_actions=options,
                 valid_choices=list(options.keys()) + ["m", "x"],
-                prompt_label="[>]",
+                prompt_label=">",
                 show_main=True,
                 show_back=False,
                 show_exit=True,
                 show_header=False,
                 live_input=False,
+                sidebar_override=sidebar,
             )
 
             # --- 3. Navigation ---
@@ -340,6 +383,13 @@ class ClientManager:
                 show_back=True,
                 show_exit=True,
                 show_header=False,
+                sidebar_override=build_sidebar(
+                    [("Accounts", {"A": "Add New Account", "R": "Remove Account"})],
+                    show_main=True,
+                    show_back=True,
+                    show_exit=True,
+                    compact=compact_for_width(self.console.width),
+                ),
             )
 
             choice = InputSafe.get_string("[>] Select Account # or Action:").upper()
@@ -403,7 +453,17 @@ class ClientManager:
                 holdings=account.holdings,
                 lots=account.lots,
             )
+            status_panel = build_status_header(
+                "Status",
+                [
+                    ("Interval", interval),
+                    ("Holdings", str(len(account.holdings))),
+                    ("Manual", str(len(manual_list))),
+                ],
+                compact=compact_for_width(self.console.width),
+            )
             content = Group(
+                status_panel,
                 UIComponents.header(
                     f"ACCOUNT: {account.account_name}",
                     subtitle=f"{client.name} | {account.account_type}",
@@ -429,16 +489,25 @@ class ClientManager:
                 "2": "Remove Holding",
                 "3": "Edit Account Details",
             }
+            compact = compact_for_width(self.console.width)
+            sidebar = build_sidebar(
+                [("Account", options)],
+                show_main=True,
+                show_back=False,
+                show_exit=True,
+                compact=compact,
+            )
             choice = ShellRenderer.render_and_prompt(
                 content,
                 context_actions=options,
                 valid_choices=list(options.keys()) + ["m", "x"],
-                prompt_label="[>]",
+                prompt_label=">",
                 show_main=True,
                 show_back=False,
                 show_exit=True,
                 show_header=False,
                 live_input=False,
+                sidebar_override=sidebar,
             )
 
             # --- 3. Navigation ---

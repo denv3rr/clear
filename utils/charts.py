@@ -59,6 +59,63 @@ class ChartRenderer:
         return Text(bar_text, style=color)
 
     @staticmethod
+    def generate_bar_3d(p: float, width: int = 20, color: str = "blue") -> Text:
+        """
+        Single-line bar with a subtle depth highlight.
+        Uses a brighter cap on the leading edge and dimmed empty tail.
+        """
+        try:
+            v = float(p)
+        except Exception:
+            v = 0.0
+
+        v = max(0.0, min(v, 1.0))
+        filled = int(round(v * width))
+        filled = max(0, min(filled, width))
+
+        if filled == 0:
+            return Text("░" * width, style="dim")
+
+        body = "█" * max(0, filled - 1)
+        cap = "▌"
+        tail = "░" * (width - filled)
+        bar_text = body + cap + tail
+        text = Text(bar_text)
+        if body:
+            text.stylize(color, 0, len(body))
+        text.stylize("bold white", len(body), len(body) + 1)
+        if tail:
+            text.stylize("dim", len(body) + 1, len(bar_text))
+        return text
+
+    @staticmethod
+    def generate_heatmap_bar(p: float, width: int = 20) -> Text:
+        """
+        Heat-mapped bar for probability/intensity values.
+        Color ramps from dim -> cyan -> green -> yellow -> red.
+        """
+        try:
+            v = float(p)
+        except Exception:
+            v = 0.0
+
+        v = max(0.0, min(v, 1.0))
+        if v >= 0.85:
+            color = "bold red"
+        elif v >= 0.70:
+            color = "red"
+        elif v >= 0.50:
+            color = "yellow"
+        elif v >= 0.30:
+            color = "green"
+        elif v >= 0.15:
+            color = "cyan"
+        else:
+            color = "dim"
+
+        return ChartRenderer.generate_bar_3d(v, width, color=color)
+
+    @staticmethod
     def generate_usage_bar(percent: float, width: int = 15) -> Text:
         """
         Specialized bar for system resource usage (0-100 scale).
@@ -74,7 +131,7 @@ class ChartRenderer:
             
         # Normalize 0-100 to 0.0-1.0
         p = percent / 100.0
-        return ChartRenderer.generate_bar(p, width, color)
+        return ChartRenderer.generate_bar_3d(p, width, color)
 
     @staticmethod
     def regime_strip(regime_name: str, width: int = 28) -> Text:

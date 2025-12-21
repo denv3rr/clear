@@ -1474,12 +1474,11 @@ class RegimeRenderer:
         prob_table.add_column("")
 
         for name, p in snapshot["state_probs"].items():
-            bar = ChartRenderer.generate_bar(p, width=18)
-            color = "green" if "Up" in name else "red" if "Down" in name else "yellow"
+            bar = ChartRenderer.generate_heatmap_bar(p, width=18)
             prob_table.add_row(
                 name,
                 RegimeRenderer._fmt_pct(p),
-                f"[{color}]{bar}[/{color}]"
+                bar
             )
 
         layout = Table.grid(expand=True)
@@ -1671,9 +1670,8 @@ class RegimeRenderer:
 
         for name, p in stationary.items():
             p = float(p or 0.0)
-            bar = ChartRenderer.generate_bar(p, width=18)
-            color = "green" if "Up" in name else "red" if "Down" in name else "yellow"
-            tab.add_row(name, RegimeRenderer._fmt_pct(p), f"[{color}]{bar}[/{color}]")
+            bar = ChartRenderer.generate_heatmap_bar(p, width=18)
+            tab.add_row(name, RegimeRenderer._fmt_pct(p), bar)
 
         return tab
 

@@ -9,12 +9,14 @@ from rich.panel import Panel
 from rich.table import Table
 from rich import box
 from rich.console import Group
+from rich.text import Text
 
 from utils.input import InputSafe
 from utils.text_fx import TextEffectManager
 from utils.system import SystemHost 
 from utils.charts import ChartRenderer
 from interfaces.shell import ShellRenderer
+from interfaces.menu_layout import build_sidebar, build_status_header, compact_for_width
 from interfaces.navigator import Navigator
 
 class SettingsModule:
@@ -33,7 +35,18 @@ class SettingsModule:
             "display": {"theme": "default", "color_highlight": "blue", "show_animations": True},
             "network": {"refresh_interval": 60, "timeout": 5, "retries": 3},
             "system": {"cache_size_mb": 512, "log_level": "INFO"},
-            "credentials": {"smtp": {}, "finnhub_key": ""}
+            "credentials": {"smtp": {}, "finnhub_key": ""},
+            "intel": {"auto_fetch": True, "cache_ttl": 300, "news_cache_ttl": 600},
+            "trackers": {
+                "auto_refresh": True,
+                "gui_auto_refresh": True,
+                "gui_refresh_interval": 10,
+                "include_commercial_flights": False,
+                "include_private_flights": False,
+            },
+            "news": {
+                "sources_enabled": ["CNBC Top", "CNBC World", "MarketWatch", "BBC Business"],
+            },
         }
 
     def _load_settings(self):
@@ -49,6 +62,12 @@ class SettingsModule:
             for k, v in defaults.items():
                 if k not in data or not isinstance(data.get(k), dict):
                     data[k] = v
+            if "intel" not in data or not isinstance(data.get("intel"), dict):
+                data["intel"] = defaults["intel"]
+            if "trackers" not in data or not isinstance(data.get("trackers"), dict):
+                data["trackers"] = defaults["trackers"]
+            if "news" not in data or not isinstance(data.get("news"), dict):
+                data["news"] = defaults["news"]
             return data
         except Exception:
             return defaults
@@ -64,6 +83,7 @@ class SettingsModule:
     # --- 1. API & Security ---
     def _menu_api_security(self):
         while True:
+            compact = compact_for_width(self.console.width)
             # Context actions
             options = {
                 "1": "Update Finnhub API Key",
@@ -72,6 +92,13 @@ class SettingsModule:
                 "4": "View Stored Credential Status",
                 "0": "Back"
             }
+            sidebar = build_sidebar(
+                [("Security", {k: v for k, v in options.items() if k != "0"})],
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+                compact=compact,
+            )
             
             status = Table(box=box.SIMPLE, show_header=False)
             status.add_column("Field", style="bold cyan")
@@ -83,10 +110,11 @@ class SettingsModule:
                 Group(panel),
                 context_actions=options,
                 valid_choices=list(options.keys()) + ["m", "x"],
-                prompt_label="[>]",
+                prompt_label=">",
                 show_main=True,
                 show_back=True,
                 show_exit=True,
+                sidebar_override=sidebar,
             )
             
             if choice == "0": break
@@ -172,6 +200,7 @@ class SettingsModule:
         while True:
             hl = self.settings['display']['color_highlight']
             anim = self.settings['display']['show_animations']
+            compact = compact_for_width(self.console.width)
             
             # Context actions
             options = {
@@ -179,6 +208,13 @@ class SettingsModule:
                 "2": f"UI Animations (Current: {anim})",
                 "0": "Back"
             }
+            sidebar = build_sidebar(
+                [("Display", {k: v for k, v in options.items() if k != "0"})],
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+                compact=compact,
+            )
             
             status = Table(box=box.SIMPLE, show_header=False)
             status.add_column("Field", style="bold cyan")
@@ -190,10 +226,11 @@ class SettingsModule:
                 Group(panel),
                 context_actions=options,
                 valid_choices=list(options.keys()) + ["m", "x"],
-                prompt_label="[>]",
+                prompt_label=">",
                 show_main=True,
                 show_back=True,
                 show_exit=True,
+                sidebar_override=sidebar,
             )
             
             if choice == "0": break
@@ -212,14 +249,30 @@ class SettingsModule:
         while True:
             net = self.settings['network']
             sys_conf = self.settings['system']
+            intel = self.settings.get('intel', {})
+            trackers = self.settings.get('trackers', {})
+            compact = compact_for_width(self.console.width)
             
             # Context actions
             options = {
                 "1": f"Data Refresh Interval: [bold]{net['refresh_interval']}s[/bold]",
                 "2": f"API Request Timeout: [bold]{net['timeout']}s[/bold]",
                 "3": f"Max Cache Size: [bold]{sys_conf['cache_size_mb']} MB[/bold]",
+                "4": f"Intel Auto Fetch: [bold]{intel.get('auto_fetch', True)}[/bold]",
+                "5": f"Intel Cache TTL: [bold]{intel.get('cache_ttl', 300)}s[/bold]",
+                "6": f"Trackers Auto Refresh: [bold]{trackers.get('auto_refresh', True)}[/bold]",
+                "7": f"GUI Auto Refresh: [bold]{trackers.get('gui_auto_refresh', True)}[/bold]",
+                "8": f"GUI Refresh Interval: [bold]{trackers.get('gui_refresh_interval', 10)}s[/bold]",
+                "9": f"News Cache TTL: [bold]{intel.get('news_cache_ttl', 600)}s[/bold]",
                 "0": "Back"
             }
+            sidebar = build_sidebar(
+                [("Performance", {k: v for k, v in options.items() if k != "0"})],
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+                compact=compact,
+            )
 
             status = Table(box=box.SIMPLE, show_header=False)
             status.add_column("Field", style="bold cyan")
@@ -227,15 +280,22 @@ class SettingsModule:
             status.add_row("Refresh Interval", f"{net['refresh_interval']}s")
             status.add_row("Timeout", f"{net['timeout']}s")
             status.add_row("Cache Size", f"{sys_conf['cache_size_mb']} MB")
+            status.add_row("Intel Auto Fetch", str(intel.get("auto_fetch", True)))
+            status.add_row("Intel Cache TTL", f"{intel.get('cache_ttl', 300)}s")
+            status.add_row("Trackers Auto Refresh", str(trackers.get("auto_refresh", True)))
+            status.add_row("GUI Auto Refresh", str(trackers.get("gui_auto_refresh", True)))
+            status.add_row("GUI Refresh Interval", f"{trackers.get('gui_refresh_interval', 10)}s")
+            status.add_row("News Cache TTL", f"{intel.get('news_cache_ttl', 600)}s")
             panel = Panel(status, title="⚡ SYSTEM & PERFORMANCE", box=box.ROUNDED)
             choice = ShellRenderer.render_and_prompt(
                 Group(panel),
                 context_actions=options,
                 valid_choices=list(options.keys()) + ["m", "x"],
-                prompt_label="[>]",
+                prompt_label=">",
                 show_main=True,
                 show_back=True,
                 show_exit=True,
+                sidebar_override=sidebar,
             )
             
             if choice == "0": break
@@ -250,7 +310,139 @@ class SettingsModule:
             if choice == "3":
                 val = InputSafe.get_float("Enter MB (1-1024):", 1, 1024)
                 self.settings['system']['cache_size_mb'] = int(val)
+            if choice == "4":
+                self.settings['intel']['auto_fetch'] = not bool(self.settings['intel'].get('auto_fetch', True))
+            if choice == "5":
+                val = InputSafe.get_float("Enter seconds (60-900):", 60, 900)
+                self.settings['intel']['cache_ttl'] = int(val)
+            if choice == "6":
+                self.settings['trackers']['auto_refresh'] = not bool(self.settings['trackers'].get('auto_refresh', True))
+            if choice == "7":
+                self.settings['trackers']['gui_auto_refresh'] = not bool(self.settings['trackers'].get('gui_auto_refresh', True))
+            if choice == "8":
+                val = InputSafe.get_float("Enter seconds (5-60):", 5, 60)
+                self.settings['trackers']['gui_refresh_interval'] = int(val)
+            if choice == "9":
+                val = InputSafe.get_float("Enter seconds (120-1800):", 120, 1800)
+                self.settings['intel']['news_cache_ttl'] = int(val)
             self._save_settings()
+
+    def _menu_tracker_filters(self):
+        while True:
+            trackers = self.settings.get('trackers', {})
+            compact = compact_for_width(self.console.width)
+            options = {
+                "1": f"Include Commercial Flights: [bold]{trackers.get('include_commercial_flights', False)}[/bold]",
+                "2": f"Include Private Flights: [bold]{trackers.get('include_private_flights', False)}[/bold]",
+                "0": "Back",
+            }
+            sidebar = build_sidebar(
+                [("Filters", {k: v for k, v in options.items() if k != "0"})],
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+                compact=compact,
+            )
+            status = Table(box=box.SIMPLE, show_header=False)
+            status.add_column("Field", style="bold cyan")
+            status.add_column("Value", justify="right")
+            status.add_row("Commercial Flights", str(trackers.get("include_commercial_flights", False)))
+            status.add_row("Private Flights", str(trackers.get("include_private_flights", False)))
+            note = Text(
+                "Commercial/private traffic adds volume and can obscure high-signal events.",
+                style="yellow",
+            )
+            panel = Panel(Group(note, status), title="✈️ TRACKER FILTERS", box=box.ROUNDED)
+            choice = ShellRenderer.render_and_prompt(
+                Group(panel),
+                context_actions=options,
+                valid_choices=list(options.keys()) + ["m", "x"],
+                prompt_label=">",
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+                sidebar_override=sidebar,
+            )
+
+            if choice == "0":
+                break
+            if choice == "m":
+                break
+            if choice == "x":
+                Navigator.exit_app()
+            if choice == "1":
+                self.settings['trackers']['include_commercial_flights'] = not bool(
+                    self.settings['trackers'].get('include_commercial_flights', False)
+                )
+            if choice == "2":
+                self.settings['trackers']['include_private_flights'] = not bool(
+                    self.settings['trackers'].get('include_private_flights', False)
+                )
+            self._save_settings()
+
+    def _menu_news_sources(self):
+        from modules.market_data.collectors import DEFAULT_SOURCES
+
+        while True:
+            news = self.settings.get("news", {})
+            enabled = set([str(n).lower() for n in news.get("sources_enabled", [])])
+            compact = compact_for_width(self.console.width)
+
+            options = {"0": "Back"}
+            rows = Table(box=box.SIMPLE, show_header=False)
+            rows.add_column("Key", style="bold cyan", width=4)
+            rows.add_column("Source", style="white")
+            rows.add_column("Enabled", justify="right")
+
+            for idx, src in enumerate(DEFAULT_SOURCES, 1):
+                key = str(idx)
+                is_on = src.name.lower() in enabled
+                options[key] = f"Toggle {src.name}"
+                rows.add_row(key, src.name, "YES" if is_on else "NO")
+
+            sidebar = build_sidebar(
+                [("Sources", {k: v for k, v in options.items() if k != "0"})],
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+                compact=compact,
+            )
+
+            note = Text(
+                "Only enabled sources are fetched when you run News Signals.",
+                style="dim",
+            )
+            panel = Panel(Group(note, rows), title="📰 NEWS SOURCES", box=box.ROUNDED)
+            choice = ShellRenderer.render_and_prompt(
+                Group(panel),
+                context_actions=options,
+                valid_choices=list(options.keys()) + ["m", "x"],
+                prompt_label=">",
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+                sidebar_override=sidebar,
+            )
+
+            if choice == "0":
+                break
+            if choice == "m":
+                break
+            if choice == "x":
+                Navigator.exit_app()
+
+            if choice.isdigit():
+                idx = int(choice) - 1
+                if 0 <= idx < len(DEFAULT_SOURCES):
+                    name = DEFAULT_SOURCES[idx].name
+                    key = name.lower()
+                    if key in enabled:
+                        enabled.remove(key)
+                    else:
+                        enabled.add(key)
+                    news["sources_enabled"] = [s.name for s in DEFAULT_SOURCES if s.name.lower() in enabled]
+                    self.settings["news"] = news
+                    self._save_settings()
 
     # --- 4. Diagnostics ---
     def _run_deep_diagnostics(self):
@@ -354,6 +546,7 @@ class SettingsModule:
     # --- Main Loop ---
     def run(self):
         while True:
+            compact = compact_for_width(self.console.width)
             panel = self._build_info_panel()
             
             # Modular Menu Implementation
@@ -361,19 +554,51 @@ class SettingsModule:
                 "1": "🔒 API & Security",
                 "2": "🎨 Display & UX",
                 "3": "⚡ System & Performance",
-                "4": "🩺 Run Quick Diagnostics",
-                "5": "💾 Reset Settings to Defaults",
+                "4": "✈️ Tracker Filters",
+                "5": "📰 News Sources",
+                "6": "🩺 Run Quick Diagnostics",
+                "7": "💾 Reset Settings to Defaults",
                 "0": "🔙 Return to Main"
             }
-            
-            choice = ShellRenderer.render_and_prompt(
-                Group(panel),
-                context_actions=options,
-                valid_choices=list(options.keys()) + ["m", "x"],
-                prompt_label="[>]",
+            sidebar = build_sidebar(
+                [
+                    ("Settings", {
+                        "1": "API & Security",
+                        "2": "Display & UX",
+                        "3": "System & Performance",
+                        "4": "Tracker Filters",
+                        "5": "News Sources",
+                    }),
+                    ("Diagnostics", {
+                        "6": "Run Quick Diagnostics",
+                        "7": "Reset to Defaults",
+                    }),
+                ],
                 show_main=True,
                 show_back=True,
                 show_exit=True,
+                compact=compact,
+            )
+            status_panel = build_status_header(
+                "Status",
+                [
+                    ("Auto Fetch", str(self.settings.get("intel", {}).get("auto_fetch", True))),
+                    ("Intel TTL", f"{self.settings.get('intel', {}).get('cache_ttl', 300)}s"),
+                    ("News TTL", f"{self.settings.get('intel', {}).get('news_cache_ttl', 600)}s"),
+                    ("Trackers", str(self.settings.get("trackers", {}).get("auto_refresh", True))),
+                ],
+                compact=compact,
+            )
+            
+            choice = ShellRenderer.render_and_prompt(
+                Group(status_panel, panel),
+                context_actions=options,
+                valid_choices=list(options.keys()) + ["m", "x"],
+                prompt_label=">",
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+                sidebar_override=sidebar,
             )
 
             from interfaces.menus import MainMenu as m # for cls/clear
@@ -388,8 +613,10 @@ class SettingsModule:
             elif choice == "1": self._menu_api_security()
             elif choice == "2": self._menu_display_ux()
             elif choice == "3": self._menu_system_perf()
-            elif choice == "4": self._run_deep_diagnostics()
-            elif choice == "5":
+            elif choice == "4": self._menu_tracker_filters()
+            elif choice == "5": self._menu_news_sources()
+            elif choice == "6": self._run_deep_diagnostics()
+            elif choice == "7":
                 if InputSafe.get_yes_no("Reset settings to defaults?"):
                     self.settings = self._default_settings()
                     self._save_settings()

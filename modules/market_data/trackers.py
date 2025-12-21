@@ -47,11 +47,14 @@ class TrackerProviders:
         military_keys = ("RCH", "MC", "NAVY", "AF", "ARMY", "MIL", "QID")
         cargo_keys = ("FDX", "UPS", "GTI", "CARGO", "BOX", "ABW")
         gov_keys = ("GOV", "STATE", "NASA")
+        vip_keys = ("AF1", "SAM", "SPAR", "VIP", "EXEC")
         private_keys = ("N", "G-", "D-", "C-")
         if any(k in cs for k in military_keys):
             return "military"
         if any(k in cs for k in gov_keys):
             return "government"
+        if any(k in cs for k in vip_keys):
+            return "vip"
         if any(k in cs for k in cargo_keys):
             return "cargo"
         if cs.startswith(private_keys) and len(cs) <= 6:
@@ -61,6 +64,8 @@ class TrackerProviders:
     @staticmethod
     def fetch_flights(limit: int = 200) -> Tuple[List[TrackerPoint], List[str]]:
         warnings: List[str] = []
+        include_commercial = os.getenv("CLEAR_INCLUDE_COMMERCIAL", "0") == "1"
+        include_private = os.getenv("CLEAR_INCLUDE_PRIVATE", "0") == "1"
         username = os.getenv("OPENSKY_USERNAME")
         password = os.getenv("OPENSKY_PASSWORD")
         auth = (username, password) if username and password else None
@@ -106,6 +111,16 @@ class TrackerProviders:
             speed_kts = velocity * 1.94384 if velocity is not None else None
             category = TrackerProviders._callsign_category(callsign)
             label = callsign or (row[0] or "UNKNOWN")
+            if category == "commercial" and not include_commercial:
+                high_speed = speed_kts is not None and speed_kts >= 520
+                high_alt = altitude_ft is not None and altitude_ft >= 38000
+                if not (high_speed or high_alt):
+                    continue
+            if category == "private" and not include_private:
+                high_speed = speed_kts is not None and speed_kts >= 520
+                high_alt = altitude_ft is not None and altitude_ft >= 38000
+                if not (high_speed or high_alt):
+                    continue
             points.append(TrackerPoint(
                 lat=lat,
                 lon=lon,

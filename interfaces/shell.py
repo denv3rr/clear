@@ -120,10 +120,11 @@ class ShellRenderer:
         show_exit: bool = True,
         preserve_previous: bool = False,
         show_header: bool = True,
+        sidebar_override: Optional[Panel] = None,
     ) -> None:
         console = Console()
         width = console.width
-        sidebar = ShellRenderer._build_sidebar(
+        sidebar = sidebar_override or ShellRenderer._build_sidebar(
             context_actions or {},
             show_main=show_main,
             show_back=show_back,
@@ -153,13 +154,14 @@ class ShellRenderer:
         content: Group,
         context_actions: Optional[Dict[str, str]],
         valid_choices: List[str],
-        prompt_label: str = "[>]",
+        prompt_label: str = ">",
         show_main: bool = True,
         show_back: bool = True,
         show_exit: bool = True,
         preserve_previous: bool = False,
         show_header: bool = True,
         live_input: bool = True,
+        sidebar_override: Optional[Panel] = None,
     ) -> str:
         console = Console()
         width = console.width
@@ -186,25 +188,27 @@ class ShellRenderer:
 
         input_text = ""
         error_text = ""
+        normalized_label = str(prompt_label).strip("[]").strip() or ">"
 
         def build_layout() -> Table:
-            sidebar = ShellRenderer._build_sidebar(
+            sidebar = sidebar_override or ShellRenderer._build_sidebar(
                 context_actions or {},
                 show_main=show_main,
                 show_back=show_back,
                 show_exit=show_exit,
             )
-            footer_text = Text.from_markup(f"{prompt_label} {input_text}")
-            if error_text:
-                footer_text.append(f"  {error_text}", style="red")
-            help_line = f"Options: {', '.join([str(c).upper() for c in valid_choices])}"
+            help_line = f"{normalized_label} {input_text}  Options: {', '.join([str(c).upper() for c in valid_choices])}"
             help_text = build_scrolling_line(
                 help_line,
                 preset="prompt",
                 width=len(help_line),
                 highlights=[str(c).upper() for c in valid_choices],
             )
-            footer = Panel(Group(footer_text, help_text), box=box.SQUARE, border_style="dim")
+            if error_text:
+                error_line = Text(error_text, style="red")
+                footer = Panel(Group(help_text, error_line), box=box.SQUARE, border_style="dim")
+            else:
+                footer = Panel(help_text, box=box.SQUARE, border_style="dim")
 
             layout = Table.grid(expand=True)
             layout.add_column(ratio=1)

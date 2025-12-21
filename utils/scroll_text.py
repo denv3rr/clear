@@ -56,16 +56,18 @@ class ScrollingText:
                 text.stylize(highlight_style, pos, pos + 1)
                 text.stylize("not dim", pos, pos + 1)
 
-            # Trailing fade
+            # Trailing fade (greyscale gradient)
             if trail > 0:
                 for t in range(1, trail + 1):
                     pos = (start - t) % len(view)
                     if t == 1:
-                        style = "yellow"
+                        style = "white"
                     elif t == 2:
-                        style = "dim yellow"
+                        style = "grey70"
+                    elif t == 3:
+                        style = "grey50"
                     else:
-                        style = "dim"
+                        style = "grey30"
                     text.stylize(style, pos, pos + 1)
         return text
 
@@ -73,14 +75,14 @@ class ScrollingText:
 SCROLL_PRESETS: Dict[str, Dict[str, object]] = {
     "prompt": {
         "speed": 6.0,
-        "band_width": 6,
+        "band_width": 1,
         "trail": 4,
         "highlight_style": "bold bright_white not dim",
         "base_style": "dim",
     },
     "warning": {
         "speed": 5.0,
-        "band_width": 6,
+        "band_width": 1,
         "trail": 4,
         "highlight_style": "bold bright_white not dim",
         "base_style": "dim",
