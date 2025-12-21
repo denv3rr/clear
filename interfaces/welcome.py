@@ -142,7 +142,6 @@ class StartupScreen:
         right_col.add_row("[+] CPU CORES:", str(data.get('cpu_cores', 'N/A')))
         right_col.add_row("[+] CPU USAGE:", data.get('cpu_usage', 'N/A'))
         right_col.add_row("[+] RAM USAGE:", data.get('mem_usage', 'N/A'))
-        right_col.add_row("[+] CLIENTS:", clients_count)
         
         # 2 inner tables added to the 2-column grid
         two_col_metrics_grid.add_row(left_col, right_col)
@@ -155,12 +154,16 @@ class StartupScreen:
         status = "DETECTED" if data["finnhub_status"] else "MISSING"
 
         sys_info_grid_content.add_row("")
-        sys_info_grid_content.add_row(f"[bold cyan][+][/bold cyan] [bold cyan]SYSTEM TIME: [/bold cyan]  {data['login_time']}")
-        sys_info_grid_content.add_row(f"[bold cyan][+][/bold cyan] [bold cyan]FINNHUB KEY: [/bold cyan]  [{color}]{status}[/{color}]")
+        status_table = Table.grid(padding=(0, 2))
+        status_table.add_column(style="bold cyan", min_width=12, justify="left")
+        status_table.add_column(style="white", justify="left")
+        status_table.add_row("[+] SYSTEM TIME", str(data.get("login_time", "N/A")))
+        status_table.add_row("[+] FINNHUB KEY", f"[{color}]{status}[/{color}]")
         data_flag = "FOUND" if os.path.exists(data.get("data_file", "")) else "MISSING"
         settings_flag = "FOUND" if os.path.exists(data.get("settings_file", "")) else "MISSING"
-        sys_info_grid_content.add_row(f"[bold cyan][+][/bold cyan] [bold cyan]DATA FILE: [/bold cyan]  {data_flag}")
-        sys_info_grid_content.add_row(f"[bold cyan][+][/bold cyan] [bold cyan]SETTINGS FILE: [/bold cyan]  {settings_flag}")
+        status_table.add_row("[+] DATA FILE", data_flag)
+        status_table.add_row("[+] SETTINGS FILE", settings_flag)
+        sys_info_grid_content.add_row(status_table)
 
         sys_info_grid = Panel(
             sys_info_grid_content,
@@ -189,13 +192,18 @@ class StartupScreen:
         main_layout_grid.add_row(Align.center(ascii_art_divider))
 
         # --- 5. Encapsulate in a Rich panel with fixed width 200 ---
+        panel_width = min(200, max(80, self.console.width - 6))
+        subpanel_width = min(100, max(60, panel_width - 10))
+        info_panel.width = subpanel_width
+        sys_info_grid.width = subpanel_width
+
         panel = Panel(
-            main_layout_grid, 
+            main_layout_grid,
             box=box.ROUNDED,
             border_style="blue",
             title="[bold gold1]https://seperet.com[/bold gold1]",
             padding=(1, 3),
-            width=200
+            width=panel_width,
         )
 
         # UNCOMMENT THESE 2 LINES TO ENABLE TEXT EFFECTS AT OPENING:

@@ -1,7 +1,9 @@
 import os
 import time
+import math
+from collections import deque
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Deque, Dict, List, Optional, Tuple
 
 import requests
 from rich.console import Console, Group
@@ -12,6 +14,7 @@ from rich import box
 
 from utils.system import SystemHost
 from utils.scroll_text import build_scrolling_line
+from utils.charts import ChartRenderer
 
 
 @dataclass
@@ -245,15 +248,103 @@ class TrackerHealth:
 
 
 class GlobalTrackers:
-    def __init__(self):
-        self._last_refresh = 0.0
-        self._cached: Dict[str, Any] = {
+    _GLOBAL_STATE = {
+        "last_refresh": 0.0,
+        "cached": {
             "flights": [],
             "ships": [],
             "warnings": [],
+        },
+        "history": {},
+        "last_seen": {},
+    }
+    _HISTORY_WINDOW_SEC = 900
+    _HISTORY_MIN_POINTS = 4
+    _SPEED_CAPS = {"flight": 650.0, "ship": 40.0}
+    _VOL_CAPS = {"flight": 100.0, "ship": 12.0}
+
+    def __init__(self):
+        self._state = GlobalTrackers._GLOBAL_STATE
+        self._last_refresh = float(self._state.get("last_refresh", 0.0) or 0.0)
+        self._cached = self._state.get("cached", {
+            "flights": [],
+            "ships": [],
+            "warnings": [],
+        })
+        self._history = self._state.get("history", {})
+        self._last_seen = self._state.get("last_seen", {})
+
+    def _sync_state(self) -> None:
+        self._state["cached"] = self._cached
+        self._state["last_refresh"] = self._last_refresh
+        self._state["history"] = self._history
+        self._state["last_seen"] = self._last_seen
+
+    @staticmethod
+    def _point_id(point: TrackerPoint) -> str:
+        label = (point.label or "unknown").strip().upper()
+        country = (point.country or "").strip().upper()
+        category = (point.category or "").strip().lower()
+        return f"{point.kind}:{label}:{country}:{category}"
+
+    @staticmethod
+    def _stddev(values: List[float]) -> Optional[float]:
+        if len(values) < GlobalTrackers._HISTORY_MIN_POINTS:
+            return None
+        mean = sum(values) / len(values)
+        variance = sum((v - mean) ** 2 for v in values) / len(values)
+        return math.sqrt(variance)
+
+    @staticmethod
+    def _heat_from_value(value: Optional[float], cap: float) -> Optional[float]:
+        if value is None:
+            return None
+        if cap <= 0:
+            return 0.0
+        return max(0.0, min(float(value) / cap, 1.0))
+
+    def _update_history(self, points: List[TrackerPoint]) -> None:
+        now = int(time.time())
+        window = self._HISTORY_WINDOW_SEC
+        for pt in points:
+            if pt.speed_kts is None:
+                continue
+            key = self._point_id(pt)
+            self._last_seen[key] = now
+            if key not in self._history:
+                self._history[key] = deque()
+            series: Deque[Tuple[int, float]] = self._history[key]
+            ts = int(pt.updated_ts or now)
+            series.append((ts, float(pt.speed_kts)))
+            while series and (now - series[0][0]) > window:
+                series.popleft()
+
+        stale_cutoff = now - (window * 2)
+        stale_keys = [k for k, last in self._last_seen.items() if last < stale_cutoff]
+        for key in stale_keys:
+            self._last_seen.pop(key, None)
+            self._history.pop(key, None)
+
+    def _point_metrics(self, point: TrackerPoint) -> Dict[str, Optional[float]]:
+        key = self._point_id(point)
+        series = self._history.get(key)
+        speeds = [value for _, value in series] if series else []
+        volatility = self._stddev(speeds) if speeds else None
+        speed_cap = self._SPEED_CAPS.get(point.kind, 100.0)
+        vol_cap = self._VOL_CAPS.get(point.kind, 20.0)
+        speed_heat = self._heat_from_value(point.speed_kts, speed_cap)
+        vol_heat = self._heat_from_value(volatility, vol_cap)
+        return {
+            "speed_heat": speed_heat,
+            "speed_vol_kts": volatility,
+            "vol_heat": vol_heat,
         }
 
     def refresh(self, force: bool = False) -> Dict[str, Any]:
+        self._last_refresh = float(self._state.get("last_refresh", 0.0) or 0.0)
+        self._cached = self._state.get("cached", self._cached)
+        self._history = self._state.get("history", self._history)
+        self._last_seen = self._state.get("last_seen", self._last_seen)
         now = time.time()
         if not force and (now - self._last_refresh) < 20:
             return self._cached
@@ -267,16 +358,22 @@ class GlobalTrackers:
         if not ships and self._cached.get("ships"):
             ships = self._cached.get("ships", [])
             warnings.append("Shipping feed returned empty; showing last cached ships.")
+        self._update_history(flights + ships)
         self._cached = {
             "flights": flights,
             "ships": ships,
             "warnings": warnings,
         }
         self._last_refresh = now
+        self._sync_state()
         return self._cached
 
-    def get_snapshot(self, mode: str = "combined") -> Dict[str, Any]:
-        data = self.refresh()
+    def get_snapshot(self, mode: str = "combined", allow_refresh: bool = True) -> Dict[str, Any]:
+        self._last_refresh = float(self._state.get("last_refresh", 0.0) or 0.0)
+        self._cached = self._state.get("cached", self._cached)
+        self._history = self._state.get("history", self._history)
+        self._last_seen = self._state.get("last_seen", self._last_seen)
+        data = self.refresh() if allow_refresh else self._cached
         flights: List[TrackerPoint] = data.get("flights", [])
         ships: List[TrackerPoint] = data.get("ships", [])
         warnings: List[str] = data.get("warnings", [])
@@ -290,6 +387,7 @@ class GlobalTrackers:
 
         payload = []
         for pt in points:
+            metrics = self._point_metrics(pt)
             payload.append({
                 "kind": pt.kind,
                 "category": pt.category,
@@ -302,6 +400,9 @@ class GlobalTrackers:
                 "country": pt.country,
                 "updated_ts": pt.updated_ts,
                 "industry": pt.industry,
+                "speed_heat": metrics.get("speed_heat"),
+                "speed_vol_kts": metrics.get("speed_vol_kts"),
+                "vol_heat": metrics.get("vol_heat"),
             })
 
         return {
@@ -344,6 +445,9 @@ class GlobalTrackers:
         table.add_column("Lon", justify="right", width=8)
         table.add_column("Alt(ft)", justify="right", width=8)
         table.add_column("Spd(kts)", justify="right", width=8)
+        table.add_column("Spd Heat", justify="center", width=6)
+        table.add_column("Vol(kts)", justify="right", width=8)
+        table.add_column("Vol Heat", justify="center", width=6)
         table.add_column("Hdg", justify="right", width=5)
         table.add_column("Age", justify="right", width=5)
         table.add_column("Industry", width=10)
@@ -378,6 +482,11 @@ class GlobalTrackers:
             cat = str(pt.get("category", "n/a"))
             kind = str(pt.get("kind", "n/a"))
             style = color_map.get(kind, {}).get(cat, None)
+            speed_heat = pt.get("speed_heat")
+            vol_heat = pt.get("vol_heat")
+            speed_bar = ChartRenderer.generate_heatmap_bar(speed_heat, width=6) if speed_heat is not None else "-"
+            vol_bar = ChartRenderer.generate_heatmap_bar(vol_heat, width=6) if vol_heat is not None else "-"
+            vol_kts = pt.get("speed_vol_kts")
             age = "-"
             updated = pt.get("updated_ts")
             if updated:
@@ -395,13 +504,16 @@ class GlobalTrackers:
                 f"{pt.get('lon', 0.0):.2f}",
                 "-" if alt is None else f"{alt:,.0f}",
                 "-" if spd is None else f"{spd:,.0f}",
+                speed_bar,
+                "-" if vol_kts is None else f"{float(vol_kts):,.0f}",
+                vol_bar,
                 "-" if hdg is None else f"{hdg:,.0f}",
                 age,
                 str(pt.get("industry", "") or "-")[:10],
             )
 
         if not sample:
-            table.add_row("N/A", "N/A", "No live data", "-", "-", "-", "-", "-", "-", "-", "-")
+            table.add_row("N/A", "N/A", "No live data", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-")
 
         if warnings:
             warn_lines = list(dict.fromkeys(warnings))
@@ -440,3 +552,77 @@ class GlobalTrackers:
             (count_text, "bold white"),
         )
         return Panel(Group(layout), title=title, subtitle=subtitle, box=box.DOUBLE, border_style="cyan")
+
+
+class TrackerRelevance:
+    TAG_RULES = {
+        "shipping": {"kinds": {"ship"}, "categories": set()},
+        "logistics": {"kinds": {"ship", "flight"}, "categories": set()},
+        "freight": {"kinds": {"ship", "flight"}, "categories": {"cargo", "tanker"}},
+        "cargo": {"kinds": {"ship", "flight"}, "categories": {"cargo", "tanker"}},
+        "aviation": {"kinds": {"flight"}, "categories": set()},
+        "airline": {"kinds": {"flight"}, "categories": set()},
+        "defense": {"kinds": {"flight", "ship"}, "categories": {"military", "government"}},
+        "military": {"kinds": {"flight", "ship"}, "categories": {"military", "government"}},
+        "energy": {"kinds": {"ship"}, "categories": {"tanker"}},
+        "tanker": {"kinds": {"ship"}, "categories": {"tanker"}},
+        "ports": {"kinds": {"ship"}, "categories": set()},
+    }
+
+    @staticmethod
+    def normalize_tag(tag: str) -> str:
+        return (tag or "").strip().lower()
+
+    @classmethod
+    def match_rules(cls, account_tags: Dict[str, List[str]]) -> Tuple[List[Dict[str, set]], Dict[str, List[str]]]:
+        rules = []
+        matched_accounts: Dict[str, List[str]] = {}
+        for account, tags in (account_tags or {}).items():
+            for raw in tags or []:
+                tag = cls.normalize_tag(raw)
+                rule = cls.TAG_RULES.get(tag)
+                if not rule:
+                    continue
+                rules.append(rule)
+                matched_accounts.setdefault(account, [])
+                if tag not in matched_accounts[account]:
+                    matched_accounts[account].append(tag)
+        return rules, matched_accounts
+
+    @staticmethod
+    def filter_points(points: List[Dict[str, Any]], rules: List[Dict[str, set]]) -> List[Dict[str, Any]]:
+        if not rules:
+            return []
+        filtered = []
+        for pt in points:
+            kind = str(pt.get("kind", "")).lower()
+            category = str(pt.get("category", "")).lower()
+            for rule in rules:
+                kinds = rule.get("kinds", set())
+                categories = rule.get("categories", set())
+                if kind not in kinds:
+                    continue
+                if categories and category not in categories:
+                    continue
+                filtered.append(pt)
+                break
+        return filtered
+
+    @staticmethod
+    def summarize(points: List[Dict[str, Any]]) -> Dict[str, Any]:
+        def _avg(values: List[float]) -> Optional[float]:
+            return (sum(values) / len(values)) if values else None
+
+        speeds = [float(p.get("speed_kts")) for p in points if p.get("speed_kts") is not None]
+        vol = [float(p.get("speed_vol_kts")) for p in points if p.get("speed_vol_kts") is not None]
+        speed_heat = [float(p.get("speed_heat")) for p in points if p.get("speed_heat") is not None]
+        vol_heat = [float(p.get("vol_heat")) for p in points if p.get("vol_heat") is not None]
+        return {
+            "point_count": len(points),
+            "avg_speed_kts": _avg(speeds),
+            "avg_vol_kts": _avg(vol),
+            "avg_speed_heat": _avg(speed_heat),
+            "avg_vol_heat": _avg(vol_heat),
+            "max_speed_kts": max(speeds) if speeds else None,
+            "max_vol_kts": max(vol) if vol else None,
+        }

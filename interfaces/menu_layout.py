@@ -2,6 +2,7 @@ from typing import Dict, List, Tuple
 
 from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 from rich import box
 
 
@@ -11,14 +12,15 @@ def build_sidebar(
     show_back: bool = True,
     show_exit: bool = True,
     compact: bool = False,
+    min_rows: int = 0,
 ) -> Panel:
     table = Table(box=box.SIMPLE, show_header=False)
-    table.add_column("Key", style="bold cyan", width=5, justify="right")
-    table.add_column("Action", style="white")
+    table.add_column("Key", style="bold cyan", width=3, justify="left")
+    table.add_column("Action", style="white", overflow="crop", no_wrap=True)
 
     for title, actions in sections:
         if title and not compact:
-            table.add_row(f"[dim]{title.upper()}[/dim]", "")
+            table.add_row("", Text(title.upper(), style="dim", overflow="crop", no_wrap=True))
         for key, label in actions.items():
             table.add_row(str(key), label)
         if not compact:
@@ -33,11 +35,15 @@ def build_sidebar(
         core["X"] = "Exit"
     if core:
         if not compact:
-            table.add_row("[dim]SESSION[/dim]", "")
+            table.add_row("", Text("SESSION", style="dim", overflow="crop", no_wrap=True))
         for key, label in core.items():
             table.add_row(str(key), label)
 
-    return Panel(table, title="[bold]Actions[/bold]", box=box.ROUNDED)
+    while min_rows > 0 and table.row_count < min_rows:
+        table.add_row("", "")
+
+    width = 22 if compact else 26
+    return Panel(table, title="[bold]Actions[/bold]", box=box.ROUNDED, width=width)
 
 
 def compact_for_width(width: int) -> bool:

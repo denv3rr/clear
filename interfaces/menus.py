@@ -14,6 +14,7 @@ from interfaces.settings import SettingsModule
 from interfaces.shell import ShellRenderer
 from utils.system import SystemHost
 from interfaces.menu_layout import build_sidebar, compact_for_width
+from modules.client_mgr.data_handler import DataHandler
 
 class MainMenu:
     """
@@ -24,7 +25,28 @@ class MainMenu:
         self.text_fx = TextEffectManager()
         self.settings_module = SettingsModule()
 
-    def _build_bulletin_panel(self, panel_width: int) -> Panel:
+    @staticmethod
+    def _bulletin_art() -> str:
+        return r"""
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⠀⣴⠀⢿⣿⣿⣿⣿⣿⣿⣿⣿⠇⣠⡀⢀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⡤⠞⠁⣰⣿⠀⠘⣿⣿⣿⣿⣿⣿⣿⡏⠀⢿⣧⡀⠙⠦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⢠⣤⣤⣤⣾⣿⠟⠀⠀⠸⣿⣿⣿⣿⣿⡟⠀⠀⠘⣿⣷⣦⣤⣤⣤⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⢠⣶⣤⡈⠉⠛⠋⠁⠀⠀⠀⠀⠈⠙⠛⠛⠉⠀⠀⠀⠀⠈⠙⠛⠋⠉⣠⣶⣆⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⢠⣿⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣤⣾⣿⣿⣿⣆⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⣾⣿⣿⣿⣿⣿⣿⡆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣾⣿⣿⣿⣿⣿⣿⡄⠀⠀⠀⠀
+⠀⠀⠀⢰⣿⣿⣿⣿⣿⣿⣿⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢿⣿⣿⣿⣿⣿⣿⣇⠀⠀⠀⠀
+⠀⠀⠀⠸⠿⠿⠿⠿⠿⠛⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠛⠻⠿⠿⠿⠿⠿⠀⠀⠀⠀
+⠀⠀⠀⠰⢶⣤⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣤⣴⠶⠀⠀⠀⠀
+⠀⠀⠀⠀⡄⠙⣿⣿⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣾⣿⠟⠁⡄⠀⠀⠀⠀
+⠀⠀⠀⠀⢻⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣟⠀⣸⠁⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⣼⠟⠀⣀⣴⣾⣿⣷⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣶⣿⣷⣦⣄⡀⠘⢿⡄⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠡⣴⣿⣿⣿⣿⣿⣿⣿⣷⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿⣶⡄⠁⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⣿⣿⣿⣿⣿⡟⠀⠀⢀⣀⣀⠀⠀⠸⣿⣿⣿⣿⣿⣿⡿⠋⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠻⢿⣿⣿⣿⠃⢠⣾⣿⡿⣿⣷⣆⠀⢿⣿⣿⣿⠿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠛⠋⠰⠟⢉⣀⣤⣀⡈⠙⠧⠘⠛⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+"""
+
+    def _build_bulletin_panel(self, panel_width: int, client_count: int = 0) -> Panel:
         """Main menu bulletin board with status and hints."""
         data = {}
         try:
@@ -47,39 +69,90 @@ class MainMenu:
         title.append(user, style="bold cyan")
         title.append(".", style="bold white")
 
+        stat_rows = [
+            ("Host", str(host)),
+            ("OS", str(os_name)),
+            ("CPU", str(cpu)),
+            ("Memory", str(mem)),
+            ("Finnhub Key", finnhub_ok),
+            ("OpenSky Creds", opensky_ok),
+            ("Shipping URL", shipping_ok),
+        ]
         stats = Table.grid(padding=(0, 1))
         stats.add_column(style="bold cyan", width=14)
         stats.add_column(style="white")
-        stats.add_row("Host", str(host))
-        stats.add_row("OS", str(os_name))
-        stats.add_row("CPU", str(cpu))
-        stats.add_row("Memory", str(mem))
-        stats.add_row("Finnhub Key", finnhub_ok)
-        stats.add_row("OpenSky Creds", opensky_ok)
-        stats.add_row("Shipping URL", shipping_ok)
+        for label, value in stat_rows:
+            stats.add_row(label, value)
+        stats.add_row("Clients", str(client_count))
 
-        hints = Table.grid(padding=(0, 1))
-        hints.add_column(style="bold gold1", width=10)
-        hints.add_column(style="dim")
-        hints.add_row("Tip", "Press 2 for Markets, then 5 for Global Trackers.")
-        hints.add_row("Tip", "Use G in Trackers for the GUI map.")
-        hints.add_row("Tip", "Macro Dashboard loads on demand from Markets.")
+        hint_rows = [
+            "Press 2 for Markets, then 5 for Global Trackers.",
+            "Use G in Trackers for the GUI map.",
+            "Macro Dashboard loads on demand from Markets.",
+        ]
+        hints = Text()
+        show_tips = bool(self.settings_module.settings.get("display", {}).get("show_tips", False))
+        if show_tips:
+            for idx, line in enumerate(hint_rows):
+                suffix = "\n" if idx < len(hint_rows) - 1 else ""
+                if line:
+                    hints.append(f"• {line}{suffix}", style="bold gold1")
+                else:
+                    hints.append(f"{suffix}")
+
+        ascii_art = self._bulletin_art()
+        inner_width = max(40, panel_width - 8)
+        inner_width -= inner_width % 2
+        left_width = inner_width // 2
+        right_width = inner_width // 2
+        if ascii_art:
+            trimmed = ascii_art.strip("\n")
+            centered_lines = []
+            for line in trimmed.splitlines():
+                if not line:
+                    centered_lines.append("")
+                    continue
+                line = line[:right_width]
+                line_len = len(line)
+                pad = max(0, (right_width - line_len) // 2)
+                centered_lines.append((" " * pad) + line)
+            ascii_art = "\n".join(centered_lines)
+
+        left = Table.grid(expand=True)
+        left.add_column(width=left_width, overflow="crop", no_wrap=True)
+        left.add_row(Align.center(title))
+        left.add_row(Text(""))
+        left.add_row(Align.center(stats))
+        left.add_row(Text(""))
+        if show_tips:
+            left.add_row(Align.center(hints))
+
+        right = Table.grid(expand=True)
+        right.add_column(width=right_width, overflow="crop", no_wrap=True)
+        if ascii_art:
+            right.add_row(Align.left(Text(ascii_art)))
+        else:
+            right.add_row(Align.center(Text("ASCII ART READY", style="dim")))
 
         layout = Table.grid(expand=True)
-        layout.add_column(ratio=1)
-        layout.add_row(Align.center(title))
-        layout.add_row(Align.center(stats))
-        layout.add_row(Align.center(hints))
+        layout.add_column(width=left_width, overflow="crop", no_wrap=True)
+        layout.add_column(width=right_width, overflow="crop", no_wrap=True)
+        layout.add_row(left, right)
 
         panel = Panel(
             Align.center(layout),
             box=box.ROUNDED,
-            padding=(1, 5),
+            padding=(1, 3),
             border_style="blue",
             width=panel_width,
-            title="Bulletin",
         )
         return panel
+
+    @staticmethod
+    def _estimate_bulletin_rows(stat_rows: int, hint_rows: int) -> int:
+        # title + spacer + blank line + stats + hints + padding top/bottom
+        base_rows = 2 + 1 + stat_rows + hint_rows
+        return base_rows + 2
 
     @staticmethod
     def clear_console():
@@ -103,16 +176,20 @@ class MainMenu:
             "0": "exit",
             "x": "exit"
         }
-        panel_width = min(140, max(72, self.console.width - 8))
-        main_panel = self._build_bulletin_panel(panel_width)
         compact = compact_for_width(self.console.width)
+        sidebar_width = 22 if compact else 26
+        available_width = max(80, self.console.width - (sidebar_width * 2) - 4)
+        panel_width = min(200, available_width)
+        client_count = len(DataHandler.load_clients() or [])
+        main_panel = self._build_bulletin_panel(panel_width, client_count=client_count)
+        min_rows = self._estimate_bulletin_rows(stat_rows=7, hint_rows=3)
         sidebar = build_sidebar(
             [
                 ("Modules", {
                     "1": "Client Manager",
                     "2": "Markets",
                     "3": "Settings",
-                    "4": "Intel Reports",
+                    "4": "Reports",
                 }),
                 ("Session", {"0": "Exit"}),
             ],
@@ -120,6 +197,7 @@ class MainMenu:
             show_back=False,
             show_exit=False,
             compact=compact,
+            min_rows=min_rows,
         )
         choice = ShellRenderer.render_and_prompt(
             Group(Align.center(main_panel)),
@@ -132,6 +210,7 @@ class MainMenu:
             preserve_previous=True,
             show_header=False,
             sidebar_override=sidebar,
+            balance_sidebar=True,
         )
         
         action = action_map[choice]

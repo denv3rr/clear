@@ -163,17 +163,24 @@ _MAP_HTML = """
         const feature = e.features[0];
         if (!feature) return;
         const props = feature.properties || {};
+        const hasValue = (value) => value !== undefined && value !== null;
         const label = props.label || 'Unknown';
         const kind = props.kind || '-';
         const category = props.category || '-';
-        const speed = props.speed_kts ? `${Number(props.speed_kts).toFixed(0)} kts` : 'n/a';
-        const alt = props.altitude_ft ? `${Number(props.altitude_ft).toFixed(0)} ft` : 'n/a';
-        const heading = props.heading_deg ? `${Number(props.heading_deg).toFixed(0)} deg` : 'n/a';
-        const updated = props.updated_ts ? new Date(Number(props.updated_ts) * 1000).toLocaleTimeString() : 'n/a';
+        const speed = hasValue(props.speed_kts) ? `${Number(props.speed_kts).toFixed(0)} kts` : 'n/a';
+        const speedHeat = hasValue(props.speed_heat) ? `${(Number(props.speed_heat) * 100).toFixed(0)}%` : 'n/a';
+        const vol = hasValue(props.speed_vol_kts) ? `${Number(props.speed_vol_kts).toFixed(0)} kts` : 'n/a';
+        const volHeat = hasValue(props.vol_heat) ? `${(Number(props.vol_heat) * 100).toFixed(0)}%` : 'n/a';
+        const alt = hasValue(props.altitude_ft) ? `${Number(props.altitude_ft).toFixed(0)} ft` : 'n/a';
+        const heading = hasValue(props.heading_deg) ? `${Number(props.heading_deg).toFixed(0)} deg` : 'n/a';
+        const updated = hasValue(props.updated_ts) ? new Date(Number(props.updated_ts) * 1000).toLocaleTimeString() : 'n/a';
         const content = `
           <div style="font-weight:600; margin-bottom:4px;">${label}</div>
           <div style="opacity:0.7; margin-bottom:8px;">${kind} - ${category}</div>
           <div>Speed: ${speed}</div>
+          <div>Speed Heat: ${speedHeat}</div>
+          <div>Speed Volatility: ${vol}</div>
+          <div>Vol Heat: ${volHeat}</div>
           <div>Altitude: ${alt}</div>
           <div>Heading: ${heading}</div>
           <div>Updated: ${updated}</div>
@@ -220,6 +227,9 @@ class TrackerTableModel(QAbstractTableModel):
         "Lon",
         "Alt(ft)",
         "Spd(kts)",
+        "Spd Heat",
+        "Vol(kts)",
+        "Vol Heat",
         "Hdg",
         "Age",
         "Industry",
@@ -229,6 +239,29 @@ class TrackerTableModel(QAbstractTableModel):
         super().__init__()
         self._rows: List[Dict[str, object]] = []
         self._last_refresh_ts: Optional[int] = None
+
+    @staticmethod
+    def _heat_color(value: Optional[float]) -> Optional[QColor]:
+        if value is None:
+            return None
+        try:
+            v = float(value)
+        except Exception:
+            return None
+        if v >= 0.85:
+            color = QColor("#c62828")
+        elif v >= 0.70:
+            color = QColor("#d84315")
+        elif v >= 0.50:
+            color = QColor("#f9a825")
+        elif v >= 0.30:
+            color = QColor("#2e7d32")
+        elif v >= 0.15:
+            color = QColor("#00838f")
+        else:
+            color = QColor("#263238")
+        color.setAlpha(140)
+        return color
 
     def update_rows(self, rows: List[Dict[str, object]], refresh_ts: Optional[int]) -> None:
         self.beginResetModel()
@@ -269,9 +302,18 @@ class TrackerTableModel(QAbstractTableModel):
                 spd = row.get("speed_kts")
                 return "-" if spd is None else f"{spd:,.0f}"
             if col == 8:
+                heat = row.get("speed_heat")
+                return "-" if heat is None else f"{float(heat) * 100:.0f}%"
+            if col == 9:
+                vol = row.get("speed_vol_kts")
+                return "-" if vol is None else f"{float(vol):,.0f}"
+            if col == 10:
+                heat = row.get("vol_heat")
+                return "-" if heat is None else f"{float(heat) * 100:.0f}%"
+            if col == 11:
                 hdg = row.get("heading_deg")
                 return "-" if hdg is None else f"{hdg:,.0f}"
-            if col == 9:
+            if col == 12:
                 updated = row.get("updated_ts")
                 if updated:
                     try:
@@ -279,12 +321,14 @@ class TrackerTableModel(QAbstractTableModel):
                     except Exception:
                         return "-"
                 return "-"
-            if col == 10:
+            if col == 13:
                 return row.get("industry", "-")
 
         if role == Qt.TextAlignmentRole:
-            if col in (4, 5, 6, 7, 8, 9):
+            if col in (4, 5, 6, 7, 9, 11, 12):
                 return Qt.AlignRight | Qt.AlignVCenter
+            if col in (8, 10):
+                return Qt.AlignCenter
             return Qt.AlignLeft | Qt.AlignVCenter
 
         if role == Qt.ForegroundRole:
@@ -295,6 +339,12 @@ class TrackerTableModel(QAbstractTableModel):
                 if kind == "ship":
                     return QColor("#f7c948")
             return QColor("#d3d8e3")
+
+        if role == Qt.BackgroundRole:
+            if col == 8:
+                return self._heat_color(row.get("speed_heat"))
+            if col == 10:
+                return self._heat_color(row.get("vol_heat"))
 
         return None
 

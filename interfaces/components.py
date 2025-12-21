@@ -149,6 +149,7 @@ class UIComponents:
         table.add_column("Avg Cost", justify="right")
         table.add_column("Market Value", style="green", justify="right")
         table.add_column("Alloc %", justify="right", style="dim")
+        table.add_column("Heat", justify="center", width=6)
 
         sorted_holdings = sorted(
             account.holdings.items(),
@@ -172,6 +173,8 @@ class UIComponents:
 
             trend = ChartRenderer.get_trend_arrow(change_pct)
             alloc_pct = (mkt_val / total_val * 100) if total_val > 0 else 0.0
+            heat_val = min(abs(float(change_pct or 0.0)) / 5.0, 1.0)
+            heat_bar = ChartRenderer.generate_heatmap_bar(heat_val, width=6)
 
             # Main Row
             table.add_row(
@@ -181,6 +184,7 @@ class UIComponents:
                 f"${avg_cost:,.2f}",
                 f"${mkt_val:,.2f}",
                 f"{alloc_pct:>.1f}%",
+                heat_bar,
             )
 
             # Lot Sub-rows
@@ -191,6 +195,7 @@ class UIComponents:
                     Text(f"{lot['qty']:,.4f}", style="dim", justify="right"),
                     Text(f"${lot['basis']:,.2f}", style="dim", justify="right"),
                     Text(lot.get("timestamp", "N/A"), style="dim"),
+                    "",
                     "",
                 )
         return table
@@ -269,6 +274,53 @@ class UIComponents:
         table.add_row("Sharpe Ratio", _fmt(sharpe, "{:.2f}"), "N/A", sharpe_heat, "Risk-adjusted return efficiency")
 
         return Panel(table, title="[bold gold1]Annualized Risk Profile[/bold gold1]", box=box.ROUNDED)
+
+    @staticmethod
+    def tracker_metrics_panel(payload: dict) -> Panel:
+        """Compact tracker exposure metrics for relevant portfolios."""
+        if not payload:
+            return Panel("[dim]Tracker metrics unavailable.[/dim]", title="Tracker Metrics", border_style="dim")
+
+        status = payload.get("status", "ok")
+        accounts = payload.get("accounts", {}) or {}
+        tags = payload.get("tags", []) or []
+        account_list = ", ".join(sorted(accounts.keys())) if accounts else "N/A"
+        tag_list = ", ".join(tags) if tags else "N/A"
+
+        table = Table(box=box.SIMPLE, expand=True)
+        table.add_column("Field", style="bold cyan", width=14)
+        table.add_column("Value", style="white")
+
+        table.add_row("Scope Tags", tag_list)
+        table.add_row("Accounts", account_list)
+
+        if status != "ok":
+            message = payload.get("message", "Tracker metrics skipped.")
+            table.add_row("Status", message)
+            return Panel(table, title="[bold gold1]Tracker Metrics[/bold gold1]", box=box.ROUNDED, border_style="dim")
+
+        summary = payload.get("summary", {}) or {}
+        speed_avg = summary.get("avg_speed_kts")
+        vol_avg = summary.get("avg_vol_kts")
+        speed_heat = summary.get("avg_speed_heat")
+        vol_heat = summary.get("avg_vol_heat")
+        point_count = summary.get("point_count", 0)
+
+        table.add_row("Points", str(point_count))
+        if payload.get("last_refresh_age"):
+            table.add_row("Cache Age", str(payload.get("last_refresh_age")))
+        table.add_row("Avg Speed", "-" if speed_avg is None else f"{float(speed_avg):,.0f} kts")
+        table.add_row("Avg Vol", "-" if vol_avg is None else f"{float(vol_avg):,.0f} kts")
+        table.add_row(
+            "Speed Heat",
+            ChartRenderer.generate_heatmap_bar(float(speed_heat or 0.0), width=12) if speed_heat is not None else "-"
+        )
+        table.add_row(
+            "Vol Heat",
+            ChartRenderer.generate_heatmap_bar(float(vol_heat or 0.0), width=12) if vol_heat is not None else "-"
+        )
+
+        return Panel(table, title="[bold gold1]Tracker Metrics[/bold gold1]", box=box.ROUNDED, border_style="blue")
 
     @staticmethod
     def client_tax_profile_panel(client: Client) -> Panel:

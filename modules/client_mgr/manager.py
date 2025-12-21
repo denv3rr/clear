@@ -4,7 +4,7 @@ from rich.console import Console, Group
 from rich.layout import Layout
 from rich.table import Table
 from rich.text import Text
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 import time
 
@@ -14,6 +14,7 @@ from modules.client_mgr.data_handler import DataHandler
 from modules.client_mgr.valuation import ValuationEngine
 from modules.client_mgr.toolkit import FinancialToolkit, RegimeModels, RegimeRenderer
 from modules.client_mgr.tax import TaxEngine
+from modules.market_data.trackers import GlobalTrackers, TrackerRelevance
 
 # --- Interface & Utils ---
 from interfaces.components import UIComponents
@@ -41,6 +42,7 @@ class ClientManager:
         self.clients: List[Client] = DataHandler.load_clients()
         self.valuation_engine = ValuationEngine()
         self.tax_engine = TaxEngine()
+        self.trackers = GlobalTrackers()
         self._list_val_cache = {}
 
     # =========================================================================
@@ -96,7 +98,6 @@ class ClientManager:
                 show_back=False,
                 show_exit=True,
                 show_header=False,
-                live_input=False,
                 sidebar_override=sidebar,
             )
 
@@ -133,6 +134,7 @@ class ClientManager:
 
         total = 0.0
         for acc in client.accounts:
+            ShellRenderer.set_busy(0.8)
             v, _ = self.valuation_engine.calculate_portfolio_value(
                 acc.holdings, history_period="1mo", history_interval="1d"
             )
@@ -172,6 +174,7 @@ class ClientManager:
             # Market Valuation
             hp = HISTORY_PERIOD.get(interval, "1mo")
             hi = HISTORY_INTERVAL_MAP.get(interval, "1d")
+            ShellRenderer.set_busy(1.0)
             total_val, enriched_data = self.valuation_engine.calculate_portfolio_value(
                 all_holdings, history_period=hp, history_interval=hi
             )
@@ -193,10 +196,12 @@ class ClientManager:
             spark_data = history[-n_points:] if history else []
 
             # CAPM Metrics
+            ShellRenderer.set_busy(1.0)
             capm = FinancialToolkit.compute_capm_metrics_from_holdings(
                 all_holdings, benchmark_ticker="SPY", period=CAPM_PERIOD.get(interval, "1y")
             )
             if capm.get("error") or int(capm.get("points", 0) or 0) < 30:
+                ShellRenderer.set_busy(1.0)
                 capm = FinancialToolkit.compute_capm_metrics_from_holdings(
                     all_holdings, benchmark_ticker="SPY", period=CAPM_PERIOD_FALLBACK.get(interval, "1y")
                 )
@@ -214,6 +219,7 @@ class ClientManager:
                 holdings=all_holdings,
                 lots=all_lots,
             )
+            tracker_panel = self._build_tracker_metrics_panel(client=client)
             status_panel = build_status_header(
                 "Status",
                 [
@@ -233,6 +239,7 @@ class ClientManager:
                 UIComponents.portfolio_summary_panel(total_val, manual_total, spark_data),
                 UIComponents.account_list_panel(client, enriched_data),
                 UIComponents.risk_profile_full_width(capm),
+                tracker_panel if tracker_panel else Text(""),
                 UIComponents.client_tax_profile_panel(client),
                 UIComponents.tax_estimate_panel(
                     self.tax_engine.estimate_client_unrealized_tax(
@@ -266,7 +273,6 @@ class ClientManager:
                 show_back=False,
                 show_exit=True,
                 show_header=False,
-                live_input=False,
                 sidebar_override=sidebar,
             )
 
@@ -331,6 +337,7 @@ class ClientManager:
         if not fallback_period:
             return returns, interval, dates
 
+        ShellRenderer.set_busy(1.0)
         _, extended_enriched = self.valuation_engine.calculate_portfolio_value(
             holdings,
             history_period=fallback_period,
@@ -368,17 +375,21 @@ class ClientManager:
             for i, acc in enumerate(client.accounts, 1):
                 rows.add_row(f"[{i}] {acc.account_name} ({acc.account_type})")
             rows.add_row("")
-            rows.add_row("[A] ➕ Add New Account")
-            rows.add_row("[R] ➖ Remove Account")
-            rows.add_row("[0] 🔙 Back")
+            rows.add_row("[A] Add New Account")
+            rows.add_row("[R] Remove Account")
+            rows.add_row("[0] Back")
 
-            ShellRenderer.render(
+            valid_choices = [str(i) for i in range(1, len(client.accounts) + 1)]
+            valid_choices += ["a", "r", "0", "m", "x"]
+            choice = ShellRenderer.render_and_prompt(
                 Group(rows),
                 context_actions={
                     "A": "Add New Account",
                     "R": "Remove Account",
                     "0": "Back",
                 },
+                valid_choices=valid_choices,
+                prompt_label=">",
                 show_main=True,
                 show_back=True,
                 show_exit=True,
@@ -392,13 +403,16 @@ class ClientManager:
                 ),
             )
 
-            choice = InputSafe.get_string("[>] Select Account # or Action:").upper()
-
-            if choice == "0": break
-            if choice == "M": return "MAIN_MENU"
-            if choice == "X": Navigator.exit_app()
-            elif choice == "A": self.add_account_workflow(client)
-            elif choice == "R": self.remove_account_workflow(client)
+            if choice == "0":
+                break
+            if choice == "m":
+                return "MAIN_MENU"
+            if choice == "x":
+                Navigator.exit_app()
+            elif choice == "a":
+                self.add_account_workflow(client)
+            elif choice == "r":
+                self.remove_account_workflow(client)
             elif choice.isdigit():
                 idx = int(choice) - 1
                 if 0 <= idx < len(client.accounts):
@@ -417,6 +431,7 @@ class ClientManager:
             hi = HISTORY_INTERVAL_MAP.get(interval, "1d")
             
             # Market Val
+            ShellRenderer.set_busy(1.0)
             total_val, enriched = self.valuation_engine.calculate_portfolio_value(
                 account.holdings, history_period=hp, history_interval=hi
             )
@@ -433,10 +448,12 @@ class ClientManager:
                 interval=interval,
                 lot_map=account.lots,
             )
+            ShellRenderer.set_busy(1.0)
             capm = FinancialToolkit.compute_capm_metrics_from_holdings(
                 account.holdings, benchmark_ticker="SPY", period=CAPM_PERIOD.get(interval, "1y")
             )
             if capm.get("error") or int(capm.get("points", 0) or 0) < 30:
+                ShellRenderer.set_busy(1.0)
                 capm = FinancialToolkit.compute_capm_metrics_from_holdings(
                     account.holdings, benchmark_ticker="SPY", period=CAPM_PERIOD_FALLBACK.get(interval, "1y")
                 )
@@ -453,6 +470,7 @@ class ClientManager:
                 holdings=account.holdings,
                 lots=account.lots,
             )
+            tracker_panel = self._build_tracker_metrics_panel(client=client, account=account)
             status_panel = build_status_header(
                 "Status",
                 [
@@ -473,6 +491,7 @@ class ClientManager:
                 UIComponents.holdings_table(account, enriched, total_val),
                 UIComponents.manual_assets_table(manual_list) if manual_list else Text(""),
                 UIComponents.risk_profile_full_width(capm),
+                tracker_panel if tracker_panel else Text(""),
                 UIComponents.account_tax_settings_panel(account),
                 UIComponents.tax_estimate_panel(
                     self.tax_engine.estimate_account_unrealized_tax(
@@ -506,7 +525,6 @@ class ClientManager:
                 show_back=False,
                 show_exit=True,
                 show_header=False,
-                live_input=False,
                 sidebar_override=sidebar,
             )
 
@@ -521,6 +539,43 @@ class ClientManager:
             
             DataHandler.save_clients(self.clients)
         return None
+
+    def _build_tracker_metrics_panel(self, client: Client, account: Optional[Account] = None):
+        account_tags: Dict[str, List[str]] = {}
+        if account:
+            if account.tags:
+                account_tags[account.account_name] = account.tags
+        else:
+            for acc in client.accounts:
+                if acc.tags:
+                    account_tags[acc.account_name] = acc.tags
+
+        rules, matched_accounts = TrackerRelevance.match_rules(account_tags)
+        if not rules:
+            return None
+
+        snapshot = self.trackers.get_snapshot(mode="combined", allow_refresh=False)
+        points = snapshot.get("points", []) or []
+        if not points:
+            return UIComponents.tracker_metrics_panel({
+                "status": "not_loaded",
+                "accounts": matched_accounts,
+                "tags": sorted({tag for tags in matched_accounts.values() for tag in tags}),
+                "message": "Tracker data not cached. Open Global Trackers to fetch.",
+            })
+
+        filtered = TrackerRelevance.filter_points(points, rules)
+        summary = TrackerRelevance.summarize(filtered)
+        age = "-"
+        if self.trackers._last_refresh:
+            age = f"{int(time.time() - self.trackers._last_refresh)}s"
+        return UIComponents.tracker_metrics_panel({
+            "status": "ok",
+            "accounts": matched_accounts,
+            "tags": sorted({tag for tags in matched_accounts.values() for tag in tags}),
+            "last_refresh_age": age,
+            "summary": summary,
+        })
 
     # =========================================================================
     # WORKFLOWS (Logic Wrappers)
@@ -611,7 +666,14 @@ class ClientManager:
                     "15": "Crypto",
                 }
                 account_type = type_map.get(key, choice.strip())
-        client.accounts.append(Account(account_name=name, account_type=account_type))
+        account = Account(account_name=name, account_type=account_type)
+        tag_hint = ", ".join(sorted(TrackerRelevance.TAG_RULES.keys()))
+        if tag_hint:
+            self.console.print(f"[dim]Optional tracker tags (comma-separated): {tag_hint}[/dim]")
+        tags = InputSafe.get_string("Tags (optional, comma-separated):")
+        if tags:
+            account.tags = [t.strip() for t in tags.split(",") if t.strip()]
+        client.accounts.append(account)
 
     def remove_account_workflow(self, client):
         # Logic to remove account...
@@ -629,6 +691,9 @@ class ClientManager:
         custodian = InputSafe.get_string(f"Custodian [{account.custodian}] (Enter to keep):")
         if custodian:
             account.custodian = custodian.strip()
+        tag_hint = ", ".join(sorted(TrackerRelevance.TAG_RULES.keys()))
+        if tag_hint:
+            self.console.print(f"[dim]Tracker tags (comma-separated) for relevance: {tag_hint}[/dim]")
         tags = InputSafe.get_string("Tags (comma-separated, Enter to keep):")
         if tags:
             account.tags = [t.strip() for t in tags.split(",") if t.strip()]

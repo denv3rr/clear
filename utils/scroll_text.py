@@ -74,14 +74,14 @@ class ScrollingText:
 
 SCROLL_PRESETS: Dict[str, Dict[str, object]] = {
     "prompt": {
-        "speed": 6.0,
+        "speed": 9.0,
         "band_width": 1,
         "trail": 4,
         "highlight_style": "bold bright_white not dim",
         "base_style": "dim",
     },
     "warning": {
-        "speed": 5.0,
+        "speed": 8.0,
         "band_width": 1,
         "trail": 4,
         "highlight_style": "bold bright_white not dim",

@@ -32,7 +32,7 @@ class SettingsModule:
 
     def _default_settings(self):
         return {
-            "display": {"theme": "default", "color_highlight": "blue", "show_animations": True},
+            "display": {"theme": "default", "color_highlight": "blue", "show_animations": True, "show_tips": False},
             "network": {"refresh_interval": 60, "timeout": 5, "retries": 3},
             "system": {"cache_size_mb": 512, "log_level": "INFO"},
             "credentials": {"smtp": {}, "finnhub_key": ""},
@@ -105,7 +105,7 @@ class SettingsModule:
             status.add_column("Value", justify="right")
             status.add_row("Finnhub Key", "SET" if os.getenv("FINNHUB_API_KEY") else "MISSING")
             status.add_row("SMTP Profile", "SET" if self.settings.get("credentials", {}).get("smtp") else "MISSING")
-            panel = Panel(status, title="🔒 API & SECURITY SETTINGS", box=box.ROUNDED)
+            panel = Panel(status, title="API & SECURITY SETTINGS", box=box.ROUNDED)
             choice = ShellRenderer.render_and_prompt(
                 Group(panel),
                 context_actions=options,
@@ -200,12 +200,14 @@ class SettingsModule:
         while True:
             hl = self.settings['display']['color_highlight']
             anim = self.settings['display']['show_animations']
+            tips = self.settings['display'].get('show_tips', False)
             compact = compact_for_width(self.console.width)
             
             # Context actions
             options = {
                 "1": f"Highlight Color (Current: [bold {hl}]{hl}[/])",
                 "2": f"UI Animations (Current: {anim})",
+                "3": f"Show Tips (Current: {tips})",
                 "0": "Back"
             }
             sidebar = build_sidebar(
@@ -221,7 +223,8 @@ class SettingsModule:
             status.add_column("Value", justify="right")
             status.add_row("Highlight Color", hl)
             status.add_row("Animations", str(anim))
-            panel = Panel(status, title="🎨 DISPLAY & UX SETTINGS", box=box.ROUNDED)
+            status.add_row("Show Tips", str(tips))
+            panel = Panel(status, title="DISPLAY & UX SETTINGS", box=box.ROUNDED)
             choice = ShellRenderer.render_and_prompt(
                 Group(panel),
                 context_actions=options,
@@ -241,6 +244,8 @@ class SettingsModule:
                 if c: self.settings['display']['color_highlight'] = c
             if choice == "2":
                 self.settings['display']['show_animations'] = not self.settings['display']['show_animations']
+            if choice == "3":
+                self.settings['display']['show_tips'] = not bool(self.settings['display'].get('show_tips', False))
             self._save_settings()
 
 
@@ -286,7 +291,7 @@ class SettingsModule:
             status.add_row("GUI Auto Refresh", str(trackers.get("gui_auto_refresh", True)))
             status.add_row("GUI Refresh Interval", f"{trackers.get('gui_refresh_interval', 10)}s")
             status.add_row("News Cache TTL", f"{intel.get('news_cache_ttl', 600)}s")
-            panel = Panel(status, title="⚡ SYSTEM & PERFORMANCE", box=box.ROUNDED)
+            panel = Panel(status, title="SYSTEM & PERFORMANCE", box=box.ROUNDED)
             choice = ShellRenderer.render_and_prompt(
                 Group(panel),
                 context_actions=options,
@@ -352,7 +357,7 @@ class SettingsModule:
                 "Commercial/private traffic adds volume and can obscure high-signal events.",
                 style="yellow",
             )
-            panel = Panel(Group(note, status), title="✈️ TRACKER FILTERS", box=box.ROUNDED)
+            panel = Panel(Group(note, status), title="TRACKER FILTERS", box=box.ROUNDED)
             choice = ShellRenderer.render_and_prompt(
                 Group(panel),
                 context_actions=options,
@@ -412,7 +417,7 @@ class SettingsModule:
                 "Only enabled sources are fetched when you run News Signals.",
                 style="dim",
             )
-            panel = Panel(Group(note, rows), title="📰 NEWS SOURCES", box=box.ROUNDED)
+            panel = Panel(Group(note, rows), title="NEWS SOURCES", box=box.ROUNDED)
             choice = ShellRenderer.render_and_prompt(
                 Group(panel),
                 context_actions=options,
@@ -551,14 +556,14 @@ class SettingsModule:
             
             # Modular Menu Implementation
             options = {
-                "1": "🔒 API & Security",
-                "2": "🎨 Display & UX",
-                "3": "⚡ System & Performance",
-                "4": "✈️ Tracker Filters",
-                "5": "📰 News Sources",
-                "6": "🩺 Run Quick Diagnostics",
-                "7": "💾 Reset Settings to Defaults",
-                "0": "🔙 Return to Main"
+                "1": "API & Security",
+                "2": "Display & UX",
+                "3": "System & Performance",
+                "4": "Tracker Filters",
+                "5": "News Sources",
+                "6": "Run Quick Diagnostics",
+                "7": "Reset Settings to Defaults",
+                "0": "Return to Main"
             }
             sidebar = build_sidebar(
                 [

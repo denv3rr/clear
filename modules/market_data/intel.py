@@ -200,10 +200,17 @@ class WeatherIntel:
 
 class ConflictIntel:
     BASE_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
-    _health = {"fail_count": 0, "backoff_until": 0, "last_ok": None, "last_fail": None}
+    _health = {
+        "fail_count": 0,
+        "backoff_until": 0,
+        "last_ok": None,
+        "last_fail": None,
+        "last_attempt": None,
+    }
 
     def fetch(self, region: RegionSpec) -> Dict[str, object]:
         now = int(time.time())
+        self._health["last_attempt"] = now
         backoff_until = int(self._health.get("backoff_until", 0) or 0)
         if now < backoff_until:
             return {"error": "GDELT is in cooldown. Try again later.", "cooldown": True}
@@ -280,7 +287,10 @@ class ConflictIntel:
     def health_status(self) -> Dict[str, object]:
         now = int(time.time())
         backoff_until = int(self._health.get("backoff_until", 0) or 0)
-        if now < backoff_until:
+        last_attempt = self._health.get("last_attempt")
+        if last_attempt is None and int(self._health.get("fail_count", 0) or 0) == 0:
+            status = "idle"
+        elif now < backoff_until:
             status = "cooldown"
         elif int(self._health.get("fail_count", 0) or 0) > 0:
             status = "warning"
@@ -292,6 +302,7 @@ class ConflictIntel:
             "fail_count": int(self._health.get("fail_count", 0) or 0),
             "last_ok": self._health.get("last_ok"),
             "last_fail": self._health.get("last_fail"),
+            "last_attempt": last_attempt,
         }
 
 
@@ -528,22 +539,40 @@ class MarketIntel:
         news_filtered = []
         if news_cached:
             news_filtered = self._filter_news(news_cached, region_name, industry_filter)
-        weather_score = int(weather.get("risk_score", 0) or 0)
-        conflict_score = int(conflict.get("risk_score", 0) or 0)
-        combined_score = min(10, int(round((weather_score + conflict_score) / 2 + max(weather_score, conflict_score) / 4)))
-        combined_risk = _risk_level(combined_score)
-        confidence = "High"
-        if "Low" in (weather.get("confidence"), conflict.get("confidence")):
-            confidence = "Medium"
-        if weather.get("confidence") == "Low" and conflict.get("confidence") == "Low":
+        weather_score = weather.get("risk_score")
+        conflict_score = conflict.get("risk_score")
+        weather_ok = weather_score is not None
+        conflict_ok = conflict_score is not None
+        combined_score = None
+        if weather_ok and conflict_ok:
+            w_score = int(weather_score or 0)
+            c_score = int(conflict_score or 0)
+            combined_score = min(10, int(round((w_score + c_score) / 2 + max(w_score, c_score) / 4)))
+            combined_risk = _risk_level(combined_score)
+            confidence = "High"
+            if "Low" in (weather.get("confidence"), conflict.get("confidence")):
+                confidence = "Medium"
+            if weather.get("confidence") == "Low" and conflict.get("confidence") == "Low":
+                confidence = "Low"
+        elif weather_ok or conflict_ok:
+            score_val = int(weather_score or conflict_score or 0)
+            combined_score = score_val
+            combined_risk = _risk_level(score_val)
+            confidence = "Low"
+        else:
+            combined_risk = "Unavailable"
             confidence = "Low"
         summary = [
             f"Region: {region_name}",
             "Weather: " + (weather.get("summary", ["n/a"])[-1] if weather.get("summary") else "n/a"),
             "Conflict: " + (conflict.get("summary", ["n/a"])[-1] if conflict.get("summary") else "n/a"),
-            f"Combined Risk: {combined_risk} (score {combined_score}/10)",
+            f"Combined Risk: {combined_risk}" + (f" (score {combined_score}/10)" if combined_score is not None else ""),
             f"Confidence: {confidence}",
         ]
+        if not conflict_ok:
+            summary.append("Conflict source unavailable (GDELT cooldown or error).")
+        if not weather_ok:
+            summary.append("Weather source unavailable.")
         if industry_filter != "all":
             summary.append(f"Industry Filter: {industry_filter}")
         sections = []
@@ -552,7 +581,7 @@ class MarketIntel:
         sections.append({
             "title": "Fusion Overview",
             "rows": [
-                ["Combined Risk", f"{combined_risk} ({combined_score}/10)"],
+                ["Combined Risk", f"{combined_risk}" + (f" ({combined_score}/10)" if combined_score is not None else "")],
                 ["Confidence", confidence],
                 ["Key Signals", "; ".join(fusion_signals[:5]) or "None detected"],
                 ["Key Impacts", "; ".join(fusion_impacts[:5]) or "None detected"],

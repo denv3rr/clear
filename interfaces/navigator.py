@@ -22,8 +22,8 @@ class Navigator:
 
         # 1. Standard Global Options
         global_opts = {
-            "M": "🏠 Main Menu",
-            "X": "❌ Exit Application"
+            "M": "Main Menu",
+            "X": "Exit Application"
         }
 
         # 2. Merge options (Locals first)

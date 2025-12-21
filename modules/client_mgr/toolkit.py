@@ -19,6 +19,7 @@ from rich import box
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from utils.input import InputSafe
+from interfaces.shell import ShellRenderer
 from modules.client_mgr.client_model import Client, Account
 from modules.client_mgr.valuation import ValuationEngine
 
@@ -129,6 +130,7 @@ class FinancialToolkit:
         self.console = Console()
         self.valuation = ValuationEngine()
         self.benchmark_ticker = "SPY" # Using S&P 500 ETF as standard benchmark
+        self._pattern_cache = {}
 
     def run(self):
         """Main loop for the Client Financial Toolkit."""
@@ -148,12 +150,15 @@ class FinancialToolkit:
                 ))
             
             self.console.print("\n[bold white]--- Quantitative Models ---[/bold white]")
-            self.console.print("[1] 🔢 CAPM Analysis (Alpha, Beta, R²)")
-            self.console.print("[2] 📉 Black-Scholes Option Pricing")
-            self.console.print("[3] 📊 Multi-Model Risk Dashboard")
-            self.console.print("[0] 🔙 Return to Client Dashboard")
+            self.console.print("[1] CAPM Analysis (Alpha, Beta, R²)")
+            self.console.print("[2] Black-Scholes Option Pricing")
+            self.console.print("[3] Multi-Model Risk Dashboard")
+            self.console.print("[4] Portfolio Regime Snapshot")
+            self.console.print("[5] Portfolio Diagnostics")
+            self.console.print("[6] Pattern Analysis Suite")
+            self.console.print("[0] Return to Client Dashboard")
             
-            choice = InputSafe.get_option(["1", "2", "3", "0"], prompt_text="[>]")
+            choice = InputSafe.get_option(["1", "2", "3", "4", "5", "6", "0"], prompt_text="[>]")
             
             if choice == "0":
                 break
@@ -163,13 +168,18 @@ class FinancialToolkit:
                 self._run_black_scholes()
             elif choice == "3":
                 self._run_multi_model_dashboard()
+            elif choice == "4":
+                self._run_regime_snapshot()
+            elif choice == "5":
+                self._run_portfolio_diagnostics()
+            elif choice == "6":
+                self._run_pattern_suite()
 
     # --- REAL-TIME DATA ANALYSIS TOOLS ---
 
     def _run_capm_analysis(self):
         """
-        Calculates Alpha and Beta by fetching 1y historical data for all holdings
-        and the benchmark (SPY) using yfinance.
+        Calculates CAPM and risk metrics using shared toolkit functions.
         """
         self.console.clear()
         print("\x1b[3J", end="")
@@ -186,136 +196,49 @@ class FinancialToolkit:
             InputSafe.pause()
             return
 
-        tickers = list(consolidated_holdings.keys())
-        
-        # 2. Fetch Historical Data (with Progress Spinner)
-        self.console.print("\nFetching historical market data from Yahoo Finance...")
-        try:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                transient=True,
-            ) as progress:
-                progress.add_task(description="Downloading 1-year price history...", total=None)
-                
-                # Download portfolio tickers + Benchmark
-                download_list = tickers + [self.benchmark_ticker]
-                data = yf.download(
-                    download_list, 
-                    period="1y", 
-                    interval="1d", 
-                    progress=False,
-                    group_by='ticker',
-                    auto_adjust=True
-                )
-
-        except Exception as e:
-            self.console.print(f"[red]Error fetching market data: {e}[/red]")
+        self.console.print("\nFetching shared CAPM metrics...")
+        ShellRenderer.set_busy(1.0)
+        capm = FinancialToolkit.compute_capm_metrics_from_holdings(
+            consolidated_holdings,
+            benchmark_ticker=self.benchmark_ticker,
+            period="1y",
+        )
+        if capm.get("error"):
+            self.console.print(f"[yellow]{capm.get('error')}[/yellow]")
             InputSafe.pause()
             return
 
-        # 3. Process Data & Calculate Returns
-        # Note: yf.download structure varies by version.
-        #       Attempt to handle MultiIndex columns safely:
-        try:
-            # Create a clean DataFrame of Close prices
-            close_prices = pd.DataFrame()
-            
-            for t in download_list:
-                # Handle different yfinance return structures
-                try:
-                    if len(download_list) == 1:
-                        # If only 1 ticker (rare here), data is flat
-                        series = data['Close']
-                    else:
-                        # Access via MultiIndex level
-                        series = data[t]['Close']
-                    close_prices[t] = series
-                except KeyError:
-                    # Ticker might be delisted or crypto with different formatting
-                    continue
-            
-            # Drop NaN rows to align dates
-            close_prices.dropna(inplace=True)
-            
-            if close_prices.empty:
-                self.console.print("[red]Insufficient historical data overlapping.[/red]")
-                InputSafe.pause()
-                return
-
-            # Calculate Daily Returns (Percentage Change)
-            daily_returns = close_prices.pct_change().dropna()
-            
-        except Exception as e:
-            self.console.print(f"[red]Data processing error: {e}[/red]")
-            InputSafe.pause()
-            return
-
-        # 4. Construct Synthetic Portfolio History
-        # We assume current weights held constant over the period (Standard limitation of point-in-time analysis)
-        
-        # Calculate current weights based on latest price in the dataframe
-        latest_prices = close_prices.iloc[-1]
-        market_vals = {t: latest_prices[t] * consolidated_holdings[t] for t in tickers if t in latest_prices}
-        total_mv = sum(market_vals.values())
-        
-        if total_mv == 0:
-            self.console.print("[red]Total portfolio value is zero.[/red]")
-            InputSafe.pause()
-            return
-
-        weights = {t: mv / total_mv for t, mv in market_vals.items()}
-        
-        # Calculate weighted portfolio return for each day
-        portfolio_daily_ret = sum(daily_returns[t] * w for t, w in weights.items())
-        benchmark_daily_ret = daily_returns[self.benchmark_ticker]
-
-        # 5. Run Regression (Covariance / Variance)
-        # Covariance(Portfolio, Market)
-        covariance = np.cov(portfolio_daily_ret, benchmark_daily_ret)[0][1]
-        variance = np.var(benchmark_daily_ret)
-        
-        beta = covariance / variance
-        
-        ann_factor = FinancialToolkit._annualization_factor_from_index(portfolio_daily_ret)
-
-        # Calculate Alpha (Annualized)
-        # Avg Period Return - (RiskFree + Beta * (Avg Market Return - RiskFree))
-        # Assuming RFR ~ 4.0% annualized
-        risk_free_daily = 0.04 / ann_factor
-        
-        avg_port_ret = np.mean(portfolio_daily_ret)
-        avg_mkt_ret = np.mean(benchmark_daily_ret)
-        
-        alpha_daily = avg_port_ret - (risk_free_daily + beta * (avg_mkt_ret - risk_free_daily))
-        alpha_annualized = alpha_daily * ann_factor
-
-        # R-Squared (Correlation Squared)
-        correlation = np.corrcoef(portfolio_daily_ret, benchmark_daily_ret)[0][1]
-        r_squared = correlation ** 2
-
-        # --- DISPLAY RESULTS ---
-        
         results = Table(title="CAPM Metrics (1 Year Lookback)", box=box.ROUNDED)
         results.add_column("Metric", style="bold white")
         results.add_column("Value", justify="right", style="bold cyan")
         results.add_column("Interpretation", style="italic dim")
         
-        results.add_row("Beta", f"{beta:.2f}", "Volatility relative to S&P 500")
-        results.add_row("Alpha (Annual)", f"{alpha_annualized:.2%}", "Excess return vs. risk taken")
-        results.add_row("R-Squared", f"{r_squared:.2f}", "Correlation to benchmark")
+        beta = capm.get("beta")
+        alpha_annualized = capm.get("alpha_annual")
+        r_squared = capm.get("r_squared")
+        sharpe = capm.get("sharpe")
+        vol_annual = capm.get("vol_annual")
+
+        results.add_row("Beta", f"{beta:.2f}" if beta is not None else "N/A", "Volatility relative to S&P 500")
+        results.add_row("Alpha (Annual)", f"{alpha_annualized:.2%}" if alpha_annualized is not None else "N/A", "Excess return vs. risk taken")
+        results.add_row("R-Squared", f"{r_squared:.2f}" if r_squared is not None else "N/A", "Correlation to benchmark")
         results.add_row(
-            "Sharpe (Est.)",
-            f"{(avg_port_ret/np.std(portfolio_daily_ret)*(ann_factor**0.5)):.2f}",
+            "Sharpe",
+            f"{sharpe:.2f}" if sharpe is not None else "N/A",
             "Risk-adjusted return"
+        )
+        results.add_row(
+            "Volatility (Ann.)",
+            f"{vol_annual:.2%}" if vol_annual is not None else "N/A",
+            "Annualized standard deviation"
         )
 
         self.console.print(Align.center(results))
         
         # Interpretation Logic
-        if beta > 1.2:
+        if beta and beta > 1.2:
             self.console.print("\n[bold yellow]⚠ High Volatility:[/bold yellow] This client portfolio is significantly more volatile than the market.")
-        elif beta < 0.8:
+        elif beta and beta < 0.8:
             self.console.print("\n[bold green]🛡 Defensive:[/bold green] This client portfolio is less volatile than the market.")
             
         InputSafe.pause()
@@ -400,6 +323,7 @@ class FinancialToolkit:
             return
 
         period = TOOLKIT_PERIOD.get(interval, "1y")
+        ShellRenderer.set_busy(1.0)
         returns, benchmark_returns, meta = self._get_portfolio_and_benchmark_returns(
             holdings,
             benchmark_ticker=self.benchmark_ticker,
@@ -429,6 +353,593 @@ class FinancialToolkit:
         self.console.print(self._render_risk_metrics_table(metrics))
         self.console.print(self._render_return_distribution(returns))
         InputSafe.pause()
+
+    def _aggregate_lots(self) -> Dict[str, List[Dict[str, Any]]]:
+        lots = {}
+        for acc in self.client.accounts:
+            for ticker, entries in (acc.lots or {}).items():
+                lots.setdefault(ticker, []).extend(entries or [])
+        return lots
+
+    def _run_regime_snapshot(self):
+        """Generate a regime snapshot from portfolio value history."""
+        self.console.clear()
+        print("\x1b[3J", end="")
+        self.console.print(f"[bold blue]PORTFOLIO REGIME SNAPSHOT[/bold blue]")
+
+        interval = self._select_interval()
+        if not interval:
+            return
+
+        holdings = self._aggregate_holdings()
+        if not holdings:
+            self.console.print("[yellow]No holdings available for analysis.[/yellow]")
+            InputSafe.pause()
+            return
+
+        lots = self._aggregate_lots()
+        period = TOOLKIT_PERIOD.get(interval, "1y")
+        ShellRenderer.set_busy(1.0)
+        _, enriched = self.valuation.calculate_portfolio_value(
+            holdings,
+            history_period=period,
+            history_interval=TOOLKIT_INTERVAL.get(interval, "1d"),
+        )
+        _, history = self.valuation.generate_portfolio_history_series(
+            enriched_data=enriched,
+            holdings=holdings,
+            interval=interval,
+            lot_map=lots,
+        )
+
+        snap = RegimeModels.snapshot_from_value_series(history, interval=interval, label=self.client.name)
+        snap["scope_label"] = "Portfolio"
+        snap["interval"] = interval
+        self.console.print(RegimeRenderer.render(snap))
+        InputSafe.pause()
+
+    def _run_portfolio_diagnostics(self):
+        """Run a consolidated diagnostics report using shared metrics."""
+        self.console.clear()
+        print("\x1b[3J", end="")
+        self.console.print(f"[bold blue]PORTFOLIO DIAGNOSTICS[/bold blue]")
+
+        interval = self._select_interval()
+        if not interval:
+            return
+
+        holdings = self._aggregate_holdings()
+        if not holdings:
+            self.console.print("[yellow]No holdings available for analysis.[/yellow]")
+            InputSafe.pause()
+            return
+
+        period = TOOLKIT_PERIOD.get(interval, "1y")
+        ShellRenderer.set_busy(1.0)
+        returns, bench_returns, meta = self._get_portfolio_and_benchmark_returns(
+            holdings,
+            benchmark_ticker=self.benchmark_ticker,
+            period=period,
+            interval=TOOLKIT_INTERVAL.get(interval, "1d"),
+        )
+        if returns is None or returns.empty:
+            self.console.print("[yellow]Insufficient market data for this interval.[/yellow]")
+            InputSafe.pause()
+            return
+
+        metrics = self._compute_risk_metrics(
+            returns,
+            benchmark_returns=bench_returns,
+            risk_free_annual=0.04,
+        )
+        ShellRenderer.set_busy(1.0)
+        capm = FinancialToolkit.compute_capm_metrics_from_holdings(
+            holdings,
+            benchmark_ticker=self.benchmark_ticker,
+            period=period,
+        )
+        ShellRenderer.set_busy(1.0)
+        total_val, enriched = self.valuation.calculate_portfolio_value(
+            holdings,
+            history_period=period,
+            history_interval=TOOLKIT_INTERVAL.get(interval, "1d"),
+        )
+        manual_total = 0.0
+        for acc in self.client.accounts:
+            ShellRenderer.set_busy(0.4)
+            m_val, _ = self.valuation.calculate_manual_holdings_value(acc.manual_holdings)
+            manual_total += float(m_val or 0.0)
+
+        sector_totals = defaultdict(float)
+        for data in enriched.values():
+            sector = str(data.get("sector", "N/A") or "N/A")
+            sector_totals[sector] += float(data.get("market_value", 0.0) or 0.0)
+        sector_rows = sorted(sector_totals.items(), key=lambda item: item[1], reverse=True)
+        hhi = 0.0
+        if total_val > 0:
+            for _, val in sector_rows:
+                pct = val / total_val
+                hhi += pct * pct
+
+        top_holdings = sorted(
+            enriched.values(),
+            key=lambda item: float(item.get("market_value", 0.0) or 0.0),
+            reverse=True,
+        )[:5]
+
+        movers = []
+        for data in enriched.values():
+            pct = data.get("change_pct")
+            if pct is None:
+                continue
+            movers.append({
+                "ticker": data.get("ticker"),
+                "pct": float(pct),
+                "change": float(data.get("change", 0.0) or 0.0),
+                "value": float(data.get("market_value", 0.0) or 0.0),
+            })
+        gainers = sorted(movers, key=lambda item: item["pct"], reverse=True)[:5]
+        losers = sorted(movers, key=lambda item: item["pct"])[:5]
+
+        account_rows = []
+        for acc in self.client.accounts:
+            acc_value = 0.0
+            acc_change = 0.0
+            for ticker, qty in (acc.holdings or {}).items():
+                data = enriched.get(str(ticker).upper())
+                if not data:
+                    continue
+                price = float(data.get("price", 0.0) or 0.0)
+                change = float(data.get("change", 0.0) or 0.0)
+                acc_value += price * float(qty or 0.0)
+                acc_change += change * float(qty or 0.0)
+            base = acc_value - acc_change
+            acc_pct = (acc_change / base) if base > 0 else None
+            account_rows.append({
+                "name": acc.account_name,
+                "value": acc_value,
+                "change": acc_change,
+                "pct": acc_pct,
+                "holdings": len(acc.holdings or {}),
+            })
+
+        table = Table(box=box.ROUNDED, expand=True, title="Diagnostics Summary")
+        table.add_column("Metric", style="bold white")
+        table.add_column("Value", justify="right")
+        table.add_column("Notes", style="dim")
+
+        table.add_row("Interval", interval, meta)
+        table.add_row("Holdings", str(len(holdings)), "Non-zero positions")
+        table.add_row("Market Value", f"{total_val:,.0f}", "Tracked holdings value")
+        if manual_total > 0:
+            table.add_row("Manual Assets", f"{manual_total:,.0f}", "Off-market holdings")
+        table.add_row("Annual Return", f"{metrics.get('mean_annual', 0.0):+.2%}", "Average annualized return")
+        table.add_row("Volatility", f"{metrics.get('vol_annual', 0.0):.2%}", "Annualized std dev")
+        table.add_row("Sharpe", f"{metrics.get('sharpe', 0.0):.2f}" if metrics.get("sharpe") is not None else "N/A", "Risk-adjusted")
+        table.add_row("Sortino", f"{metrics.get('sortino', 0.0):.2f}" if metrics.get("sortino") is not None else "N/A", "Downside-adjusted")
+        if metrics.get("max_drawdown") is not None:
+            table.add_row("Max Drawdown", f"{metrics.get('max_drawdown', 0.0):.2%}", "Peak-to-trough")
+        if metrics.get("var_95") is not None:
+            table.add_row("VaR 95%", f"{metrics.get('var_95', 0.0):+.2%}", "Historical quantile")
+        if metrics.get("cvar_95") is not None:
+            table.add_row("CVaR 95%", f"{metrics.get('cvar_95', 0.0):+.2%}", "Expected tail loss")
+        if capm.get("beta") is not None:
+            table.add_row("Beta", f"{capm.get('beta'):.2f}", "Systemic risk")
+        if capm.get("alpha_annual") is not None:
+            table.add_row("Alpha", f"{capm.get('alpha_annual'):+.2%}", "Excess return")
+        if capm.get("r_squared") is not None:
+            table.add_row("R-Squared", f"{capm.get('r_squared'):.2f}", "Benchmark fit")
+
+        self.console.print(table)
+        if sector_rows:
+            sector_table = Table(box=box.SIMPLE, expand=True, title="Sector Concentration")
+            sector_table.add_column("Sector", style="bold cyan")
+            sector_table.add_column("Value", justify="right")
+            sector_table.add_column("Alloc", justify="right")
+            sector_table.add_column("Heat", justify="center", width=6)
+            for sector, value in sector_rows[:6]:
+                pct = (value / total_val) if total_val > 0 else 0.0
+                heat = ChartRenderer.generate_heatmap_bar(pct, width=6)
+                sector_table.add_row(sector, f"{value:,.0f}", f"{pct:.1%}", heat)
+            if hhi > 0:
+                sector_table.add_row("HHI", f"{hhi:.3f}", "Concentration index", "")
+            self.console.print(sector_table)
+
+        if top_holdings:
+            top_table = Table(box=box.SIMPLE, expand=True, title="Top Holdings")
+            top_table.add_column("Ticker", style="bold cyan")
+            top_table.add_column("Value", justify="right")
+            top_table.add_column("Alloc", justify="right")
+            top_table.add_column("Change", justify="right")
+            for data in top_holdings:
+                value = float(data.get("market_value", 0.0) or 0.0)
+                pct = (value / total_val) if total_val > 0 else 0.0
+                change = float(data.get("change", 0.0) or 0.0)
+                color = "green" if change >= 0 else "red"
+                top_table.add_row(
+                    str(data.get("ticker", "")),
+                    f"{value:,.0f}",
+                    f"{pct:.1%}",
+                    f"[{color}]{change:+.2f}[/{color}]",
+                )
+            self.console.print(top_table)
+
+        if movers:
+            mover_table = Table(box=box.SIMPLE, expand=True, title="Top Movers (1D %)")
+            mover_table.add_column("Type", style="bold")
+            mover_table.add_column("Ticker", style="bold cyan")
+            mover_table.add_column("Change %", justify="right")
+            mover_table.add_column("Change", justify="right")
+            for row in gainers:
+                mover_table.add_row("Gainer", str(row["ticker"]), f"{row['pct']:+.2%}", f"{row['change']:+.2f}")
+            for row in losers:
+                mover_table.add_row("Loser", str(row["ticker"]), f"{row['pct']:+.2%}", f"{row['change']:+.2f}")
+            self.console.print(mover_table)
+
+        if account_rows:
+            acct_table = Table(box=box.SIMPLE, expand=True, title="Account Deltas (1D)")
+            acct_table.add_column("Account", style="bold cyan")
+            acct_table.add_column("Value", justify="right")
+            acct_table.add_column("Change", justify="right")
+            acct_table.add_column("Change %", justify="right")
+            acct_table.add_column("Holdings", justify="right", style="dim")
+            for row in sorted(account_rows, key=lambda item: item["value"], reverse=True):
+                pct = row["pct"]
+                color = "green" if (row["change"] or 0.0) >= 0 else "red"
+                pct_text = f"{pct:+.2%}" if pct is not None else "N/A"
+                acct_table.add_row(
+                    row["name"],
+                    f"{row['value']:,.0f}",
+                    f"[{color}]{row['change']:+.2f}[/{color}]",
+                    pct_text,
+                    str(row["holdings"]),
+                )
+            self.console.print(acct_table)
+
+            sector_table = Table(box=box.SIMPLE, expand=True, title="Account Sector Mix")
+            sector_table.add_column("Account", style="bold cyan")
+            sector_table.add_column("Top Sectors", style="white")
+            sector_table.add_column("HHI", justify="right", style="dim")
+            sector_table.add_column("Heat", justify="center", width=6)
+
+            for acc in sorted(self.client.accounts, key=lambda a: a.account_name):
+                acc_sector_totals = defaultdict(float)
+                acc_value = 0.0
+                for ticker, qty in (acc.holdings or {}).items():
+                    data = enriched.get(str(ticker).upper())
+                    if not data:
+                        continue
+                    sector = str(data.get("sector", "N/A") or "N/A")
+                    value = float(data.get("market_value", 0.0) or 0.0)
+                    acc_sector_totals[sector] += value
+                    acc_value += value
+
+                if acc_value <= 0:
+                    sector_table.add_row(acc.account_name, "N/A", "N/A", "-")
+                    continue
+
+                sector_rows = sorted(acc_sector_totals.items(), key=lambda item: item[1], reverse=True)
+                top_sectors = []
+                hhi_acc = 0.0
+                for sector, value in sector_rows:
+                    pct = value / acc_value
+                    hhi_acc += pct * pct
+                for sector, value in sector_rows[:3]:
+                    pct = value / acc_value
+                    top_sectors.append(f"{sector} {pct:.0%}")
+
+                heat = ChartRenderer.generate_heatmap_bar(min(hhi_acc, 1.0), width=6)
+                sector_table.add_row(
+                    acc.account_name,
+                    ", ".join(top_sectors) if top_sectors else "N/A",
+                    f"{hhi_acc:.3f}",
+                    heat,
+                )
+
+            self.console.print(sector_table)
+        InputSafe.pause()
+
+    def _run_pattern_suite(self):
+        """Pattern analysis suite using existing return series."""
+        while True:
+            self.console.clear()
+            print("\x1b[3J", end="")
+            self.console.print(f"[bold blue]PATTERN ANALYSIS SUITE[/bold blue]")
+
+            interval = self._select_interval()
+            if not interval:
+                return
+
+            holdings = self._aggregate_holdings()
+            if not holdings:
+                self.console.print("[yellow]No holdings available for analysis.[/yellow]")
+                InputSafe.pause()
+                return
+
+            period = TOOLKIT_PERIOD.get(interval, "1y")
+            ShellRenderer.set_busy(1.0)
+            returns, bench_returns, meta = self._get_portfolio_and_benchmark_returns(
+                holdings,
+                benchmark_ticker=self.benchmark_ticker,
+                period=period,
+                interval=TOOLKIT_INTERVAL.get(interval, "1d"),
+            )
+            if returns is None or returns.empty:
+                self.console.print("[yellow]Insufficient market data for this interval.[/yellow]")
+                InputSafe.pause()
+                return
+
+            payload = self._get_pattern_payload(returns, interval, meta)
+            self.console.print(self._render_pattern_summary(payload))
+            self.console.print("")
+            self.console.print("[1] Spectrum + Waveform")
+            self.console.print("[2] Change-Point Timeline")
+            self.console.print("[3] Motif Similarity")
+            self.console.print("[4] Volatility Forecast")
+            self.console.print("[5] Entropy + Hurst Summary")
+            self.console.print("[0] Back")
+            choice = InputSafe.get_option(["1", "2", "3", "4", "5", "0"], prompt_text="[>]")
+
+            if choice == "0":
+                return
+            if choice == "1":
+                self.console.print(self._render_spectrum_panel(payload))
+            elif choice == "2":
+                self.console.print(self._render_changepoint_panel(payload))
+            elif choice == "3":
+                self.console.print(self._render_motif_panel(payload))
+            elif choice == "4":
+                self.console.print(self._render_vol_forecast_panel(payload))
+            elif choice == "5":
+                self.console.print(self._render_entropy_panel(payload))
+            InputSafe.pause()
+
+    def _get_pattern_payload(self, returns: pd.Series, interval: str, meta: str) -> Dict[str, Any]:
+        key = ("pattern", interval, int(returns.index[-1].timestamp()) if isinstance(returns.index, pd.DatetimeIndex) else len(returns))
+        cached = self._pattern_cache.get(key)
+        if cached:
+            return cached
+
+        values = self._returns_to_values(returns)
+        spectrum = self._fft_spectrum(values, top_n=6)
+        change_points = self._cusum_change_points(returns, threshold=5.0)
+        motifs = self._motif_similarity(returns, window=20, top=3)
+        vol_forecast = self._ewma_vol_forecast(returns, lam=0.94, steps=6)
+        entropy = self._shannon_entropy(returns, bins=12)
+        hurst = self._hurst_exponent(values)
+
+        payload = {
+            "interval": interval,
+            "meta": meta,
+            "returns": returns,
+            "values": values,
+            "spectrum": spectrum,
+            "change_points": change_points,
+            "motifs": motifs,
+            "vol_forecast": vol_forecast,
+            "entropy": entropy,
+            "hurst": hurst,
+        }
+        self._pattern_cache[key] = payload
+        return payload
+
+    @staticmethod
+    def _returns_to_values(returns: pd.Series) -> List[float]:
+        vals = [1.0]
+        for r in returns:
+            vals.append(vals[-1] * (1.0 + float(r)))
+        return vals[1:]
+
+    @staticmethod
+    def _fft_spectrum(values: List[float], top_n: int = 6) -> List[Tuple[float, float]]:
+        if not values or len(values) < 8:
+            return []
+        series = np.array(values, dtype=float)
+        series = series - series.mean()
+        spec = np.fft.rfft(series)
+        power = np.abs(spec) ** 2
+        freqs = np.fft.rfftfreq(len(series), d=1.0)
+        pairs = list(zip(freqs[1:], power[1:]))
+        pairs.sort(key=lambda item: item[1], reverse=True)
+        return pairs[:top_n]
+
+    @staticmethod
+    def _cusum_change_points(returns: pd.Series, threshold: float = 5.0) -> List[int]:
+        values = np.array(returns, dtype=float)
+        if len(values) < 10:
+            return []
+        mean = values.mean()
+        std = values.std(ddof=1) or 1e-6
+        k = 0.5 * std
+        h = threshold * std
+        pos = 0.0
+        neg = 0.0
+        change_points = []
+        for i, x in enumerate(values):
+            pos = max(0.0, pos + x - mean - k)
+            neg = min(0.0, neg + x - mean + k)
+            if pos > h or abs(neg) > h:
+                change_points.append(i)
+                pos = 0.0
+                neg = 0.0
+        return change_points
+
+    @staticmethod
+    def _motif_similarity(returns: pd.Series, window: int = 20, top: int = 3) -> List[Dict[str, Any]]:
+        values = np.array(returns, dtype=float)
+        if len(values) < window * 2:
+            return []
+        current = values[-window:]
+        current = (current - current.mean()) / (current.std(ddof=1) or 1.0)
+        step = max(1, window // 3)
+        matches = []
+        for start in range(0, len(values) - window * 2, step):
+            seg = values[start:start + window]
+            seg = (seg - seg.mean()) / (seg.std(ddof=1) or 1.0)
+            dist = float(np.linalg.norm(current - seg))
+            matches.append((start, dist))
+        matches.sort(key=lambda item: item[1])
+        results = []
+        index = returns.index
+        for start, dist in matches[:top]:
+            end = start + window
+            label = f"{start}-{end}"
+            if isinstance(index, pd.DatetimeIndex):
+                label = f"{index[start].date()} to {index[end-1].date()}"
+            results.append({"window": label, "distance": dist})
+        return results
+
+    @staticmethod
+    def _ewma_vol_forecast(returns: pd.Series, lam: float = 0.94, steps: int = 6) -> List[float]:
+        values = np.array(returns, dtype=float)
+        if len(values) < 2:
+            return []
+        var = np.var(values, ddof=1)
+        for r in values:
+            var = lam * var + (1.0 - lam) * (r ** 2)
+        forecast = []
+        for _ in range(steps):
+            var = lam * var
+            forecast.append(math.sqrt(var))
+        return forecast
+
+    @staticmethod
+    def _shannon_entropy(returns: pd.Series, bins: int = 12) -> float:
+        values = np.array(returns, dtype=float)
+        if len(values) < 5:
+            return 0.0
+        counts, _ = np.histogram(values, bins=bins, density=False)
+        total = float(counts.sum())
+        if total <= 0:
+            return 0.0
+        probs = counts / total
+        probs = probs[probs > 0]
+        entropy = float(-np.sum(probs * np.log2(probs)))
+        return max(0.0, entropy)
+
+    @staticmethod
+    def _hurst_exponent(values: List[float]) -> float:
+        if not values or len(values) < 20:
+            return 0.5
+        series = np.array(values, dtype=float)
+        lags = range(2, min(20, len(series) // 2))
+        tau = []
+        for lag in lags:
+            diff = series[lag:] - series[:-lag]
+            tau.append(np.sqrt(np.std(diff)))
+        if not tau:
+            return 0.5
+        poly = np.polyfit(np.log(list(lags)), np.log(tau), 1)
+        return float(poly[0] * 2.0)
+
+    def _render_pattern_summary(self, payload: Dict[str, Any]) -> Panel:
+        summary = Table(box=box.SIMPLE, expand=True)
+        summary.add_column("Signal", style="bold cyan")
+        summary.add_column("Value", justify="right")
+        summary.add_column("Notes", style="dim")
+
+        summary.add_row("Interval", payload["interval"], payload["meta"])
+        summary.add_row("Entropy", f"{payload['entropy']:.2f}", "Higher = noisier")
+        summary.add_row("Hurst", f"{payload['hurst']:.2f}", " <0.5 mean-revert, >0.5 trend")
+        summary.add_row("Change Points", str(len(payload["change_points"])), "CUSUM breaks")
+        if payload["spectrum"]:
+            freq, power = payload["spectrum"][0]
+            summary.add_row("Top Frequency", f"{freq:.3f}", f"Power {power:.2f}")
+        return Panel(summary, title="Pattern Summary", box=box.ROUNDED, border_style="blue")
+
+    def _render_spectrum_panel(self, payload: Dict[str, Any]) -> Panel:
+        values = payload["values"]
+        waveform = self._render_waveform(values, width=60, height=10)
+
+        spec = payload["spectrum"]
+        spec_table = Table(box=box.SIMPLE, expand=True)
+        spec_table.add_column("Freq", justify="right", style="bold cyan")
+        spec_table.add_column("Power", justify="right")
+        spec_table.add_column("Bar", justify="left")
+        max_power = max((p for _, p in spec), default=1.0)
+        for freq, power in spec:
+            intensity = min(power / max_power, 1.0)
+            bar = ChartRenderer.generate_heatmap_bar(intensity, width=18)
+            spec_table.add_row(f"{freq:.3f}", f"{power:.2f}", bar)
+
+        layout = Table.grid(expand=True)
+        layout.add_column(ratio=1)
+        layout.add_row(Panel(waveform, title="Waveform (normalized)", box=box.SQUARE))
+        layout.add_row(Panel(spec_table, title="Dominant Frequencies", box=box.SQUARE))
+        return Panel(layout, title="Spectrum + Waveform", box=box.ROUNDED, border_style="cyan")
+
+    def _render_changepoint_panel(self, payload: Dict[str, Any]) -> Panel:
+        points = payload["change_points"]
+        values = payload["values"]
+        length = len(values)
+        width = 60
+        line = ["-"] * width
+        for idx in points:
+            pos = int((idx / max(1, length - 1)) * (width - 1))
+            line[pos] = "|"
+        timeline = "".join(line)
+        table = Table(box=box.SIMPLE, expand=True)
+        table.add_column("Timeline", style="bold white")
+        table.add_column("Events", justify="right")
+        table.add_row(timeline, str(len(points)))
+        if points:
+            table.add_row("", f"Last @ {points[-1]}")
+        return Panel(table, title="Change-Point Timeline", box=box.ROUNDED, border_style="yellow")
+
+    def _render_motif_panel(self, payload: Dict[str, Any]) -> Panel:
+        motifs = payload["motifs"]
+        table = Table(box=box.SIMPLE, expand=True)
+        table.add_column("Window", style="bold cyan")
+        table.add_column("Distance", justify="right")
+        for match in motifs:
+            table.add_row(match["window"], f"{match['distance']:.3f}")
+        if not motifs:
+            table.add_row("N/A", "Insufficient history")
+        return Panel(table, title="Motif Similarity", box=box.ROUNDED, border_style="magenta")
+
+    def _render_vol_forecast_panel(self, payload: Dict[str, Any]) -> Panel:
+        forecast = payload["vol_forecast"]
+        table = Table(box=box.SIMPLE, expand=True)
+        table.add_column("Step", style="bold cyan")
+        table.add_column("Forecast", justify="right")
+        table.add_column("Heat", justify="center", width=6)
+        max_val = max(forecast) if forecast else 1.0
+        for idx, val in enumerate(forecast):
+            heat = ChartRenderer.generate_heatmap_bar(min(val / max_val, 1.0), width=6)
+            table.add_row(f"T+{idx+1}", f"{val:.4f}", heat)
+        return Panel(table, title="Volatility Forecast (EWMA)", box=box.ROUNDED, border_style="cyan")
+
+    def _render_entropy_panel(self, payload: Dict[str, Any]) -> Panel:
+        table = Table(box=box.SIMPLE, expand=True)
+        table.add_column("Metric", style="bold cyan")
+        table.add_column("Value", justify="right")
+        table.add_column("Signal", style="dim")
+        table.add_row("Entropy", f"{payload['entropy']:.2f}", "Higher = noisier")
+        table.add_row("Hurst", f"{payload['hurst']:.2f}", "Trend vs mean-revert")
+        return Panel(table, title="Entropy + Hurst", box=box.ROUNDED, border_style="blue")
+
+    @staticmethod
+    def _render_waveform(values: List[float], width: int = 60, height: int = 10) -> Text:
+        if not values:
+            return Text("No data", style="dim")
+        series = np.array(values[-width:], dtype=float)
+        if len(series) < width:
+            series = np.pad(series, (width - len(series), 0), mode="edge")
+        min_val = float(series.min())
+        max_val = float(series.max())
+        span = max_val - min_val or 1.0
+        rows = [[" " for _ in range(width)] for _ in range(height)]
+        for i, val in enumerate(series):
+            norm = (val - min_val) / span
+            pos = int(round((height - 1) * (1 - norm)))
+            rows[pos][i] = "█"
+        baseline = int(round((height - 1) * (1 - ((0 - min_val) / span))))
+        baseline = max(0, min(height - 1, baseline))
+        for i in range(width):
+            if rows[baseline][i] == " ":
+                rows[baseline][i] = "─"
+        lines = ["".join(r) for r in rows]
+        return Text("\n".join(lines), style="white")
 
     @staticmethod
     def _annualization_factor_from_index(returns: pd.Series) -> float:

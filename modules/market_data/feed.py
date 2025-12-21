@@ -86,7 +86,7 @@ class MarketFeed:
                 "3": "Force Refresh",
                 "4": f"Change Interval ({current_label})",
                 "5": "Global Trackers",
-                "6": "Intel Reports",
+                "6": "Reports",
                 "7": f"Export Last Report ({self._intel_export_format})",
                 "8": "Macro Dashboard",
                 "0": "Return to Main Menu",
@@ -100,8 +100,8 @@ class MarketFeed:
                         "4": f"Change Interval ({current_label})",
                         "5": "Global Trackers",
                     }),
-                    ("Intel", {
-                        "6": "Intel Reports",
+                    ("Reports", {
+                        "6": "Reports",
                         "7": f"Export Last Report ({self._intel_export_format})",
                     }),
                     ("Dash", {
@@ -113,16 +113,17 @@ class MarketFeed:
                 show_exit=True,
                 compact=compact,
             )
-            ShellRenderer.render(
+            choice = ShellRenderer.render_and_prompt(
                 Group(panel),
                 context_actions=options,
+                valid_choices=list(options.keys()) + ["m", "x"],
+                prompt_label=">",
                 show_main=True,
                 show_back=True,
                 show_exit=True,
                 show_header=False,
                 sidebar_override=sidebar,
             )
-            choice = InputSafe.get_option(list(options.keys()) + ["m", "x"], prompt_text="[>]").lower()
             
             if choice == "0" or choice == "m":
                 break
@@ -169,6 +170,7 @@ class MarketFeed:
             age = max(0, int(time.time()) - latest_ts)
             macro_status = f"Cached {age}s ago"
 
+        self.trackers.get_snapshot(mode="combined", allow_refresh=False)
         tracker_status = "Not loaded"
         if self.trackers._last_refresh:
             age = max(0, int(time.time() - self.trackers._last_refresh))
@@ -259,16 +261,17 @@ class MarketFeed:
                 show_exit=True,
                 compact=compact,
             )
-            ShellRenderer.render(
+            choice = ShellRenderer.render_and_prompt(
                 Group(panel),
                 context_actions=options,
+                valid_choices=list(options.keys()) + ["m", "x"],
+                prompt_label=">",
                 show_main=True,
                 show_back=True,
                 show_exit=True,
                 show_header=False,
                 sidebar_override=sidebar,
             )
-            choice = InputSafe.get_option(list(options.keys()) + ["m", "x"], prompt_text="[>]").lower()
             if choice in ("0", "m"):
                 return
             if choice == "x":
@@ -292,12 +295,14 @@ class MarketFeed:
             elif choice == "8":
                 self._intel_export_format = "json" if self._intel_export_format == "md" else "md"
             elif choice == "9":
+                ShellRenderer.set_busy(1.0)
                 report = self._get_intel_report(report_mode, region, industry, force=True)
                 panel = self._render_intel_panel(report)
             elif choice == "10":
                 settings = self._load_runtime_settings()
                 ttl_seconds = int(settings.get("intel", {}).get("news_cache_ttl", 600))
                 enabled = settings.get("news", {}).get("sources_enabled", [])
+                ShellRenderer.set_busy(1.0)
                 self.intel.fetch_news_signals(ttl_seconds=ttl_seconds, force=True, enabled_sources=enabled)
                 report = self._get_intel_report(report_mode, region, industry, force=True)
                 panel = self._render_intel_panel(report)
@@ -332,10 +337,13 @@ class MarketFeed:
                 "sections": [],
             }
         if report_mode == "weather":
+            ShellRenderer.set_busy(1.0)
             report = self.intel.weather_report(region, industry)
         elif report_mode == "conflict":
+            ShellRenderer.set_busy(1.0)
             report = self.intel.conflict_report(region, industry)
         else:
+            ShellRenderer.set_busy(1.0)
             report = self.intel.combined_report(region, industry)
         self._intel_cache[cache_key] = (time.time(), report)
         self._intel_last_report = report
@@ -359,13 +367,46 @@ class MarketFeed:
             detail_layout.add_row(Panel(banner, border_style="yellow", title="Intel Status"))
         health = self.intel.conflict.health_status()
         status = health.get("status", "ok")
-        color = "green" if status == "ok" else ("yellow" if status == "warning" else "red")
-        label = "OK" if status == "ok" else ("Cooldown" if status == "cooldown" else "Warning")
         backoff_until = health.get("backoff_until")
-        cooldown_text = ""
-        if status == "cooldown" and backoff_until:
-            cooldown_text = f" (retry in {max(0, int(backoff_until - time.time()))}s)"
-        status_text = Text(f"GDELT Status: {label}{cooldown_text}", style=color)
+        last_attempt = health.get("last_attempt")
+        last_ok = health.get("last_ok")
+        last_fail = health.get("last_fail")
+        now = time.time()
+        if status == "idle":
+            color = "dim"
+            label = "Idle"
+            detail_lines = [
+                "No requests yet.",
+                "Runs only when you open or refresh reports.",
+            ]
+        elif status == "cooldown":
+            color = "yellow"
+            label = "Cooldown"
+            detail_lines = []
+            if backoff_until:
+                detail_lines.append(f"Retry in {max(0, int(backoff_until - now))}s.")
+            if last_attempt:
+                detail_lines.append(f"Last request {max(0, int(now - last_attempt))}s ago.")
+            if last_fail:
+                detail_lines.append(f"Last failure {max(0, int(now - last_fail))}s ago.")
+        elif status == "warning":
+            color = "yellow"
+            label = "Warning"
+            detail_lines = []
+            if last_attempt:
+                detail_lines.append(f"Last request {max(0, int(now - last_attempt))}s ago.")
+            if last_fail:
+                detail_lines.append(f"Last failure {max(0, int(now - last_fail))}s ago.")
+        else:
+            color = "green"
+            label = "OK"
+            detail_lines = []
+            if last_ok:
+                detail_lines.append(f"Last success {max(0, int(now - last_ok))}s ago.")
+        status_text = Text()
+        status_text.append(f"GDELT Status: {label}", style=color)
+        for line in detail_lines:
+            status_text.append(f"\n{line}", style="dim")
         detail_layout.add_row(Panel(status_text, border_style=color, title="Source Health"))
         risk_score = report.get("risk_score")
         risk_level = report.get("risk_level")
@@ -415,6 +456,7 @@ class MarketFeed:
             settings = self._load_runtime_settings()
             ttl_seconds = int(settings.get("intel", {}).get("news_cache_ttl", 600))
             enabled = settings.get("news", {}).get("sources_enabled", [])
+            ShellRenderer.set_busy(1.0)
             cached = self.intel.fetch_news_signals(ttl_seconds=ttl_seconds, force=False, enabled_sources=enabled)
             items = cached.get("items", []) if isinstance(cached, dict) else []
             skipped = cached.get("skipped", []) if isinstance(cached, dict) else []
@@ -652,39 +694,12 @@ class MarketFeed:
         return data
 
     def _tracker_snapshot(self, mode: str, allow_refresh: bool) -> dict:
-        if allow_refresh:
-            return self.trackers.get_snapshot(mode=mode)
-        cached = self.trackers._cached if hasattr(self.trackers, "_cached") else {}
-        flights = cached.get("flights", [])
-        ships = cached.get("ships", [])
-        warnings = cached.get("warnings", [])
-        if mode == "flights":
-            points = flights
-        elif mode == "ships":
-            points = ships
-        else:
-            points = flights + ships
-        return {
-            "mode": mode,
-            "count": len(points),
-            "warnings": warnings + ["Auto-refresh disabled. Press Refresh to fetch."],
-            "points": [
-                {
-                    "kind": pt.kind,
-                    "category": pt.category,
-                    "label": pt.label,
-                    "lat": pt.lat,
-                    "lon": pt.lon,
-                    "altitude_ft": pt.altitude_ft,
-                    "speed_kts": pt.speed_kts,
-                    "heading_deg": pt.heading_deg,
-                    "country": pt.country,
-                    "updated_ts": pt.updated_ts,
-                    "industry": pt.industry,
-                }
-                for pt in points
-            ],
-        }
+        snapshot = self.trackers.get_snapshot(mode=mode, allow_refresh=allow_refresh)
+        if not allow_refresh:
+            warnings = list(snapshot.get("warnings", []) or [])
+            warnings.append("Auto-refresh disabled. Press Refresh to fetch.")
+            snapshot["warnings"] = warnings
+        return snapshot
 
     def run_global_trackers(self):
         mode = "combined"
@@ -758,16 +773,17 @@ class MarketFeed:
                 "G": "Open GUI Tracker",
                 "0": "Back",
             }
-            ShellRenderer.render(
+            choice = ShellRenderer.render_and_prompt(
                 Group(panel),
                 context_actions=options,
+                valid_choices=list(options.keys()) + ["m", "x"],
+                prompt_label=">",
                 show_main=True,
                 show_back=True,
                 show_exit=True,
                 show_header=False,
                 sidebar_override=sidebar,
             )
-            choice = InputSafe.get_option(list(options.keys()) + ["m", "x"], prompt_text="[>]").lower()
             if choice in ("0", "m"):
                 return
             if choice == "x":
@@ -776,6 +792,7 @@ class MarketFeed:
                 self._run_tracker_gui()
                 return
             if choice == "4":
+                ShellRenderer.set_busy(1.0)
                 self.trackers.refresh(force=True)
             return
 
@@ -880,6 +897,7 @@ class MarketFeed:
                 now = time.time()
                 cadence = cadence_options[cadence_idx]
                 if not paused and (now - last_refresh) >= cadence:
+                    ShellRenderer.set_busy(1.0)
                     self.trackers.refresh(force=True)
                     snapshot = self.trackers.get_snapshot(mode=mode)
                     last_refresh = now
@@ -916,6 +934,7 @@ class MarketFeed:
                             category_filter = "all"
                             dirty = True
                         elif key == "4":
+                            ShellRenderer.set_busy(1.0)
                             self.trackers.refresh(force=True)
                             snapshot = self.trackers.get_snapshot(mode=mode)
                             last_refresh = time.time()
@@ -959,15 +978,17 @@ class MarketFeed:
         info.append("After purchase, paste your access code below.\n", style="dim")
 
         panel = Panel(info, title="Clear Access", box=box.ROUNDED, border_style="cyan")
-        ShellRenderer.render(
+        options = {"1": "Open Purchase Link", "2": "Enter Access Code", "3": "Clear Code", "0": "Back"}
+        choice = ShellRenderer.render_and_prompt(
             Group(panel),
-            context_actions={"1": "Open Purchase Link", "2": "Enter Access Code", "3": "Clear Code", "0": "Back"},
+            context_actions=options,
+            valid_choices=list(options.keys()) + ["m", "x"],
+            prompt_label=">",
             show_main=True,
             show_back=True,
             show_exit=True,
             show_header=False,
         )
-        choice = InputSafe.get_option(["1", "2", "3", "0", "m", "x"], prompt_text="[>]").lower()
         if choice in ("0", "m"):
             return
         if choice == "x":
@@ -1043,6 +1064,7 @@ class MarketFeed:
 
     def display_futures(self, view_label="1D"):
         """Renders categorized macro data inside a clean panel with Sparklines."""
+        ShellRenderer.set_busy(0.8)
         raw_data = self.yahoo.get_macro_snapshot(
             period=self.current_period,
             interval=self.current_interval
@@ -1199,12 +1221,14 @@ class MarketFeed:
             if choice == "2":
                 page = max(0, page - 1)
             if choice == "3":
+                ShellRenderer.set_busy(0.8)
                 self.yahoo._FAST_CACHE.clear()
                 page = 0
             if choice == "4":
                 self.toggle_interval()
 
     def _render_macro_page(self, view_label: str, page: int = 0) -> Panel:
+        ShellRenderer.set_busy(0.8)
         raw_data = self.yahoo.get_macro_snapshot(
             period=self.current_period,
             interval=self.current_interval
@@ -1313,7 +1337,7 @@ class MarketFeed:
                 label, p, i = self.interval_options[local_interval_idx]
                 
                 self.console.print(f"[dim]Fetching {ticker_input} ({label})...[/dim]")
-                
+                ShellRenderer.set_busy(1.0)
                 # Fetch detailed data
                 data = self.yahoo.get_detailed_quote(ticker_input, period=p, interval=i)
 
