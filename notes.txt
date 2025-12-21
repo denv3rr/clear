@@ -1,6 +1,8 @@
 TO DO:
 
-1
+-   Fix unit tests
+
+-
 
     Dual-layer regime cells -- almost done
 
@@ -8,7 +10,7 @@ TO DO:
 
     Header auto-updates with intervals
 
-2
+-
 
     Interval selector UI (page-wide)
 
@@ -16,7 +18,7 @@ TO DO:
 
     CAPM period auto-sync (1Y to 252, etc)
 
-3
+-
 
     Lot-aware cost basis (parallel to holdings)
 
@@ -24,7 +26,7 @@ TO DO:
 
     Exposure-at-risk metrics
 
-4
+-
 
     Regime-conditioned exposure
 
