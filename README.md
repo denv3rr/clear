@@ -1,11 +1,11 @@
 <div align="center">
 
 ![Python](https://img.shields.io/badge/python-3.10+-blue)
+![Top Language](https://img.shields.io/github/languages/top/denv3rr/clear)
 ![Repo Size](https://img.shields.io/github/repo-size/denv3rr/clear)
 ![GitHub Created At](https://img.shields.io/github/created-at/denv3rr/clear)
 ![Last Commit](https://img.shields.io/github/last-commit/denv3rr/clear)
 ![Issues](https://img.shields.io/github/issues/denv3rr/clear)
-![Top Language](https://img.shields.io/github/languages/top/denv3rr/clear)
 ![Website](https://img.shields.io/website?url=https%3A%2F%2Fseperet.com&label=seperet.com)
 
   <a>
@@ -33,7 +33,6 @@
 [Data Sources](#data-sources) •
 [Financial Methods](#financial-methods) •
 [Sources Index](#sources-index) •
-[Roadmap](#roadmap) •
 [Disclaimer](#disclaimer)
 
 </div>
@@ -51,6 +50,7 @@ Designed for iterative expansion across client workflows, risk analytics, and in
 
 ## Features
 
+*Work in progress.*
 - Client and account management with lot-aware holdings
 - Regime analysis (Markov) with transition matrices and surfaces
 - Portfolio and account risk metrics (CAPM + derived analytics)
@@ -58,7 +58,7 @@ Designed for iterative expansion across client workflows, risk analytics, and in
 - Market data dashboard with multi-interval views and macro paging
 - Global trackers for flights and shipping (CLI + GUI MapLibre view)
 - Tracker heat/volatility metrics with relevance tagging by account
-- Intel reports (weather + conflict) with caching and exports
+- Compiled reports (weather + conflict currently) with caching and exports.
 - News feed with health-aware sources and lazy loading
 - Modular settings and tax profile scaffolding
 
@@ -174,13 +174,6 @@ All formulas are shown in plain text for consistent rendering. Inline citations 
 - Toolkit metric tests live in `tests/test_toolkit_metrics.py`.
 
 </details>
-
-## Roadmap
-
-- International tax rule sets and jurisdiction presets
-- Portfolio timeline audit (full lot history views)
-- Global market ticker enhancements and sidebar UX
-- Additional analytics models (drawdown, factor exposure)
 
 ## Disclaimer
 
