@@ -1,5 +1,6 @@
 import sys
 import os
+from typing import Optional
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -13,6 +14,7 @@ from utils.text_fx import TextEffectManager
 from interfaces.settings import SettingsModule
 from interfaces.shell import ShellRenderer
 from utils.system import SystemHost
+from utils.world_clocks import build_world_clocks_panel
 from interfaces.menu_layout import build_sidebar, compact_for_width
 from modules.client_mgr.data_handler import DataHandler
 
@@ -66,7 +68,7 @@ class MainMenu:
         shipping_ok = "YES" if os.getenv("SHIPPING_DATA_URL") else "NO"
 
         title = Text()
-        title.append("Welcome back, ", style="bold white")
+        title.append("\nWelcome back, ", style="bold white")
         title.append(user, style="bold cyan")
         title.append(".", style="bold white")
 
@@ -127,11 +129,14 @@ class MainMenu:
         left.add_row(Text(""))
         if show_tips:
             left.add_row(Align.center(hints))
+        clock_panel = build_world_clocks_panel(left_width)
+        if clock_panel:
+            left.add_row(Align.center(clock_panel))
 
         right = Table.grid(expand=True)
         right.add_column(width=right_width, overflow="crop", no_wrap=True)      
         if ascii_art:
-            right.add_row(Align.left(Text(ascii_art)))
+            right.add_row(Align.left(Text(ascii_art, overflow="crop", no_wrap=True)))
         else:
             right.add_row(Align.center(Text("ASCII ART READY", style="dim")))   
 
@@ -142,7 +147,7 @@ class MainMenu:
         if vertical_layout:
             layout.add_column(ratio=1)
             if ascii_art:
-                layout.add_row(Align.center(Text(ascii_art)))
+                layout.add_row(Align.center(Text(ascii_art, overflow="crop", no_wrap=True)))
             layout.add_row(Align.center(left))
         else:
             layout.add_column(width=left_width, overflow="crop", no_wrap=True)   

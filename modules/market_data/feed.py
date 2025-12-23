@@ -8,6 +8,11 @@ from rich.panel import Panel
 from rich.align import Align
 from rich import box
 from rich.text import Text
+from datetime import datetime
+try:
+    from zoneinfo import ZoneInfo
+except Exception:
+    ZoneInfo = None
 
 from utils.input import InputSafe
 from interfaces.navigator import Navigator
@@ -21,6 +26,7 @@ from interfaces.shell import ShellRenderer
 from interfaces.menu_layout import build_sidebar, compact_for_width, build_status_header
 from utils.scroll_text import build_scrolling_line
 from utils.system import SystemHost
+from utils.world_clocks import build_world_clocks_panel
 
 try:
     from interfaces.gui_tracker import launch_tracker_gui
@@ -48,7 +54,7 @@ class MarketFeed:
         # Preset Intervals
         # Format: (Display Label, API Period, API Interval)
         self.interval_options = [
-            ("1D", "1d", "15m"),   
+            ("1D", "1d", "15m"),
             ("5D", "5d", "60m"),
             ("1M", "1mo", "1d"),
             ("3M", "3mo", "1d"),
@@ -56,7 +62,7 @@ class MarketFeed:
         ]
         self.interval_idx = 0
         self.show_macro_dashboard = False
-        self.intel_region_idx = 0
+        self.intel_region_idx = self._guess_region_index()
         self.intel_industry = "all"
         self._intel_cache = {}
         self._intel_last_report = None
@@ -70,6 +76,31 @@ class MarketFeed:
         self.current_period = p
         self.current_interval = i
         return label
+
+    def _guess_region_index(self) -> int:
+        tz = ""
+        try:
+            tz = (time.tzname[time.daylight] or time.tzname[0] or "").lower()
+        except Exception:
+            tz = ""
+        def pick(name: str) -> int:
+            for idx, region in enumerate(REGIONS):
+                if region.name.lower() == name.lower():
+                    return idx
+            return 0
+        if "america" in tz or "pacific" in tz or "mountain" in tz or "eastern" in tz or "central" in tz:
+            return pick("North America")
+        if "buenos" in tz or "santiago" in tz or "argentina" in tz or "brazil" in tz:
+            return pick("Latin America")
+        if "europe" in tz or "london" in tz or "berlin" in tz or "paris" in tz:
+            return pick("Europe")
+        if "africa" in tz or "cairo" in tz or "lagos" in tz or "johannesburg" in tz:
+            return pick("Africa")
+        if "dubai" in tz or "riyadh" in tz or "tehran" in tz or "middle" in tz:
+            return pick("Middle East")
+        if "asia" in tz or "tokyo" in tz or "singapore" in tz or "hong_kong" in tz or "shanghai" in tz or "sydney" in tz or "australia" in tz:
+            return pick("Asia-Pacific")
+        return pick("North America")
 
     def run(self):
         """Standard interaction loop for the Market Module."""
@@ -207,11 +238,14 @@ class MarketFeed:
         if yahoo_warn:
             stats.add_row("Yahoo Warn", yahoo_warn)
 
+        clock_panel = build_world_clocks_panel(self.console.width)
+
         return Panel(
-            Group(header, stats),
+            Group(header, stats, clock_panel),
             border_style="yellow",
             title="[bold]Market Overview[/bold]",
         )
+
 
     def run_intel_reports(self):
         report_mode = "combined"
