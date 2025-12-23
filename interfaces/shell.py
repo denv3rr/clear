@@ -86,7 +86,7 @@ class ShellRenderer:
     _ticker = TickerStrip()
     _first_render = True
     _busy_until = 0.0
-    _live_prompt_enabled = False
+    _live_prompt_enabled = True
 
     @staticmethod
     def enable_live_prompt(enabled: bool = True) -> None:
@@ -183,20 +183,36 @@ class ShellRenderer:
         show_exit: bool = True,
         preserve_previous: bool = False,
         show_header: bool = True,
-        live_input: bool = True,
+        live_input: bool = False,
         sidebar_override: Optional[Panel] = None,
         balance_sidebar: bool = True,
         show_sidebar: bool = True,
+        auto_disable_live_on_overflow: bool = True,
     ) -> str:
         console = Console()
         width = console.width
         choices = [str(c).lower() for c in valid_choices]
+        options_map = context_actions or {}
+        ordered_choices = list(options_map.keys()) if options_map else list(choices)
+        for extra in ("0", "m", "x"):
+            if extra in choices and extra not in ordered_choices:
+                ordered_choices.append(extra)
+        selection_idx = 0
 
         try:
             import msvcrt
             use_live = bool(live_input) and ShellRenderer._live_prompt_enabled
         except Exception:
             use_live = False
+        # Disable live re-render for very tall pages to avoid scroll flashing.
+        if auto_disable_live_on_overflow and hasattr(content, "__rich_measure__"):
+            try:
+                min_w, max_w = content.__rich_measure__(console, width)
+                # heuristic: if max width is huge or console height is small, disable live
+                if console.height and console.height < 30:
+                    use_live = False
+            except Exception:
+                pass
 
         input_text = ""
         error_text = ""
@@ -215,9 +231,25 @@ class ShellRenderer:
                 return line[:width]
             return line[:width - 3] + "..."
 
+        def _build_selector_panel() -> Optional[Panel]:
+            if not options_map or not ordered_choices:
+                return None
+            table = Table.grid(padding=(0, 1))
+            table.add_column(justify="left", ratio=1)
+            for idx, key in enumerate(ordered_choices):
+                label = options_map.get(key, "")
+                highlight = idx == selection_idx
+                prefix = "➤ " if highlight else "  "
+                style = "bold cyan" if highlight else "dim"
+                line = f"{prefix}[{str(key).upper()}] {label}"
+                table.add_row(Text(line, style=style, overflow="crop"))
+            return Panel(table, box=box.ROUNDED, border_style="cyan", padding=(0, 1), title="Select")
+
         def build_layout(include_prompt: bool = True) -> Table:
             nonlocal prompt_width, has_error
-            resolved_show_sidebar = show_sidebar
+            selector_panel = _build_selector_panel()
+
+            resolved_show_sidebar = show_sidebar and not selector_panel
             if resolved_show_sidebar and not context_actions and not show_main and not show_back and not show_exit and sidebar_override is None:
                 resolved_show_sidebar = False
             sidebar = None
@@ -236,20 +268,23 @@ class ShellRenderer:
                 label = "•" if blink_on else " "
             else:
                 label = "›"
-            help_line = f"{label} Input: {input_text}"
+            help_line_raw = f"{label} Input: {input_text}"
             prompt_width = sidebar_width if sidebar_width > 0 else max(10, width - 2)
             has_error = bool(error_text)
-            help_line = _truncate_line(help_line, prompt_width)
+            help_line = help_line_raw[:prompt_width] if prompt_width > 0 else help_line_raw
+            display_width = max(1, len(help_line))
             help_text = build_scrolling_line(
                 help_line,
                 preset="prompt",
-                width=prompt_width,
+                width=display_width,
                 highlights=[str(c).upper() for c in valid_choices],
             )
             if error_text:
                 prompt_block = Group(help_text, Text(error_text, style="red"))
             else:
                 prompt_block = help_text
+            if selector_panel:
+                prompt_block = Group(prompt_block, selector_panel)
 
             layout = Table.grid(expand=True)
             layout.add_column(ratio=1)
@@ -287,48 +322,15 @@ class ShellRenderer:
             except Exception:
                 use_tty_prompt = False
 
-            def _render_layout() -> None:
-                layout = build_layout(include_prompt=False)
+            def _render() -> None:
+                layout = build_layout(include_prompt=True)
                 if not (preserve_previous and ShellRenderer._first_render):
                     console.clear()
                     print("\x1b[3J", end="")
                 ShellRenderer._first_render = False
                 console.print(layout)
-                lines_up = 1 if has_error else 0
-                try:
-                    if lines_up:
-                        console.file.write(f"\x1b[{lines_up}A\r")
-                    else:
-                        console.file.write("\r")
-                    max_input_len = max(0, prompt_width - prompt_prefix_len)
-                    visible_len = min(len(input_text), max_input_len)
-                    console.file.write(f"\x1b[{prompt_prefix_len + visible_len}C")
-                    console.file.flush()
-                except Exception:
-                    pass
 
-            def _render_prompt_line() -> None:
-                label = "•" if (time.time() < ShellRenderer._busy_until and int(time.time() * 2) % 2 == 0) else "›"
-                line_text = f"{label} Input: {input_text}"
-                line_text = _truncate_line(line_text, prompt_width)
-                prompt_text = build_scrolling_line(
-                    line_text,
-                    preset="prompt",
-                    width=prompt_width,
-                    highlights=[str(c).upper() for c in valid_choices],
-                )
-                try:
-                    console.file.write("\r\x1b[2K")
-                    console.print(prompt_text, end="")
-                    max_input_len = max(0, prompt_width - prompt_prefix_len)
-                    visible_len = min(len(input_text), max_input_len)
-                    console.file.write("\r")
-                    console.file.write(f"\x1b[{prompt_prefix_len + visible_len}C")
-                    console.file.flush()
-                except Exception:
-                    pass
-
-            _render_layout()
+            _render()
             if not use_tty_prompt:
                 selection = console.input("")
                 return selection.lower()
@@ -337,6 +339,7 @@ class ShellRenderer:
             last_tick = None
             last_busy = None
             last_blink = None
+            last_selection = None
             while True:
                 now = time.time()
                 busy = now < ShellRenderer._busy_until
@@ -344,13 +347,26 @@ class ShellRenderer:
                 tick = int(now * 6)
                 if msvcrt.kbhit():
                     ch = msvcrt.getwch()
+                    if ch in ("\x00", "\xe0"):
+                        try:
+                            arrow = msvcrt.getwch()
+                        except Exception:
+                            arrow = ""
+                        if ordered_choices:
+                            if arrow in ("H", "K"):  # up/left
+                                selection_idx = (selection_idx - 1) % len(ordered_choices)
+                            if arrow in ("P", "M"):  # down/right
+                                selection_idx = (selection_idx + 1) % len(ordered_choices)
+                        continue
                     if ch in ("\r", "\n"):
                         val = input_text.strip().lower()
+                        if not val and ordered_choices:
+                            return str(ordered_choices[selection_idx]).lower()
                         if val in choices:
                             return val
                         error_text = f"Invalid. Options: {', '.join(valid_choices)}"
                         input_text = ""
-                        _render_layout()
+                        _render()
                         last_input = None
                         last_tick = None
                         continue
@@ -362,7 +378,7 @@ class ShellRenderer:
                         input_text += ch
                     if error_text:
                         error_text = ""
-                        _render_layout()
+                        _render()
                         last_input = None
                         last_tick = None
                         continue
@@ -375,13 +391,17 @@ class ShellRenderer:
                     needs_update = True
                 if busy != last_busy:
                     needs_update = True
+                if selection_idx != last_selection:
+                    needs_update = True
                 if needs_update:
-                    _render_prompt_line()
+                    _render()
                     last_input = input_text
                     last_tick = tick
                     last_blink = blink_on
                     last_busy = busy
-                time.sleep(0.05)
+                    last_selection = selection_idx
+                time.sleep(0.1)
+            return ""
 
         if not (preserve_previous and ShellRenderer._first_render):
             console.clear()
@@ -394,6 +414,7 @@ class ShellRenderer:
         last_busy = None
         last_tick = None
         last_render = None
+        last_selection = None
 
         with Live(
             build_layout(),
@@ -409,8 +430,20 @@ class ShellRenderer:
                 tick = int(now * 6)
                 if msvcrt.kbhit():
                     ch = msvcrt.getwch()
-                    if ch in ("\r", "\n"):
+                    if ch in ("\x00", "\xe0"):
+                        try:
+                            arrow = msvcrt.getwch()
+                        except Exception:
+                            arrow = ""
+                        if ordered_choices:
+                            if arrow in ("H", "K"):
+                                selection_idx = (selection_idx - 1) % len(ordered_choices)
+                            if arrow in ("P", "M"):
+                                selection_idx = (selection_idx + 1) % len(ordered_choices)
+                    elif ch in ("\r", "\n"):
                         val = input_text.strip().lower()
+                        if not val and ordered_choices:
+                            return str(ordered_choices[selection_idx]).lower()
                         if val in choices:
                             return val
                         error_text = f"Invalid. Options: {', '.join(valid_choices)}"
@@ -424,19 +457,22 @@ class ShellRenderer:
                 needs_update = False
                 if input_text != last_input or error_text != last_error:
                     needs_update = True
-                if busy and blink_on != last_blink:
-                    needs_update = True
-                if (input_text or error_text) and tick != last_tick:
-                    needs_update = True
-                if busy != last_busy:
-                    needs_update = True
-                if needs_update or last_render is None:
-                    layout = build_layout()
-                    live.update(layout, refresh=True)
-                    last_render = layout
-                    last_input = input_text
-                    last_error = error_text
-                    last_blink = blink_on
-                    last_busy = busy
-                    last_tick = tick
-                time.sleep(0.05)
+            if busy and blink_on != last_blink:
+                needs_update = True
+            if (input_text or error_text) and tick != last_tick:
+                needs_update = True
+            if busy != last_busy:
+                needs_update = True
+            if selection_idx != last_selection:
+                needs_update = True
+            if needs_update or last_render is None:
+                layout = build_layout()
+                live.update(layout, refresh=True)
+                last_render = layout
+                last_input = input_text
+                last_error = error_text
+                last_blink = blink_on
+                last_busy = busy
+                last_tick = tick
+                last_selection = selection_idx
+            time.sleep(0.1)

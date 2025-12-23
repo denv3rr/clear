@@ -137,7 +137,12 @@ class UIComponents:
         table.add_row("Alpha", _fmt(alpha, "{:+.2%}"), alpha_heat, "Excess Return")
         table.add_row("Sharpe", _fmt(sharpe, "{:.2f}"), sharpe_heat, "Risk-Adjusted")
         
-        return Panel(table, title="[bold blue]Risk Profile (CAPM)[/bold blue]", box=box.ROUNDED)
+        return Panel(
+            table,
+            title="[bold blue]Risk Profile (CAPM)[/bold blue]",
+            box=box.ROUNDED,
+            subtitle="[dim]Bench: SPY fallback | horizon = selected interval | r_f=4%[/dim]",
+        )
 
     @staticmethod
     def holdings_table(account: Account, enriched_data: dict, total_val: float) -> Table:

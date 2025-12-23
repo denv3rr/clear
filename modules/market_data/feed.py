@@ -189,6 +189,7 @@ class MarketFeed:
         header.append("Market Feed\n", style="bold gold1")
         header.append("Macro Dashboard loads on demand to keep navigation fast.\n", style="dim")
         header.append("Use Global Trackers for live flights and shipping.\n", style="dim")
+        header.append("Legend: Trend uses ▲/▼, Heat bar shows move magnitude; cache age shown below.\n", style="dim")
 
         stats = Table.grid(padding=(0, 1))
         stats.add_column(style="bold cyan", width=16)
@@ -1142,11 +1143,11 @@ class MarketFeed:
             spark_color = "green" if (history and history[-1] >= history[0]) else ("red" if history else "dim")
 
             table.add_row(
-                trend_arrow,
-                item.get("ticker", ""),
-                f"{float(item.get('price', 0.0) or 0.0):,.2f}",
-                f"[{c_color}]{change:+.2f}[/{c_color}]",
-                f"[{c_color}]{pct:+.2f}%[/{c_color}]",
+            trend_arrow,
+            item.get("ticker", ""),
+            f"{float(item.get('price', 0.0) or 0.0):,.2f}",
+            f"[{c_color}]{change:+.2f}[/{c_color}]",
+            f"[{c_color}]{pct:+.2f}%[/{c_color}]",
                 heat_bar,
                 f"[{spark_color}]{sparkline}[/{spark_color}]",
                 f"{int(item.get('volume', 0) or 0):,}",
@@ -1309,13 +1310,14 @@ class MarketFeed:
             )
 
         subtitle = f"[dim]Interval: {view_label} | Period: {self.current_period} | Bars: {self.current_interval} | Page {page + 1}/{page_count}[/dim]"
+        legend = "[dim]Legend: Trend ▲/▼, Heat=|pct|/2, Sparkline=recent history, Cache age shown on dashboard[/dim]"
         return Panel(
             Align.center(table),
             title=f"[bold gold1]MACRO DASHBOARD ([bold green]{view_label}[/bold green])[/bold gold1]",
             border_style="yellow",
             box=box.ROUNDED,
             padding=(0, 2),
-            subtitle=subtitle,
+            subtitle=f"{subtitle}\n{legend}",
         )
 
     def stock_lookup_loop(self):

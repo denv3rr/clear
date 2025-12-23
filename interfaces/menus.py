@@ -24,26 +24,27 @@ class MainMenu:
         self.console = Console()
         self.text_fx = TextEffectManager()
         self.settings_module = SettingsModule()
+        self._first_render = True
 
     @staticmethod
     def _bulletin_art() -> str:
         return r"""
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⠀⣴⠀⢿⣿⣿⣿⣿⣿⣿⣿⣿⠇⣠⡀⢀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⡤⠞⠁⣰⣿⠀⠘⣿⣿⣿⣿⣿⣿⣿⡏⠀⢿⣧⡀⠙⠦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⢠⣤⣤⣤⣾⣿⠟⠀⠀⠸⣿⣿⣿⣿⣿⡟⠀⠀⠘⣿⣷⣦⣤⣤⣤⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⢠⣶⣤⡈⠉⠛⠋⠁⠀⠀⠀⠀⠈⠙⠛⠛⠉⠀⠀⠀⠀⠈⠙⠛⠋⠉⣠⣶⣆⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⢠⣿⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣤⣾⣿⣿⣿⣆⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⣾⣿⣿⣿⣿⣿⣿⡆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣾⣿⣿⣿⣿⣿⣿⡄⠀⠀⠀⠀
-⠀⠀⠀⢰⣿⣿⣿⣿⣿⣿⣿⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢿⣿⣿⣿⣿⣿⣿⣇⠀⠀⠀⠀
-⠀⠀⠀⠸⠿⠿⠿⠿⠿⠛⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠛⠻⠿⠿⠿⠿⠿⠀⠀⠀⠀
-⠀⠀⠀⠰⢶⣤⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣤⣴⠶⠀⠀⠀⠀
-⠀⠀⠀⠀⡄⠙⣿⣿⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣾⣿⠟⠁⡄⠀⠀⠀⠀
-⠀⠀⠀⠀⢻⠀⢸⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣟⠀⣸⠁⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⣼⠟⠀⣀⣴⣾⣿⣷⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣶⣿⣷⣦⣄⡀⠘⢿⡄⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠡⣴⣿⣿⣿⣿⣿⣿⣿⣷⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿⣶⡄⠁⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⣿⣿⣿⣿⣿⡟⠀⠀⢀⣀⣀⠀⠀⠸⣿⣿⣿⣿⣿⣿⡿⠋⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠻⢿⣿⣿⣿⠃⢠⣾⣿⡿⣿⣷⣆⠀⢿⣿⣿⣿⠿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠛⠋⠰⠟⢉⣀⣤⣀⡈⠙⠧⠘⠛⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣴⠦⣤⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠄⣼⢣⡷⢶⣭⣛⠲⢤⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⡞⣼⢣⡟⣰⠶⣤⣍⡛⠷⢮⣝⡓⠦⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⣠⢠⢏⡾⣡⡟⣼⠏⣴⣦⣍⣙⠻⠶⣬⣝⡛⠶⣭⣛⡲⢤⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⣴⢣⢏⡾⣱⠏⣼⢃⣾⢃⣤⣍⣙⠛⠷⣦⣭⣙⡛⠶⣭⣙⡳⠮⣥⡀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⡴⣱⢣⢏⡾⣱⢏⣼⢃⡾⢃⣾⢋⣉⠛⠻⠷⣦⣬⣉⡛⠳⢶⣭⣙⡓⠶⣥⡀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⡠⡼⣱⣣⢏⡞⣱⢏⡾⢡⡿⢡⡿⢁⣾⠛⠻⠿⣶⣦⣬⣉⡛⠻⠶⣦⣭⣙⡛⠶⣤⡀⠀⠀⠀⠀⠀⠀
+⠀⠀⡽⣱⣣⢏⡞⣼⢃⡾⣡⡟⣰⡟⢡⡿⢃⣼⣷⣶⣤⣤⣉⡙⠛⠿⠶⣦⣬⣉⣛⠻⠶⣤⡀⠀⠀⠀⠀⠀
+⠀⠀⡽⣱⢫⡞⣼⢣⡟⣱⠟⣰⡟⣰⡿⢁⣾⠏⣠⣄⣉⡉⠛⠛⠿⠷⣶⣤⣬⣉⡛⠛⠷⢶⣤⡀⠀⠀⠀⠀
+⠀⠀⢱⢣⠟⡼⢡⡟⣴⠏⣼⠏⣴⠟⣠⡿⠃⣴⡿⠛⠛⠿⠿⢷⣶⣦⣤⣌⣉⡙⠛⠻⠷⢶⣦⣥⡀⠀⠀⠀
+⠀⠀⢠⢟⡾⣱⠟⣼⢋⣾⢋⣼⠏⣰⡿⢁⣾⠟⢀⣶⣶⣶⣤⣤⣄⣈⣉⠉⠛⠛⠿⠿⢶⣶⣤⣬⣁⡀⠀⠀
+⠀⠀⢈⡾⣱⢏⣼⢃⡾⢃⣾⢃⣼⠟⣠⣿⡋⠀⠈⠉⠉⠙⠛⠛⠻⠿⠿⢿⣿⣷⣶⣶⣦⣤⣌⣉⣉⡓⠀⠀
+⠀⠀⠈⣴⢋⡾⢡⡿⢡⡿⢁⣾⠋⠰⠿⠿⠿⣿⣿⣿⣶⣶⣶⣦⣤⣤⣤⣀⣀⣀⡉⠉⠉⠙⠛⠛⠿⠟⠃⠀
+⠀⠀⠀⢣⡾⣱⡟⣰⡟⢡⣿⣷⣶⣶⣤⣤⣤⣤⣤⣀⣀⣉⣉⣉⡉⠙⠛⠛⠛⠛⠿⠿⠿⠛⠁⠀⠀⠀⠀⠀
+⠀⠀⠀⡟⣰⠏⣴⣿⣤⣤⣤⣤⣤⣌⣉⣉⣉⣉⣉⣉⣛⡛⠛⠛⠛⠛⠻⠿⠛⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠼⠯⢤⣤⣤⣭⣭⢭⣭⣭⣍⣉⣉⣉⣉⣉⣙⣋⣛⡛⠛⠛⠉
 """
 
     def _build_bulletin_panel(self, panel_width: int, client_count: int = 0) -> Panel:
@@ -128,16 +129,25 @@ class MainMenu:
             left.add_row(Align.center(hints))
 
         right = Table.grid(expand=True)
-        right.add_column(width=right_width, overflow="crop", no_wrap=True)
+        right.add_column(width=right_width, overflow="crop", no_wrap=True)      
         if ascii_art:
             right.add_row(Align.left(Text(ascii_art)))
         else:
-            right.add_row(Align.center(Text("ASCII ART READY", style="dim")))
+            right.add_row(Align.center(Text("ASCII ART READY", style="dim")))   
 
+        # If the available width is tight, stack the art above the stats panel
+        # to avoid ellipsizing the content.
+        vertical_layout = panel_width < 120 or right_width < 50
         layout = Table.grid(expand=True)
-        layout.add_column(width=left_width, overflow="crop", no_wrap=True)
-        layout.add_column(width=right_width, overflow="crop", no_wrap=True)
-        layout.add_row(left, right)
+        if vertical_layout:
+            layout.add_column(ratio=1)
+            if ascii_art:
+                layout.add_row(Align.center(Text(ascii_art)))
+            layout.add_row(Align.center(left))
+        else:
+            layout.add_column(width=left_width, overflow="crop", no_wrap=True)   
+            layout.add_column(width=right_width, overflow="crop", no_wrap=True)  
+            layout.add_row(left, right)
 
         panel = Panel(
             Align.center(layout),
@@ -201,17 +211,25 @@ class MainMenu:
         )
         choice = ShellRenderer.render_and_prompt(
             Group(Align.center(main_panel)),
-            context_actions={},
+            context_actions={
+                "1": "Client Manager",
+                "2": "Markets",
+                "3": "Settings",
+                "4": "Reports",
+                "0": "Exit",
+            },
             valid_choices=list(action_map.keys()),
             prompt_label=">",
             show_main=False,
             show_back=False,
             show_exit=True,
-            preserve_previous=True,
+            # keep the welcome splash visible under the first menu render
+            preserve_previous=self._first_render,
             show_header=False,
             sidebar_override=sidebar,
             balance_sidebar=True,
         )
+        self._first_render = False
         
         action = action_map[choice]
 
