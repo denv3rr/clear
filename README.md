@@ -82,6 +82,12 @@ python run.py
 # Run all unit tests
 python -m unittest
 
+# Run all unit tests with verbose output (tests package is discoverable)
+python -m unittest -v
+
+# Run test discovery with verbose output
+python -m unittest discover -s tests -v
+
 # Run toolkit metric tests only
 python -m unittest tests/test_toolkit_metrics.py
 ```
@@ -104,6 +110,28 @@ FINNHUB_API_KEY=your_api_key_here
 
 Do not commit `.env` files.
 
+### Environment Variables
+
+| Variable | Purpose | Used By |
+| --- | --- | --- |
+| `FINNHUB_API_KEY` | Enables Finnhub symbol/quote lookups. | Market Feed, Settings |
+| `OPENSKY_USERNAME` | OpenSky auth for flight tracker data. | Global Trackers |
+| `OPENSKY_PASSWORD` | OpenSky auth for flight tracker data. | Global Trackers |
+| `SHIPPING_DATA_URL` | Shipping feed endpoint for vessel tracker. | Global Trackers |
+| `CLEAR_INCLUDE_COMMERCIAL` | Include commercial flights (set to `1`). | Global Trackers |
+| `CLEAR_INCLUDE_PRIVATE` | Include private flights (set to `1`). | Global Trackers |
+| `CLEAR_GUI_REFRESH` | GUI tracker refresh seconds (default `10`). | GUI Tracker |
+| `CLEAR_GUI_PAUSED` | Start GUI tracker paused when `1`. | GUI Tracker |
+
+### Runtime Files (Generated)
+
+| Path | Purpose |
+| --- | --- |
+| `data/intel_news.json` | Cached RSS news items for reports. |
+| `data/news_health.json` | RSS feed health + backoff state. |
+| `data/clients.json` | Local client/account data. |
+| `config/settings.json` | Runtime settings saved by the Settings module. |
+
 ## Modules
 
 - **Client Manager**: client profiles, accounts, holdings, lots, and tax settings
@@ -115,6 +143,9 @@ Do not commit `.env` files.
 
 - **Finnhub**: symbols and quotes (optional)
 - **Yahoo Finance**: historical data and macro snapshots
+- **Open-Meteo**: weather signals for reports
+- **GDELT**: conflict signals for reports (RSS fallback)
+- **RSS News**: CNBC Top/World, MarketWatch, BBC Business (cached, health-aware)
 
 ## Financial Methods
 
@@ -172,6 +203,7 @@ All formulas are shown in plain text for consistent rendering. Inline citations 
 ### Validation
 
 - Toolkit metric tests live in `tests/test_toolkit_metrics.py`.
+- Market intel news filter tests live in `tests/test_intel_news_filters.py`.
 
 </details>
 
@@ -203,6 +235,8 @@ Metrics and modeling
 Market data and platforms
 - https://finnhub.io/
 - https://finance.yahoo.com/
+- https://open-meteo.com/
+- https://www.gdeltproject.org/
 
 News sources (current defaults)
 - https://www.cnbc.com/

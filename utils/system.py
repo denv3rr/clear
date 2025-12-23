@@ -20,7 +20,7 @@ class SystemHost:
 
     @staticmethod
     def get_info():
-        """Returns a dictionary of safe system information, now including hardware info."""
+        """Returns a dictionary of safe system information, including hardware info."""
         
         user = getpass.getuser()
         hostname = socket.gethostname()

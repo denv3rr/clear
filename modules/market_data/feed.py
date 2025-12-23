@@ -435,7 +435,7 @@ class MarketFeed:
         news_conf = settings.get("news", {})
         conflict_sources = news_conf.get("conflict_sources_enabled") or news_conf.get("sources_enabled") or []
         conflict_categories = news_conf.get("conflict_categories_enabled") or []
-        if report_mode in ("conflict", "combined") and auto_fetch:
+        if report_mode in ("conflict", "combined", "weather") and auto_fetch:
             self.intel.fetch_news_signals(ttl_seconds=ttl_seconds, enabled_sources=conflict_sources)
         if report_mode == "weather":
             ShellRenderer.set_busy(1.0)

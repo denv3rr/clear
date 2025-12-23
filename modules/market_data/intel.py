@@ -453,7 +453,7 @@ class MarketIntel:
         })
         sections.append({
             "title": "Model Notes",
-            "rows": [[f"Confidence: {confidence} | Signals: {len(signals)} | Impacts: {len(impacts)}", ""]],
+            "rows": [[f"Confidence: {confidence} | Signals: {len(signals)} | Impacts: {len(impacts)} | Scope: {region.name} | Industry: {industry_filter}", ""]],
         })
         sources = ["Open-Meteo"]
         news_cached = load_cached_news(self._news_cache_file, ttl_seconds=999999)
@@ -489,9 +489,12 @@ class MarketIntel:
         categories: Optional[List[str]] = None,
     ) -> Dict[str, object]:
         region = _region_by_name(region_name)
+        news_payload = self.fetch_news_signals(
+            ttl_seconds=600,
+            enabled_sources=enabled_sources,
+        )
         data = self.conflict.fetch(region)
         if data.get("error"):
-            news_payload = self.fetch_news_signals(ttl_seconds=600, enabled_sources=enabled_sources)
             items = _filter_conflict_news(news_payload.get("items", []), region.name, categories=categories)
             themes: List[str] = []
             for item in items:
@@ -581,12 +584,12 @@ class MarketIntel:
         })
         sections.append({
             "title": "Model Notes",
-            "rows": [[f"Confidence: {confidence} | Signals: {len(signals)} | Impacts: {len(impacts)}", ""]],
+            "rows": [[f"Confidence: {confidence} | Signals: {len(signals)} | Impacts: {len(impacts)} | Scope: {region.name} | Industry: {industry_filter}", ""]],
         })
         sources = ["GDELT"]
-        news_cached = load_cached_news(self._news_cache_file, ttl_seconds=999999)
-        if news_cached:
-            filtered = self._filter_news(news_cached, region.name, industry_filter)
+        news_items = news_payload.get("items", []) if news_payload else []
+        if news_items:
+            filtered = self._filter_news(news_items, region.name, industry_filter)
             if categories:
                 filtered = _filter_conflict_news(filtered, region.name, categories=categories)
             if filtered:
@@ -594,7 +597,8 @@ class MarketIntel:
                     "title": "News Signals",
                     "rows": [[item.get("source", ""), item.get("title", "")[:90]] for item in filtered[:6]],
                 })
-                sources.extend(sorted({str(item.get("source", "")) for item in filtered if item.get("source")}))
+        if news_items:
+            sources.extend(sorted({str(item.get("source", "")) for item in news_items if item.get("source")}))
         if sources:
             sections.append({
                 "title": "Report Sources",
@@ -625,10 +629,16 @@ class MarketIntel:
             enabled_sources=enabled_sources,
             categories=categories,
         )
-        news_cached = load_cached_news(self._news_cache_file, ttl_seconds=999999)
+        news_payload = self.fetch_news_signals(
+            ttl_seconds=600,
+            enabled_sources=enabled_sources,
+        )
         news_filtered = []
-        if news_cached:
-            news_filtered = self._filter_news(news_cached, region_name, industry_filter)
+        news_items = news_payload.get("items", []) if news_payload else []
+        if news_items:
+            news_filtered = self._filter_news(news_items, region_name, industry_filter)
+            if categories:
+                news_filtered = _filter_conflict_news(news_filtered, region_name, categories=categories)
         weather_score = weather.get("risk_score")
         conflict_score = conflict.get("risk_score")
         weather_ok = weather_score is not None
@@ -689,7 +699,8 @@ class MarketIntel:
                 "title": "News Signals",
                 "rows": [[item.get("source", ""), item.get("title", "")[:90]] for item in news_filtered[:8]],
             })
-            sources.extend(sorted({str(item.get("source", "")) for item in news_filtered if item.get("source")}))
+        if news_items:
+            sources.extend(sorted({str(item.get("source", "")) for item in news_items if item.get("source")}))
         if sources:
             sections.append({
                 "title": "Report Sources",

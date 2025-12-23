@@ -27,8 +27,11 @@ env/
 *.bak
 *.tmp
 *.swp
+notes.txt
+plan.md
 data/clients.json
 data/intel_news.json
+data/news_health.json
 
 # Settings / local state
 config/settings.json
