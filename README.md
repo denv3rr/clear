@@ -51,16 +51,30 @@ Designed for iterative expansion across client workflows, risk analytics, and in
 ## Features
 
 *Work in progress.*
-- Client and account management with lot-aware holdings
-- Regime analysis (Markov) with transition matrices and surfaces
-- Portfolio and account risk metrics (CAPM + derived analytics)
-- Financial Toolkit diagnostics, regime snapshots, and option pricing
-- Market data dashboard with multi-interval views and macro paging
-- Global trackers for flights and shipping (CLI + GUI MapLibre view)
+
+- Client and account management
+- Regime analysis (Markov)
+- Portfolio and account metrics
+- Tools (diagnostics, regime snapshots, and option pricing)
+- Market dashboard
+- Global flight and shipping trackers
+- Compiled reports
+- News feed (multiple sources)
+- Tax profile scaffolding
+
+<details>
+<summary><strong>More Details</strong></summary>
+
+- Lot-aware holdings
+- Regime analysis transition matrices and surfaces
+- CAPM + derived analytics
+- Multi-interval views and macro paging
+- CLI + GUI MapLibre view for Tracking
 - Tracker heat/volatility metrics with relevance tagging by account
-- Compiled reports (weather + conflict currently) with caching and exports.
-- News feed with health-aware sources and lazy loading
-- Modular settings and tax profile scaffolding
+- Weather + conflict reporting with caching and exports
+- Health-aware sources and lazy loading
+
+</details>
 
 ## Screenshots
 
@@ -156,7 +170,7 @@ AI synthesis is configured in `config/settings.json` under the `ai` key:
 
 ## Data Sources
 
-- **Finnhub**: symbols and quotes (optional)
+- **Finnhub**: symbols and quotes (optional - see [configuration](#configuration))
 - **Yahoo Finance**: historical data and macro snapshots
 - **Open-Meteo**: weather signals for reports
 - **GDELT**: conflict signals for reports (RSS fallback)
@@ -223,14 +237,6 @@ All formulas are shown in plain text for consistent rendering. Inline citations 
 
 </details>
 
-## Disclaimer
-
-All content is provided **'as is'** without warranty; users should consult with a qualified professional before making any investment or financial decisions.
-
-This project is for **informational use** and does not provide financial, legal, or tax advice.
-
-No information presented should be construed as an offer to buy or sell securities. **The author assumes no liability for financial losses or decisions made based on the contents of this project**.
-
 ## Sources Index
 
 Metrics and modeling
@@ -270,3 +276,26 @@ Futures and derivatives references
 Rates and macro references
 - https://fred.stlouisfed.org/
 - https://www.treasury.gov/resource-center/data-chart-center/interest-rates
+
+<br><br>
+<a href="https://seperet.com">
+    <img src="https://user-images.githubusercontent.com/74038190/212284100-561aa473-3905-4a80-b561-0d28506553ee.gif">
+</a> 
+
+## Disclaimer
+
+All content is provided **'as is'** without warranty; users should consult with a qualified professional before making any investment or financial decisions.
+
+This project is for **informational use** and does not provide financial, legal, or tax advice.
+
+No information presented should be construed as an offer to buy or sell securities. **The author assumes no liability for financial losses or decisions made based on the contents of this project**.
+
+<br><br>
+<a href="https://seperet.com">
+    <img src="https://user-images.githubusercontent.com/74038190/212284100-561aa473-3905-4a80-b561-0d28506553ee.gif">
+</a> 
+<div align="center">
+  <a href="https://seperet.com">
+    <img width="100" src="https://github.com/denv3rr/denv3rr/blob/main/IMG_4225.gif" />
+  </a>
+</div>
