@@ -1,6 +1,7 @@
 import json
 import os
 import time
+from typing import List
 
 from rich.console import Console, Group
 from rich.table import Table
@@ -27,6 +28,7 @@ from interfaces.menu_layout import build_sidebar, compact_for_width, build_statu
 from utils.scroll_text import build_scrolling_line
 from utils.system import SystemHost
 from utils.world_clocks import build_world_clocks_panel
+from utils.report_synth import ReportSynthesizer, build_report_context, build_ai_sections
 
 try:
     from interfaces.gui_tracker import launch_tracker_gui
@@ -417,6 +419,7 @@ class MarketFeed:
         intel_conf = settings.get("intel", {})
         auto_fetch = bool(intel_conf.get("auto_fetch", True))
         ttl_seconds = int(intel_conf.get("cache_ttl", 300))
+        news_payload = None
         cache_key = (report_mode, region, industry)
         cached = self._intel_cache.get(cache_key)
         if cached and not force and (time.time() - cached[0]) < ttl_seconds:
@@ -436,7 +439,7 @@ class MarketFeed:
         conflict_sources = news_conf.get("conflict_sources_enabled") or news_conf.get("sources_enabled") or []
         conflict_categories = news_conf.get("conflict_categories_enabled") or []
         if report_mode in ("conflict", "combined", "weather") and auto_fetch:
-            self.intel.fetch_news_signals(ttl_seconds=ttl_seconds, enabled_sources=conflict_sources)
+            news_payload = self.intel.fetch_news_signals(ttl_seconds=ttl_seconds, enabled_sources=conflict_sources)
         if report_mode == "weather":
             ShellRenderer.set_busy(1.0)
             report = self.intel.weather_report(region, industry)
@@ -456,8 +459,48 @@ class MarketFeed:
                 enabled_sources=conflict_sources,
                 categories=conflict_categories,
             )
+        report = self._augment_report_with_ai(
+            report,
+            report_mode,
+            region,
+            industry,
+            news_payload.get("items", []) if isinstance(news_payload, dict) else [],
+            settings,
+        )
         self._intel_cache[cache_key] = (time.time(), report)
         self._intel_last_report = report
+        return report
+
+    def _augment_report_with_ai(
+        self,
+        report: dict,
+        report_mode: str,
+        region: str,
+        industry: str,
+        news_items: List[dict],
+        settings: dict,
+    ) -> dict:
+        ai_conf = settings.get("ai", {})
+        if not bool(ai_conf.get("enabled", True)):
+            return report
+        synthesizer = ReportSynthesizer(
+            provider=str(ai_conf.get("provider", "rule_based")),
+            model_id=str(ai_conf.get("model_id", "rule_based_v1")),
+            persona=str(ai_conf.get("persona", "advisor_legal_v1")),
+            cache_file=str(ai_conf.get("cache_file", "data/ai_report_cache.json")),
+            cache_ttl=int(ai_conf.get("cache_ttl", 21600)),
+            endpoint=str(ai_conf.get("endpoint", "")),
+        )
+        context = build_report_context(
+            report,
+            report_mode,
+            region,
+            industry,
+            news_items=news_items,
+        )
+        ai_payload = synthesizer.synthesize(context)
+        report["ai"] = ai_payload
+        report["sections"] = list(report.get("sections", []) or []) + build_ai_sections(ai_payload)
         return report
 
     def _render_intel_panel(self, report: dict) -> Panel:
@@ -788,6 +831,15 @@ class MarketFeed:
             },
             "news": {
                 "sources_enabled": ["CNBC Top", "CNBC World", "MarketWatch", "BBC Business"],
+            },
+            "ai": {
+                "enabled": True,
+                "provider": "rule_based",
+                "model_id": "rule_based_v1",
+                "persona": "advisor_legal_v1",
+                "cache_ttl": 21600,
+                "cache_file": "data/ai_report_cache.json",
+                "endpoint": "",
             },
         }
         if not os.path.exists(self._settings_file):

@@ -7,6 +7,8 @@ from rich.text import Text
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 import time
+import os
+import json
 
 # --- Internal Modules ---
 from modules.client_mgr.client_model import Client, Account
@@ -22,6 +24,7 @@ from interfaces.navigator import Navigator
 from interfaces.shell import ShellRenderer
 from interfaces.menu_layout import build_sidebar, build_status_header, compact_for_width
 from utils.input import InputSafe
+from utils.report_synth import ReportSynthesizer, build_report_context, build_ai_sections
 
 # --- Configuration Constants ---
 HISTORY_PERIOD = {"1W": "5d", "1M": "1mo", "3M": "3mo", "6M": "6mo", "1Y": "1y"}
@@ -44,6 +47,7 @@ class ClientManager:
         self.tax_engine = TaxEngine()
         self.trackers = GlobalTrackers()
         self._list_val_cache = {}
+        self._settings_file = os.path.join(os.getcwd(), "config", "settings.json")
 
     # =========================================================================
     # MAIN LOOP & LIST VIEW
@@ -229,6 +233,16 @@ class ClientManager:
                 ],
                 compact=compact_for_width(self.console.width),
             )
+            ai_panel = self._build_ai_portfolio_panel(
+                scope_label=f"Client: {client.name}",
+                total_val=total_val,
+                manual_total=manual_total,
+                holdings_count=len(all_holdings),
+                accounts_count=len(client.accounts),
+                risk_label=client.risk_profile,
+                capm=capm,
+                report_type="client_portfolio",
+            )
             content = Group(
                 status_panel,
                 UIComponents.header(
@@ -239,6 +253,7 @@ class ClientManager:
                 UIComponents.portfolio_summary_panel(total_val, manual_total, spark_data),
                 UIComponents.account_list_panel(client, enriched_data),
                 UIComponents.risk_profile_full_width(capm),
+                ai_panel if ai_panel else Text(""),
                 tracker_panel if tracker_panel else Text(""),
                 UIComponents.client_tax_profile_panel(client),
                 UIComponents.tax_estimate_panel(
@@ -480,6 +495,16 @@ class ClientManager:
                 ],
                 compact=compact_for_width(self.console.width),
             )
+            ai_panel = self._build_ai_portfolio_panel(
+                scope_label=f"Account: {account.account_name}",
+                total_val=total_val,
+                manual_total=manual_total,
+                holdings_count=len(account.holdings),
+                accounts_count=1,
+                risk_label=client.risk_profile,
+                capm=capm,
+                report_type="account_portfolio",
+            )
             content = Group(
                 status_panel,
                 UIComponents.header(
@@ -491,6 +516,7 @@ class ClientManager:
                 UIComponents.holdings_table(account, enriched, total_val),
                 UIComponents.manual_assets_table(manual_list) if manual_list else Text(""),
                 UIComponents.risk_profile_full_width(capm),
+                ai_panel if ai_panel else Text(""),
                 tracker_panel if tracker_panel else Text(""),
                 UIComponents.account_tax_settings_panel(account),
                 UIComponents.tax_estimate_panel(
@@ -753,6 +779,127 @@ class ClientManager:
             if ticker in account.lots: del account.lots[ticker]
             self.console.print("[green]Removed.[/green]")
         InputSafe.pause()
+
+    def _load_ai_settings(self) -> dict:
+        defaults = {
+            "enabled": True,
+            "provider": "rule_based",
+            "model_id": "rule_based_v1",
+            "persona": "advisor_legal_v1",
+            "cache_ttl": 21600,
+            "cache_file": "data/ai_report_cache.json",
+            "endpoint": "",
+        }
+        if not os.path.exists(self._settings_file):
+            return defaults
+        try:
+            with open(self._settings_file, "r", encoding="ascii") as f:
+                data = json.load(f)
+            ai_conf = data.get("ai", {}) if isinstance(data, dict) else {}
+        except Exception:
+            return defaults
+        if not isinstance(ai_conf, dict):
+            ai_conf = {}
+        for key, value in defaults.items():
+            if key not in ai_conf:
+                ai_conf[key] = value
+        return ai_conf
+
+    @staticmethod
+    def _map_risk_level(label: str) -> str:
+        text = (label or "").lower()
+        if "high" in text or "aggressive" in text:
+            return "High"
+        if "low" in text or "conservative" in text:
+            return "Low"
+        if "moderate" in text or "balanced" in text:
+            return "Moderate"
+        return "Moderate"
+
+    def _build_ai_portfolio_panel(
+        self,
+        scope_label: str,
+        total_val: float,
+        manual_total: float,
+        holdings_count: int,
+        accounts_count: int,
+        risk_label: str,
+        capm: dict,
+        report_type: str,
+    ) -> Optional[Group]:
+        ai_conf = self._load_ai_settings()
+        if not bool(ai_conf.get("enabled", True)):
+            return None
+        risk_level = self._map_risk_level(risk_label)
+        beta = capm.get("beta") if isinstance(capm, dict) else None
+        sharpe = capm.get("sharpe") if isinstance(capm, dict) else None
+        vol = capm.get("vol_annual") if isinstance(capm, dict) else None
+        alpha = capm.get("alpha_annual") if isinstance(capm, dict) else None
+        signals = []
+        if beta is not None:
+            signals.append(f"Beta {beta:.2f}")
+        if sharpe is not None:
+            signals.append(f"Sharpe {sharpe:.2f}")
+        if vol is not None:
+            signals.append(f"Volatility {vol:.2%}")
+        if alpha is not None:
+            signals.append(f"Alpha {alpha:+.2%}")
+        impacts = []
+        if beta is not None and beta > 1.2:
+            impacts.append("Market sensitivity elevated.")
+        elif beta is not None and beta < 0.8:
+            impacts.append("Defensive tilt vs benchmark.")
+        if sharpe is not None and sharpe < 0.5:
+            impacts.append("Risk-adjusted returns below target.")
+        summary = [
+            f"Scope: {scope_label}",
+            f"Market Value: ${total_val:,.2f}",
+            f"Manual Assets: ${manual_total:,.2f}",
+            f"Accounts: {accounts_count}",
+            f"Holdings: {holdings_count}",
+            f"Risk Profile: {risk_label}",
+        ]
+        sections = [
+            {
+                "title": "Portfolio Overview",
+                "rows": [
+                    ["Market Value", f"${total_val:,.2f}"],
+                    ["Manual Assets", f"${manual_total:,.2f}"],
+                    ["Accounts", str(accounts_count)],
+                    ["Holdings", str(holdings_count)],
+                    ["Risk Profile", risk_label],
+                ],
+            }
+        ]
+        report = {
+            "summary": summary,
+            "risk_level": risk_level,
+            "risk_score": None,
+            "confidence": "Medium" if signals else "Low",
+            "signals": signals,
+            "impacts": impacts,
+            "sections": sections,
+        }
+        synthesizer = ReportSynthesizer(
+            provider=str(ai_conf.get("provider", "rule_based")),
+            model_id=str(ai_conf.get("model_id", "rule_based_v1")),
+            persona=str(ai_conf.get("persona", "advisor_legal_v1")),
+            cache_file=str(ai_conf.get("cache_file", "data/ai_report_cache.json")),
+            cache_ttl=int(ai_conf.get("cache_ttl", 21600)),
+            endpoint=str(ai_conf.get("endpoint", "")),
+        )
+        context = build_report_context(
+            report,
+            report_type,
+            region="Global",
+            industry="portfolio",
+            news_items=[],
+        )
+        ai_payload = synthesizer.synthesize(context)
+        sections = build_ai_sections(ai_payload)
+        if not sections:
+            return None
+        return UIComponents.advisor_panels(sections)
 
     def _resolve_lot_basis(self, ticker: str, method: str) -> Tuple[Optional[float], str, str]:
         """Resolve lot basis based on user-selected method."""

@@ -281,6 +281,31 @@ class UIComponents:
         return Panel(table, title="[bold gold1]Annualized Risk Profile[/bold gold1]", box=box.ROUNDED)
 
     @staticmethod
+    def advisor_panels(sections: list) -> Group:
+        if not sections:
+            return Group(Text(""))
+        panels = []
+        for section in sections:
+            title = str(section.get("title", "Advisor Notes"))
+            rows = section.get("rows", []) or []
+            if rows and isinstance(rows[0], list):
+                table = Table.grid(padding=(0, 1))
+                table.add_column(style="bold cyan", width=18)
+                table.add_column(style="white")
+                for row in rows:
+                    left = str(row[0]) if len(row) > 0 else ""
+                    right = str(row[1]) if len(row) > 1 else ""
+                    table.add_row(left, right)
+                body = table
+            else:
+                text = Text()
+                for row in rows:
+                    text.append(f"{row}\n")
+                body = text
+            panels.append(Panel(body, title=title, border_style="cyan"))
+        return Group(*panels)
+
+    @staticmethod
     def tracker_metrics_panel(payload: dict) -> Panel:
         """Compact tracker exposure metrics for relevant portfolios."""
         if not payload:

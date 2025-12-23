@@ -123,12 +123,27 @@ Do not commit `.env` files.
 | `CLEAR_GUI_REFRESH` | GUI tracker refresh seconds (default `10`). | GUI Tracker |
 | `CLEAR_GUI_PAUSED` | Start GUI tracker paused when `1`. | GUI Tracker |
 
+### AI Synthesis (Optional)
+
+AI synthesis is configured in `config/settings.json` under the `ai` key:
+
+| Key | Purpose | Default |
+| --- | --- | --- |
+| `ai.enabled` | Toggle AI notes/outlooks in reports. | `true` |
+| `ai.provider` | `rule_based` (offline) or `local_http`. | `rule_based` |
+| `ai.model_id` | Model identifier for caching. | `rule_based_v1` |
+| `ai.persona` | Persona tag for prompting. | `advisor_legal_v1` |
+| `ai.cache_ttl` | Cache TTL in seconds. | `21600` |
+| `ai.cache_file` | Cache file path. | `data/ai_report_cache.json` |
+| `ai.endpoint` | Local HTTP endpoint for LLM calls. | `""` |
+
 ### Runtime Files (Generated)
 
 | Path | Purpose |
 | --- | --- |
 | `data/intel_news.json` | Cached RSS news items for reports. |
 | `data/news_health.json` | RSS feed health + backoff state. |
+| `data/ai_report_cache.json` | Cached AI synthesis outputs. |
 | `data/clients.json` | Local client/account data. |
 | `config/settings.json` | Runtime settings saved by the Settings module. |
 
@@ -204,6 +219,7 @@ All formulas are shown in plain text for consistent rendering. Inline citations 
 
 - Toolkit metric tests live in `tests/test_toolkit_metrics.py`.
 - Market intel news filter tests live in `tests/test_intel_news_filters.py`.
+- Report synthesis tests live in `tests/test_report_synth.py`.
 
 </details>
 

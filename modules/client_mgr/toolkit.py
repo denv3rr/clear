@@ -7,6 +7,8 @@ import io
 import warnings
 import contextlib
 import logging
+import os
+import json
 from collections import defaultdict
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
@@ -22,6 +24,7 @@ from utils.input import InputSafe
 from interfaces.shell import ShellRenderer
 from modules.client_mgr.client_model import Client, Account
 from modules.client_mgr.valuation import ValuationEngine
+from utils.report_synth import ReportSynthesizer, build_report_context, build_ai_sections
 
 # Cache for CAPM computations to avoid redundant API calls
 _CAPM_CACHE = {}  # key -> {"ts": int, "data": dict}
@@ -131,6 +134,79 @@ class FinancialToolkit:
         self.valuation = ValuationEngine()
         self.benchmark_ticker = "SPY" # Using S&P 500 ETF as standard benchmark
         self._pattern_cache = {}
+        self._settings_file = os.path.join(os.getcwd(), "config", "settings.json")
+
+    def _load_ai_settings(self) -> dict:
+        defaults = {
+            "enabled": True,
+            "provider": "rule_based",
+            "model_id": "rule_based_v1",
+            "persona": "advisor_legal_v1",
+            "cache_ttl": 21600,
+            "cache_file": "data/ai_report_cache.json",
+            "endpoint": "",
+        }
+        if not os.path.exists(self._settings_file):
+            return defaults
+        try:
+            with open(self._settings_file, "r", encoding="ascii") as f:
+                data = json.load(f)
+            ai_conf = data.get("ai", {}) if isinstance(data, dict) else {}
+        except Exception:
+            return defaults
+        if not isinstance(ai_conf, dict):
+            ai_conf = {}
+        for key, value in defaults.items():
+            if key not in ai_conf:
+                ai_conf[key] = value
+        return ai_conf
+
+    def _render_ai_sections(self, sections: list) -> Optional[Group]:
+        if not sections:
+            return None
+        panels = []
+        for section in sections:
+            title = str(section.get("title", "Advisor Notes"))
+            rows = section.get("rows", []) or []
+            if rows and isinstance(rows[0], list):
+                table = Table.grid(padding=(0, 1))
+                table.add_column(style="bold cyan", width=18)
+                table.add_column(style="white")
+                for row in rows:
+                    left = str(row[0]) if len(row) > 0 else ""
+                    right = str(row[1]) if len(row) > 1 else ""
+                    table.add_row(left, right)
+                body = table
+            else:
+                text = Text()
+                for row in rows:
+                    text.append(f"{row}\n")
+                body = text
+            panels.append(Panel(body, title=title, border_style="cyan"))
+        return Group(*panels)
+
+    def _build_ai_panel(self, report: dict, report_type: str) -> Optional[Group]:
+        ai_conf = self._load_ai_settings()
+        if not bool(ai_conf.get("enabled", True)):
+            return None
+        synthesizer = ReportSynthesizer(
+            provider=str(ai_conf.get("provider", "rule_based")),
+            model_id=str(ai_conf.get("model_id", "rule_based_v1")),
+            persona=str(ai_conf.get("persona", "advisor_legal_v1")),
+            cache_file=str(ai_conf.get("cache_file", "data/ai_report_cache.json")),
+            cache_ttl=int(ai_conf.get("cache_ttl", 21600)),
+            endpoint=str(ai_conf.get("endpoint", "")),
+        )
+        context = build_report_context(
+            report,
+            report_type,
+            region="Global",
+            industry="portfolio",
+            news_items=[],
+        )
+        ai_payload = synthesizer.synthesize(context)
+        sections = build_ai_sections(ai_payload)
+        return self._render_ai_sections(sections)
 
     def run(self):
         """Main loop for the Client Financial Toolkit."""
@@ -234,7 +310,55 @@ class FinancialToolkit:
         )
 
         self.console.print(Align.center(results))
-        
+
+        risk_level = "Moderate"
+        if beta is not None and beta > 1.2:
+            risk_level = "High"
+        elif beta is not None and beta < 0.8:
+            risk_level = "Low"
+        signals = []
+        if beta is not None:
+            signals.append(f"Beta {beta:.2f}")
+        if sharpe is not None:
+            signals.append(f"Sharpe {sharpe:.2f}")
+        if vol_annual is not None:
+            signals.append(f"Volatility {vol_annual:.2%}")
+        if alpha_annualized is not None:
+            signals.append(f"Alpha {alpha_annualized:+.2%}")
+        impacts = []
+        if beta is not None and beta > 1.2:
+            impacts.append("Market sensitivity elevated.")
+        elif beta is not None and beta < 0.8:
+            impacts.append("Defensive tilt vs benchmark.")
+        if sharpe is not None and sharpe < 0.5:
+            impacts.append("Risk-adjusted returns below target.")
+        report = {
+            "summary": [
+                f"Benchmark: {self.benchmark_ticker}",
+                f"Holdings: {len(consolidated_holdings)}",
+            ],
+            "risk_level": risk_level,
+            "risk_score": None,
+            "confidence": "Medium" if signals else "Low",
+            "signals": signals,
+            "impacts": impacts,
+            "sections": [
+                {
+                    "title": "CAPM Overview",
+                    "rows": [
+                        ["Beta", f"{beta:.2f}" if beta is not None else "N/A"],
+                        ["Alpha (Annual)", f"{alpha_annualized:.2%}" if alpha_annualized is not None else "N/A"],
+                        ["R-Squared", f"{r_squared:.2f}" if r_squared is not None else "N/A"],
+                        ["Sharpe", f"{sharpe:.2f}" if sharpe is not None else "N/A"],
+                        ["Volatility", f"{vol_annual:.2%}" if vol_annual is not None else "N/A"],
+                    ],
+                }
+            ],
+        }
+        ai_panel = self._build_ai_panel(report, "capm_analysis")
+        if ai_panel:
+            self.console.print(ai_panel)
+
         # Interpretation Logic
         if beta and beta > 1.2:
             self.console.print("\n[bold yellow]⚠ High Volatility:[/bold yellow] This client portfolio is significantly more volatile than the market.")
@@ -637,6 +761,60 @@ class FinancialToolkit:
                 )
 
             self.console.print(sector_table)
+        drawdown = metrics.get("max_drawdown") if isinstance(metrics, dict) else None
+        vol = metrics.get("vol_annual") if isinstance(metrics, dict) else None
+        sharpe = metrics.get("sharpe") if isinstance(metrics, dict) else None
+        risk_level = "Moderate"
+        if drawdown is not None and abs(float(drawdown)) >= 0.2:
+            risk_level = "High"
+        elif vol is not None and float(vol) >= 0.25:
+            risk_level = "High"
+        elif sharpe is not None and float(sharpe) >= 0.9:
+            risk_level = "Low"
+
+        signals = []
+        if vol is not None:
+            signals.append(f"Volatility {float(vol):.2%}")
+        if sharpe is not None:
+            signals.append(f"Sharpe {float(sharpe):.2f}")
+        if drawdown is not None:
+            signals.append(f"Max Drawdown {float(drawdown):.2%}")
+        if capm.get("beta") is not None:
+            signals.append(f"Beta {capm.get('beta'):.2f}")
+        impacts = []
+        if hhi > 0.2:
+            impacts.append("Concentration risk elevated.")
+        if sharpe is not None and float(sharpe) < 0.5:
+            impacts.append("Risk-adjusted returns below target.")
+        report = {
+            "summary": [
+                f"Interval: {interval}",
+                f"Market Value: ${total_val:,.0f}",
+                f"Manual Assets: ${manual_total:,.0f}",
+                f"Holdings: {len(holdings)}",
+            ],
+            "risk_level": risk_level,
+            "risk_score": None,
+            "confidence": "Medium" if signals else "Low",
+            "signals": signals,
+            "impacts": impacts,
+            "sections": [
+                {
+                    "title": "Diagnostics Summary",
+                    "rows": [
+                        ["Interval", interval],
+                        ["Market Value", f"{total_val:,.0f}"],
+                        ["Manual Assets", f"{manual_total:,.0f}"],
+                        ["Volatility", f"{float(vol):.2%}" if vol is not None else "N/A"],
+                        ["Sharpe", f"{float(sharpe):.2f}" if sharpe is not None else "N/A"],
+                        ["Max Drawdown", f"{float(drawdown):.2%}" if drawdown is not None else "N/A"],
+                    ],
+                }
+            ],
+        }
+        ai_panel = self._build_ai_panel(report, "portfolio_diagnostics")
+        if ai_panel:
+            self.console.print(ai_panel)
         InputSafe.pause()
 
     def _run_pattern_suite(self):
@@ -671,6 +849,50 @@ class FinancialToolkit:
 
             payload = self._get_pattern_payload(returns, interval, meta)
             self.console.print(self._render_pattern_summary(payload))
+            entropy = payload.get("entropy")
+            hurst = payload.get("hurst")
+            spectrum = payload.get("spectrum") or []
+            change_points = payload.get("change_points") or []
+            signals = []
+            if spectrum:
+                for freq, power in spectrum[:2]:
+                    signals.append(f"Cycle freq {float(freq):.2f} (power {float(power):.2f})")
+            if change_points:
+                signals.append(f"Change points: {len(change_points)}")
+            if entropy is not None:
+                signals.append(f"Entropy {float(entropy):.2f}")
+            if hurst is not None:
+                signals.append(f"Hurst {float(hurst):.2f}")
+            impacts = []
+            if hurst is not None and float(hurst) > 0.6:
+                impacts.append("Trend persistence elevated.")
+            elif hurst is not None and float(hurst) < 0.4:
+                impacts.append("Mean reversion signals elevated.")
+            report = {
+                "summary": [
+                    f"Interval: {interval}",
+                    f"Scope: {meta}",
+                ],
+                "risk_level": "Moderate",
+                "risk_score": None,
+                "confidence": "Medium" if signals else "Low",
+                "signals": signals,
+                "impacts": impacts,
+                "sections": [
+                    {
+                        "title": "Pattern Summary",
+                        "rows": [
+                            ["Entropy", f"{float(entropy):.2f}" if entropy is not None else "N/A"],
+                            ["Hurst", f"{float(hurst):.2f}" if hurst is not None else "N/A"],
+                            ["Change Points", str(len(change_points))],
+                            ["Top Cycles", ", ".join([f"{float(freq):.2f}" for freq, _ in spectrum[:3]]) or "N/A"],
+                        ],
+                    }
+                ],
+            }
+            ai_panel = self._build_ai_panel(report, "pattern_suite")
+            if ai_panel:
+                self.console.print(ai_panel)
             self.console.print("")
             self.console.print("[1] Spectrum + Waveform")
             self.console.print("[2] Change-Point Timeline")

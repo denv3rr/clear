@@ -49,6 +49,15 @@ class SettingsModule:
                 "conflict_sources_enabled": ["CNBC World", "BBC Business", "MarketWatch"],
                 "conflict_categories_enabled": ["conflict", "world", "defense", "shipping", "energy"],
             },
+            "ai": {
+                "enabled": True,
+                "provider": "rule_based",
+                "model_id": "rule_based_v1",
+                "persona": "advisor_legal_v1",
+                "cache_ttl": 21600,
+                "cache_file": "data/ai_report_cache.json",
+                "endpoint": "",
+            },
         }
 
     def _load_settings(self):
@@ -70,6 +79,8 @@ class SettingsModule:
                 data["trackers"] = defaults["trackers"]
             if "news" not in data or not isinstance(data.get("news"), dict):
                 data["news"] = defaults["news"]
+            if "ai" not in data or not isinstance(data.get("ai"), dict):
+                data["ai"] = defaults["ai"]
             return data
         except Exception:
             return defaults
@@ -558,6 +569,81 @@ class SettingsModule:
                     self.settings["news"] = news
                     self._save_settings()
 
+    def _menu_ai_synthesis(self):
+        while True:
+            ai = self.settings.get("ai", {})
+            provider = ai.get("provider", "rule_based")
+            persona = ai.get("persona", "advisor_legal_v1")
+            cache_ttl = ai.get("cache_ttl", 21600)
+            model_id = ai.get("model_id", "rule_based_v1")
+            endpoint = ai.get("endpoint", "")
+            enabled = ai.get("enabled", True)
+            compact = compact_for_width(self.console.width)
+
+            options = {
+                "1": f"Enabled (Current: {enabled})",
+                "2": f"Provider (Current: {provider})",
+                "3": f"Model ID (Current: {model_id})",
+                "4": f"Persona (Current: {persona})",
+                "5": f"Cache TTL (Current: {cache_ttl}s)",
+                "6": f"Endpoint (Current: {endpoint or 'none'})",
+                "0": "Back",
+            }
+            sidebar = build_sidebar(
+                [("AI", {k: v for k, v in options.items() if k != "0"})],
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+                compact=compact,
+            )
+            rows = Table(box=box.SIMPLE, show_header=False)
+            rows.add_column("Field", style="bold cyan", width=16)
+            rows.add_column("Value", style="white")
+            rows.add_row("Enabled", str(enabled))
+            rows.add_row("Provider", str(provider))
+            rows.add_row("Model ID", str(model_id))
+            rows.add_row("Persona", str(persona))
+            rows.add_row("Cache TTL", f"{cache_ttl}s")
+            rows.add_row("Endpoint", endpoint or "none")
+            panel = Panel(rows, title="AI SYNTHESIS", box=box.ROUNDED)
+            choice = ShellRenderer.render_and_prompt(
+                Group(panel),
+                context_actions=options,
+                valid_choices=list(options.keys()) + ["m", "x"],
+                prompt_label=">",
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+                sidebar_override=sidebar,
+            )
+            if choice == "0" or choice == "m":
+                break
+            if choice == "x":
+                Navigator.exit_app()
+            if choice == "1":
+                ai["enabled"] = not bool(ai.get("enabled", True))
+            elif choice == "2":
+                val = InputSafe.get_string("Provider (rule_based, local_http):")
+                if val:
+                    ai["provider"] = val.strip()
+            elif choice == "3":
+                val = InputSafe.get_string("Model ID:")
+                if val:
+                    ai["model_id"] = val.strip()
+            elif choice == "4":
+                val = InputSafe.get_string("Persona:")
+                if val:
+                    ai["persona"] = val.strip()
+            elif choice == "5":
+                val = InputSafe.get_string("Cache TTL (seconds):")
+                if val and val.isdigit():
+                    ai["cache_ttl"] = int(val)
+            elif choice == "6":
+                val = InputSafe.get_string("Endpoint URL (blank to clear):")
+                ai["endpoint"] = val.strip()
+            self.settings["ai"] = ai
+            self._save_settings()
+
     # --- 4. Diagnostics ---
     def _run_deep_diagnostics(self):
         self.console.print("\n[bold]SYSTEM DIAGNOSTICS[/bold]")
@@ -670,8 +756,9 @@ class SettingsModule:
                 "3": "System & Performance",
                 "4": "Tracker Filters",
                 "5": "News Sources",
-                "6": "Run Quick Diagnostics",
-                "7": "Reset Settings to Defaults",
+                "6": "AI Synthesis",
+                "7": "Run Quick Diagnostics",
+                "8": "Reset Settings to Defaults",
                 "0": "Return to Main"
             }
             sidebar = build_sidebar(
@@ -682,10 +769,11 @@ class SettingsModule:
                         "3": "System & Performance",
                         "4": "Tracker Filters",
                         "5": "News Sources",
+                        "6": "AI Synthesis",
                     }),
                     ("Diagnostics", {
-                        "6": "Run Quick Diagnostics",
-                        "7": "Reset to Defaults",
+                        "7": "Run Quick Diagnostics",
+                        "8": "Reset to Defaults",
                     }),
                 ],
                 show_main=True,
@@ -700,6 +788,7 @@ class SettingsModule:
                     ("Intel TTL", f"{self.settings.get('intel', {}).get('cache_ttl', 300)}s"),
                     ("News TTL", f"{self.settings.get('intel', {}).get('news_cache_ttl', 600)}s"),
                     ("Trackers", str(self.settings.get("trackers", {}).get("auto_refresh", True))),
+                    ("AI", str(self.settings.get("ai", {}).get("enabled", True))),
                 ],
                 compact=compact,
             )
@@ -729,8 +818,9 @@ class SettingsModule:
             elif choice == "3": self._menu_system_perf()
             elif choice == "4": self._menu_tracker_filters()
             elif choice == "5": self._menu_news_sources()
-            elif choice == "6": self._run_deep_diagnostics()
-            elif choice == "7":
+            elif choice == "6": self._menu_ai_synthesis()
+            elif choice == "7": self._run_deep_diagnostics()
+            elif choice == "8":
                 if InputSafe.get_yes_no("Reset settings to defaults?"):
                     self.settings = self._default_settings()
                     self._save_settings()
