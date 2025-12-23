@@ -236,7 +236,7 @@ class ShellRenderer:
             return Group(prompt_render)
 
         def _build_layout(include_prompt: bool = False) -> Table:
-            resolved_show_sidebar = show_sidebar
+            resolved_show_sidebar = show_sidebar and not options_map
             if resolved_show_sidebar and not context_actions and not show_main and not show_back and not show_exit and sidebar_override is None:
                 resolved_show_sidebar = False
             sidebar = None

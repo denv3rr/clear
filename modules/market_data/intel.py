@@ -4,7 +4,12 @@ from typing import Dict, List, Optional, Tuple
 
 import requests
 
-from modules.market_data.collectors import fetch_news_items, load_cached_news, store_cached_news
+from modules.market_data.collectors import (
+    fetch_news_items,
+    load_cached_news,
+    store_cached_news,
+    CONFLICT_CATEGORIES,
+)
 
 
 @dataclass
@@ -147,6 +152,38 @@ def _confidence_conflict(article_count: int) -> str:
     if article_count >= 5:
         return "Medium"
     return "Low"
+
+
+def _filter_conflict_news(
+    items: List[Dict[str, object]],
+    region_name: str,
+    categories: Optional[List[str]] = None,
+) -> List[Dict[str, object]]:
+    region_l = (region_name or "").lower()
+    categories_l = [c.lower() for c in (categories or []) if c]
+    filtered = []
+    for item in items:
+        title = str(item.get("title", "") or "")
+        tags = item.get("tags", []) or []
+        regions = item.get("regions", []) or []
+        industries = item.get("industries", []) or []
+        has_conflict = "conflict" in tags or any(word in title.lower() for word in ("war", "strike", "protest", "attack", "conflict", "ceasefire"))
+        in_region = not region_l or any(region_l in r.lower() for r in regions)
+        derived = set()
+        if has_conflict:
+            derived.add("conflict")
+        for industry in industries:
+            derived.add(str(industry).lower())
+        if regions:
+            derived.add("world")
+        else:
+            derived.add("general")
+        if categories_l:
+            if not any(cat in derived for cat in categories_l):
+                continue
+        if has_conflict and in_region:
+            filtered.append(item)
+    return filtered
 
 
 class WeatherIntel:
@@ -444,19 +481,59 @@ class MarketIntel:
             "impacts": impacts,
         }
 
-    def conflict_report(self, region_name: str, industry_filter: str = "all") -> Dict[str, object]:
+    def conflict_report(
+        self,
+        region_name: str,
+        industry_filter: str = "all",
+        enabled_sources: Optional[List[str]] = None,
+        categories: Optional[List[str]] = None,
+    ) -> Dict[str, object]:
         region = _region_by_name(region_name)
         data = self.conflict.fetch(region)
         if data.get("error"):
+            news_payload = self.fetch_news_signals(ttl_seconds=600, enabled_sources=enabled_sources)
+            items = _filter_conflict_news(news_payload.get("items", []), region.name, categories=categories)
+            themes: List[str] = []
+            for item in items:
+                themes.extend([str(t) for t in (item.get("tags") or [])])
+                themes.extend([str(t) for t in (item.get("industries") or [])])
+            score, signals = _score_conflict(len(items), themes)
+            risk = _risk_level(score)
+            confidence = _confidence_conflict(len(items))
+            summary = [
+                f"Region: {region.name}",
+                f"Conflict signals sourced from RSS feeds ({len(items)} items).",
+                f"Risk Level: {risk} (score {score}/10)",
+                f"Confidence: {confidence}",
+            ]
+            if industry_filter != "all":
+                summary.append(f"Industry Filter: {industry_filter}")
+            sections: List[Dict[str, object]] = []
+            if items:
+                sections.append({
+                    "title": "Conflict Signals (News)",
+                    "rows": [[item.get("source", ""), item.get("title", "")[:90]] for item in items[:8]],
+                })
+            if signals:
+                sections.append({
+                    "title": "Conflict Signals",
+                    "rows": [[f"- {signal}", ""] for signal in signals],
+                })
+            sources = sorted({str(item.get("source", "")) for item in items if item.get("source")})
+            if sources:
+                sections.append({
+                    "title": "Report Sources",
+                    "rows": [[source, ""] for source in sources],
+                })
             return {
                 "title": "Conflict Impact Report",
-                "summary": ["Conflict feed unavailable (GDELT)."],
-                "sections": [
-                    {
-                        "title": "Source Error",
-                        "rows": [[str(data["error"]), ""]],
-                    }
-                ],
+                "summary": summary,
+                "sections": sections,
+                "risk_level": risk,
+                "risk_score": score,
+                "confidence": confidence,
+                "signals": signals,
+                "impacts": _impact_for_conflict(themes),
             }
 
         impacts = self._filter_impacts(data.get("impacts", []), industry_filter)
@@ -510,6 +587,8 @@ class MarketIntel:
         news_cached = load_cached_news(self._news_cache_file, ttl_seconds=999999)
         if news_cached:
             filtered = self._filter_news(news_cached, region.name, industry_filter)
+            if categories:
+                filtered = _filter_conflict_news(filtered, region.name, categories=categories)
             if filtered:
                 sections.append({
                     "title": "News Signals",
@@ -532,9 +611,20 @@ class MarketIntel:
             "impacts": impacts,
         }
 
-    def combined_report(self, region_name: str, industry_filter: str = "all") -> Dict[str, object]:
+    def combined_report(
+        self,
+        region_name: str,
+        industry_filter: str = "all",
+        enabled_sources: Optional[List[str]] = None,
+        categories: Optional[List[str]] = None,
+    ) -> Dict[str, object]:
         weather = self.weather_report(region_name, industry_filter)
-        conflict = self.conflict_report(region_name, industry_filter)
+        conflict = self.conflict_report(
+            region_name,
+            industry_filter,
+            enabled_sources=enabled_sources,
+            categories=categories,
+        )
         news_cached = load_cached_news(self._news_cache_file, ttl_seconds=999999)
         news_filtered = []
         if news_cached:

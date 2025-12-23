@@ -117,6 +117,18 @@ INDUSTRY_KEYWORDS: Dict[str, List[str]] = {
     "tech": ["semiconductor", "chip", "ai", "cloud", "telecom", "cyber"],
 }
 
+CONFLICT_CATEGORIES: List[str] = [
+    "conflict",
+    "world",
+    "energy",
+    "shipping",
+    "defense",
+    "finance",
+    "tech",
+    "agriculture",
+    "general",
+]
+
 
 REGION_KEYWORDS: Dict[str, List[str]] = {
     "North America": ["us", "u.s.", "united states", "canada", "mexico"],

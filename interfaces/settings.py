@@ -46,6 +46,8 @@ class SettingsModule:
             },
             "news": {
                 "sources_enabled": ["CNBC Top", "CNBC World", "MarketWatch", "BBC Business"],
+                "conflict_sources_enabled": ["CNBC World", "BBC Business", "MarketWatch"],
+                "conflict_categories_enabled": ["conflict", "world", "defense", "shipping", "energy"],
             },
         }
 
@@ -386,24 +388,24 @@ class SettingsModule:
             self._save_settings()
 
     def _menu_news_sources(self):
-        from modules.market_data.collectors import DEFAULT_SOURCES
+        from modules.market_data.collectors import DEFAULT_SOURCES, CONFLICT_CATEGORIES
 
         while True:
             news = self.settings.get("news", {})
             enabled = set([str(n).lower() for n in news.get("sources_enabled", [])])
+            conflict_enabled = set([str(n).lower() for n in news.get("conflict_sources_enabled", [])])
+            conflict_categories = set([str(n).lower() for n in news.get("conflict_categories_enabled", [])])
             compact = compact_for_width(self.console.width)
 
-            options = {"0": "Back"}
+            options = {"0": "Back", "N": "Manage News Sources", "C": "Manage Conflict Sources", "K": "Manage Conflict Categories"}
             rows = Table(box=box.SIMPLE, show_header=False)
             rows.add_column("Key", style="bold cyan", width=4)
             rows.add_column("Source", style="white")
             rows.add_column("Enabled", justify="right")
 
-            for idx, src in enumerate(DEFAULT_SOURCES, 1):
-                key = str(idx)
-                is_on = src.name.lower() in enabled
-                options[key] = f"Toggle {src.name}"
-                rows.add_row(key, src.name, "YES" if is_on else "NO")
+            rows.add_row("N", "News sources", f"{len(enabled)}/{len(DEFAULT_SOURCES)}")
+            rows.add_row("C", "Conflict sources", f"{len(conflict_enabled)}/{len(DEFAULT_SOURCES)}")
+            rows.add_row("K", "Conflict categories", f"{len(conflict_categories)}/{len(CONFLICT_CATEGORIES)}")
 
             sidebar = build_sidebar(
                 [("Sources", {k: v for k, v in options.items() if k != "0"})],
@@ -414,7 +416,7 @@ class SettingsModule:
             )
 
             note = Text(
-                "Only enabled sources are fetched when you run News Signals.",
+                "Configure default RSS sources and conflict filters.",
                 style="dim",
             )
             panel = Panel(Group(note, rows), title="NEWS SOURCES", box=box.ROUNDED)
@@ -436,16 +438,123 @@ class SettingsModule:
             if choice == "x":
                 Navigator.exit_app()
 
+            if choice == "N":
+                self._menu_news_source_picker(
+                    "News Sources",
+                    DEFAULT_SOURCES,
+                    enabled,
+                    "sources_enabled",
+                )
+            elif choice == "C":
+                self._menu_news_source_picker(
+                    "Conflict Sources",
+                    DEFAULT_SOURCES,
+                    conflict_enabled,
+                    "conflict_sources_enabled",
+                )
+            elif choice == "K":
+                self._menu_conflict_categories(CONFLICT_CATEGORIES, conflict_categories)
+
+    def _menu_news_source_picker(self, title: str, sources: list, enabled: set, target_key: str):
+        while True:
+            options = {"0": "Back"}
+            rows = Table(box=box.SIMPLE, show_header=False)
+            rows.add_column("Key", style="bold cyan", width=4)
+            rows.add_column("Source", style="white")
+            rows.add_column("Enabled", justify="right")
+
+            for idx, src in enumerate(sources, 1):
+                key = str(idx)
+                is_on = src.name.lower() in enabled
+                options[key] = f"Toggle {src.name}"
+                rows.add_row(key, src.name, "YES" if is_on else "NO")
+
+            compact = compact_for_width(self.console.width)
+            sidebar = build_sidebar(
+                [("Sources", {k: v for k, v in options.items() if k != "0"})],
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+                compact=compact,
+            )
+            panel = Panel(rows, title=title, box=box.ROUNDED)
+            choice = ShellRenderer.render_and_prompt(
+                Group(panel),
+                context_actions=options,
+                valid_choices=list(options.keys()) + ["m", "x"],
+                prompt_label=">",
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+                sidebar_override=sidebar,
+            )
+
+            if choice == "0" or choice == "m":
+                break
+            if choice == "x":
+                Navigator.exit_app()
             if choice.isdigit():
                 idx = int(choice) - 1
-                if 0 <= idx < len(DEFAULT_SOURCES):
-                    name = DEFAULT_SOURCES[idx].name
+                if 0 <= idx < len(sources):
+                    name = sources[idx].name
                     key = name.lower()
                     if key in enabled:
                         enabled.remove(key)
                     else:
                         enabled.add(key)
-                    news["sources_enabled"] = [s.name for s in DEFAULT_SOURCES if s.name.lower() in enabled]
+                    news = self.settings.get("news", {})
+                    news[target_key] = [s.name for s in sources if s.name.lower() in enabled]
+                    self.settings["news"] = news
+                    self._save_settings()
+
+    def _menu_conflict_categories(self, categories: list, enabled: set):
+        while True:
+            options = {"0": "Back"}
+            rows = Table(box=box.SIMPLE, show_header=False)
+            rows.add_column("Key", style="bold cyan", width=4)
+            rows.add_column("Category", style="white")
+            rows.add_column("Enabled", justify="right")
+
+            for idx, name in enumerate(categories, 1):
+                key = str(idx)
+                is_on = name.lower() in enabled
+                options[key] = f"Toggle {name}"
+                rows.add_row(key, name, "YES" if is_on else "NO")
+
+            compact = compact_for_width(self.console.width)
+            sidebar = build_sidebar(
+                [("Categories", {k: v for k, v in options.items() if k != "0"})],
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+                compact=compact,
+            )
+            panel = Panel(rows, title="Conflict Categories", box=box.ROUNDED)
+            choice = ShellRenderer.render_and_prompt(
+                Group(panel),
+                context_actions=options,
+                valid_choices=list(options.keys()) + ["m", "x"],
+                prompt_label=">",
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+                sidebar_override=sidebar,
+            )
+
+            if choice == "0" or choice == "m":
+                break
+            if choice == "x":
+                Navigator.exit_app()
+            if choice.isdigit():
+                idx = int(choice) - 1
+                if 0 <= idx < len(categories):
+                    name = str(categories[idx]).lower()
+                    if name in enabled:
+                        enabled.remove(name)
+                    else:
+                        enabled.add(name)
+                    news = self.settings.get("news", {})
+                    news["conflict_categories_enabled"] = [c for c in categories if c.lower() in enabled]
                     self.settings["news"] = news
                     self._save_settings()
 

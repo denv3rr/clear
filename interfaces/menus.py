@@ -164,6 +164,7 @@ class MainMenu:
         return panel
 
     @staticmethod
+    @staticmethod
     def _estimate_bulletin_rows(stat_rows: int, hint_rows: int) -> int:
         # title + spacer + blank line + stats + hints + padding top/bottom
         base_rows = 2 + 1 + stat_rows + hint_rows

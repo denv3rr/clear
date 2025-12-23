@@ -318,9 +318,13 @@ class MarketFeed:
             elif choice == "3":
                 report_mode = "combined"
             elif choice == "4":
-                self.intel_region_idx = (self.intel_region_idx + 1) % len(REGIONS)
+                selected = self._select_region()
+                if selected is not None:
+                    self.intel_region_idx = selected
             elif choice == "5":
-                self.intel_industry = self._next_industry_filter()
+                selected = self._select_industry()
+                if selected is not None:
+                    self.intel_industry = selected
             elif choice == "6":
                 path = self._export_intel_report(report, fmt="md")
                 self._show_export_notice(path)
@@ -351,6 +355,63 @@ class MarketFeed:
         idx = options.index(self.intel_industry)
         return options[(idx + 1) % len(options)]
 
+    def _select_region(self) -> Optional[int]:
+        options = {str(idx + 1): region.name for idx, region in enumerate(REGIONS)}
+        options["0"] = "Back"
+        panel = Panel(
+            Table.grid(),
+            title="Select Region",
+            border_style="cyan",
+        )
+        choice = ShellRenderer.render_and_prompt(
+            Group(panel),
+            context_actions=options,
+            valid_choices=list(options.keys()) + ["m", "x"],
+            prompt_label=">",
+            show_main=True,
+            show_back=True,
+            show_exit=True,
+            show_header=False,
+        )
+        if choice in ("0", "m"):
+            return None
+        if choice == "x":
+            Navigator.exit_app()
+        if choice.isdigit():
+            idx = int(choice) - 1
+            if 0 <= idx < len(REGIONS):
+                return idx
+        return None
+
+    def _select_industry(self) -> Optional[str]:
+        options_list = ["all", "energy", "agriculture", "shipping", "aviation", "defense", "tech", "finance", "logistics"]
+        options = {str(idx + 1): name for idx, name in enumerate(options_list)}
+        options["0"] = "Back"
+        panel = Panel(
+            Table.grid(),
+            title="Select Industry",
+            border_style="cyan",
+        )
+        choice = ShellRenderer.render_and_prompt(
+            Group(panel),
+            context_actions=options,
+            valid_choices=list(options.keys()) + ["m", "x"],
+            prompt_label=">",
+            show_main=True,
+            show_back=True,
+            show_exit=True,
+            show_header=False,
+        )
+        if choice in ("0", "m"):
+            return None
+        if choice == "x":
+            Navigator.exit_app()
+        if choice.isdigit():
+            idx = int(choice) - 1
+            if 0 <= idx < len(options_list):
+                return options_list[idx]
+        return None
+
     def _get_intel_report(self, report_mode: str, region: str, industry: str, force: bool = False) -> dict:
         settings = self._load_runtime_settings()
         intel_conf = settings.get("intel", {})
@@ -371,15 +432,30 @@ class MarketFeed:
                 ],
                 "sections": [],
             }
+        news_conf = settings.get("news", {})
+        conflict_sources = news_conf.get("conflict_sources_enabled") or news_conf.get("sources_enabled") or []
+        conflict_categories = news_conf.get("conflict_categories_enabled") or []
+        if report_mode in ("conflict", "combined") and auto_fetch:
+            self.intel.fetch_news_signals(ttl_seconds=ttl_seconds, enabled_sources=conflict_sources)
         if report_mode == "weather":
             ShellRenderer.set_busy(1.0)
             report = self.intel.weather_report(region, industry)
         elif report_mode == "conflict":
             ShellRenderer.set_busy(1.0)
-            report = self.intel.conflict_report(region, industry)
+            report = self.intel.conflict_report(
+                region,
+                industry,
+                enabled_sources=conflict_sources,
+                categories=conflict_categories,
+            )
         else:
             ShellRenderer.set_busy(1.0)
-            report = self.intel.combined_report(region, industry)
+            report = self.intel.combined_report(
+                region,
+                industry,
+                enabled_sources=conflict_sources,
+                categories=conflict_categories,
+            )
         self._intel_cache[cache_key] = (time.time(), report)
         self._intel_last_report = report
         return report
