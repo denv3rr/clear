@@ -183,7 +183,7 @@ class ShellRenderer:
         show_exit: bool = True,
         preserve_previous: bool = False,
         show_header: bool = True,
-        live_input: bool = False,
+        live_input: bool = True,
         sidebar_override: Optional[Panel] = None,
         balance_sidebar: bool = True,
         show_sidebar: bool = True,
@@ -201,35 +201,9 @@ class ShellRenderer:
 
         try:
             import msvcrt
-            use_live = bool(live_input) and ShellRenderer._live_prompt_enabled
+            has_tty = True
         except Exception:
-            use_live = False
-        # Disable live re-render for very tall pages to avoid scroll flashing.
-        if auto_disable_live_on_overflow and hasattr(content, "__rich_measure__"):
-            try:
-                min_w, max_w = content.__rich_measure__(console, width)
-                # heuristic: if max width is huge or console height is small, disable live
-                if console.height and console.height < 30:
-                    use_live = False
-            except Exception:
-                pass
-
-        input_text = ""
-        error_text = ""
-        normalized_label = str(prompt_label).strip("[]").strip() or ">"
-        prompt_width = 0
-        has_error = False
-        prompt_prefix = "› Input: "
-        prompt_prefix_len = len(prompt_prefix)
-
-        def _truncate_line(line: str, width: int) -> str:
-            if width <= 0:
-                return ""
-            if len(line) <= width:
-                return line.ljust(width)
-            if width <= 3:
-                return line[:width]
-            return line[:width - 3] + "..."
+            has_tty = False
 
         def _build_selector_panel() -> Optional[Panel]:
             if not options_map or not ordered_choices:
@@ -245,11 +219,24 @@ class ShellRenderer:
                 table.add_row(Text(line, style=style, overflow="crop"))
             return Panel(table, box=box.ROUNDED, border_style="cyan", padding=(0, 1), title="Select")
 
-        def build_layout(include_prompt: bool = True) -> Table:
-            nonlocal prompt_width, has_error
+        def _build_prompt_block() -> Group:
             selector_panel = _build_selector_panel()
+            label = "•" if (time.time() < ShellRenderer._busy_until and int(time.time() * 2) % 2 == 0) else "›"
+            raw = f"{label} {input_text}"
+            # Only scroll the prompt text, not the entire panel width.
+            width_local = max(10, len(raw) + 4)
+            prompt_render = build_scrolling_line(
+                raw,
+                preset="prompt",
+                width=width_local,
+                highlights=[str(c).upper() for c in valid_choices],
+            )
+            if selector_panel:
+                return Group(prompt_render, selector_panel)
+            return Group(prompt_render)
 
-            resolved_show_sidebar = show_sidebar and not selector_panel
+        def _build_layout(include_prompt: bool = False) -> Table:
+            resolved_show_sidebar = show_sidebar
             if resolved_show_sidebar and not context_actions and not show_main and not show_back and not show_exit and sidebar_override is None:
                 resolved_show_sidebar = False
             sidebar = None
@@ -262,29 +249,6 @@ class ShellRenderer:
                     show_exit=show_exit,
                 )
                 sidebar_width = getattr(sidebar, "width", None) or 30
-            busy = time.time() < ShellRenderer._busy_until
-            blink_on = int(time.time() * 2) % 2 == 0
-            if busy:
-                label = "•" if blink_on else " "
-            else:
-                label = "›"
-            help_line_raw = f"{label} Input: {input_text}"
-            prompt_width = sidebar_width if sidebar_width > 0 else max(10, width - 2)
-            has_error = bool(error_text)
-            help_line = help_line_raw[:prompt_width] if prompt_width > 0 else help_line_raw
-            display_width = max(1, len(help_line))
-            help_text = build_scrolling_line(
-                help_line,
-                preset="prompt",
-                width=display_width,
-                highlights=[str(c).upper() for c in valid_choices],
-            )
-            if error_text:
-                prompt_block = Group(help_text, Text(error_text, style="red"))
-            else:
-                prompt_block = help_text
-            if selector_panel:
-                prompt_block = Group(prompt_block, selector_panel)
 
             layout = Table.grid(expand=True)
             layout.add_column(ratio=1)
@@ -299,52 +263,47 @@ class ShellRenderer:
                     body.add_column(ratio=1)
                     body.add_column(width=sidebar_width)
                     body.add_row(sidebar, content, Text(""))
-                    if include_prompt:
-                        body.add_row(prompt_block, Text(""), Text(""))
                 else:
                     body.add_column(width=sidebar_width)
                     body.add_column(ratio=1)
                     body.add_row(sidebar, content)
-                    if include_prompt:
-                        body.add_row(prompt_block, Text(""))
             else:
                 body.add_column(ratio=1)
                 body.add_row(content)
-                if include_prompt:
-                    body.add_row(prompt_block)
+
             layout.add_row(body)
+            if include_prompt:
+                layout.add_row(_build_prompt_block())
             return layout
 
-        if not use_live:
-            try:
-                import msvcrt
-                use_tty_prompt = True
-            except Exception:
-                use_tty_prompt = False
+        # Always render the static page once; prompt updates separately.
+        if not (preserve_previous and ShellRenderer._first_render):
+            console.clear()
+            print("\x1b[3J", end="")
+        ShellRenderer._first_render = False
+        console.print(_build_layout(include_prompt=False))
 
-            def _render() -> None:
-                layout = build_layout(include_prompt=True)
-                if not (preserve_previous and ShellRenderer._first_render):
-                    console.clear()
-                    print("\x1b[3J", end="")
-                ShellRenderer._first_render = False
-                console.print(layout)
+        # Simple fallback when no tty/live capability.
+        if not has_tty or not ShellRenderer._live_prompt_enabled or not live_input:
+            console.print(_build_prompt_block())
+            selection = console.input(f"{prompt_label} ").strip().lower()
+            if not selection and ordered_choices:
+                return str(ordered_choices[selection_idx]).lower()
+            return selection
 
-            _render()
-            if not use_tty_prompt:
-                selection = console.input("")
-                return selection.lower()
+        input_text = ""
+        error_text = ""
+        last_input = None
+        last_error = None
+        last_blink = None
+        last_busy = None
+        last_selection = None
 
-            last_input = None
-            last_tick = None
-            last_busy = None
-            last_blink = None
-            last_selection = None
+        with Live(_build_prompt_block(), console=console, refresh_per_second=8, screen=False, auto_refresh=False) as live:
             while True:
                 now = time.time()
                 busy = now < ShellRenderer._busy_until
                 blink_on = int(now * 2) % 2 == 0
-                tick = int(now * 6)
                 if msvcrt.kbhit():
                     ch = msvcrt.getwch()
                     if ch in ("\x00", "\xe0"):
@@ -366,9 +325,6 @@ class ShellRenderer:
                             return val
                         error_text = f"Invalid. Options: {', '.join(valid_choices)}"
                         input_text = ""
-                        _render()
-                        last_input = None
-                        last_tick = None
                         continue
                     if ch == "\b":
                         input_text = input_text[:-1]
@@ -378,101 +334,21 @@ class ShellRenderer:
                         input_text += ch
                     if error_text:
                         error_text = ""
-                        _render()
-                        last_input = None
-                        last_tick = None
                         continue
                 needs_update = False
-                if input_text != last_input:
+                if input_text != last_input or error_text != last_error:
                     needs_update = True
-                if busy and blink_on != last_blink:
-                    needs_update = True
-                if tick != last_tick:
-                    needs_update = True
-                if busy != last_busy:
+                if busy != last_busy or blink_on != last_blink:
                     needs_update = True
                 if selection_idx != last_selection:
                     needs_update = True
                 if needs_update:
-                    _render()
+                    live.update(_build_prompt_block(), refresh=True)
                     last_input = input_text
-                    last_tick = tick
+                    last_error = error_text
                     last_blink = blink_on
                     last_busy = busy
                     last_selection = selection_idx
-                time.sleep(0.1)
-            return ""
+                time.sleep(0.08)
 
-        if not (preserve_previous and ShellRenderer._first_render):
-            console.clear()
-            print("\x1b[3J", end="")
-        ShellRenderer._first_render = False
-
-        last_input = None
-        last_error = None
-        last_blink = None
-        last_busy = None
-        last_tick = None
-        last_render = None
-        last_selection = None
-
-        with Live(
-            build_layout(),
-            console=console,
-            refresh_per_second=4,
-            screen=False,
-            auto_refresh=False,
-        ) as live:
-            while True:
-                now = time.time()
-                busy = now < ShellRenderer._busy_until
-                blink_on = int(now * 2) % 2 == 0
-                tick = int(now * 6)
-                if msvcrt.kbhit():
-                    ch = msvcrt.getwch()
-                    if ch in ("\x00", "\xe0"):
-                        try:
-                            arrow = msvcrt.getwch()
-                        except Exception:
-                            arrow = ""
-                        if ordered_choices:
-                            if arrow in ("H", "K"):
-                                selection_idx = (selection_idx - 1) % len(ordered_choices)
-                            if arrow in ("P", "M"):
-                                selection_idx = (selection_idx + 1) % len(ordered_choices)
-                    elif ch in ("\r", "\n"):
-                        val = input_text.strip().lower()
-                        if not val and ordered_choices:
-                            return str(ordered_choices[selection_idx]).lower()
-                        if val in choices:
-                            return val
-                        error_text = f"Invalid. Options: {', '.join(valid_choices)}"
-                        input_text = ""
-                    elif ch == "\b":
-                        input_text = input_text[:-1]
-                    elif ch == "\x03":
-                        raise KeyboardInterrupt
-                    elif ch.isprintable():
-                        input_text += ch
-                needs_update = False
-                if input_text != last_input or error_text != last_error:
-                    needs_update = True
-            if busy and blink_on != last_blink:
-                needs_update = True
-            if (input_text or error_text) and tick != last_tick:
-                needs_update = True
-            if busy != last_busy:
-                needs_update = True
-            if selection_idx != last_selection:
-                needs_update = True
-            if needs_update or last_render is None:
-                layout = build_layout()
-                live.update(layout, refresh=True)
-                last_render = layout
-                last_input = input_text
-                last_error = error_text
-                last_blink = blink_on
-                last_busy = busy
-                last_tick = tick
-                last_selection = selection_idx
-            time.sleep(0.1)
+        return ""
