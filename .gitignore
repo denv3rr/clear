@@ -29,6 +29,7 @@ env/
 *.swp
 notes.txt
 plan.md
+agent.ps1
 data/clients.json
 data/intel_news.json
 data/news_health.json
