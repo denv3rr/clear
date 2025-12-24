@@ -25,7 +25,6 @@
 <div align="center">
 
 [Overview](#overview) •
-[Features](#features) •
 [Screenshots](#screenshots) •
 [Quick Start](#quick-start) •
 [Configuration](#configuration) •
@@ -46,7 +45,7 @@ A portfolio management and analytics CLI.
 <!--
 Fast, readable client dashboards, regime modeling, and market context.
 Designed for iterative expansion across client workflows, risk analytics, and international tax settings when needed.
--->
+
 
 ## Features
 
@@ -75,7 +74,7 @@ Designed for iterative expansion across client workflows, risk analytics, and in
 - Health-aware sources and lazy loading
 
 </details>
-
+-->
 ## Screenshots
 
 <!--
