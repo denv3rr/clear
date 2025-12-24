@@ -16,7 +16,7 @@ def check_and_install_packages():
     """
     req_file = "requirements.txt"
     
-    print(">> Verifying Required Libraries...")
+    print(">> Verifying installs...")
     if not os.path.exists(req_file):
         print(f"Error: {req_file} not found.")
         sys.exit(1)
@@ -74,16 +74,13 @@ def check_and_install_packages():
             missing.append(pkg)
 
     if missing:
-        print(f">> Installing missing modules: {', '.join(missing)}")
+        print(f">> Installing missing items: {', '.join(missing)}")
         try:
             subprocess.check_call([sys.executable, "-m", "pip", "install", *missing])
             print(">> Dependencies installed successfully.")
         except subprocess.CalledProcessError as e:
             print(">> Error installing packages. Please check your internet connection or requirements.txt.")
             sys.exit(1)
-    else:
-        print(">> All Dependencies Verified.")
-        
 
 # --- 2. Environment Loader ---
 def load_environment():
@@ -92,27 +89,17 @@ def load_environment():
         # Lazy import dotenv
         from dotenv import load_dotenv
         load_dotenv()
-        print(">> Environment variables loaded.")
     except ImportError:
         pass 
 
 # --- 3. Main Application Launcher ---
 if __name__ == "__main__":
-    
-    # A. Check Libs
     check_and_install_packages()
-    
-    # B. Load Env
+
     load_environment()
 
-    # C. Start App 
     try:
-        from interfaces.welcome import StartupScreen
         from core.app import ClearApp
-        
-        # Prints system info using SystemHost
-        welcome = StartupScreen()
-        welcome.render() 
         
         session = ClearApp()
         session.run()

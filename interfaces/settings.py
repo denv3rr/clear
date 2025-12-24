@@ -12,7 +12,6 @@ from rich.console import Group
 from rich.text import Text
 
 from utils.input import InputSafe
-from utils.text_fx import TextEffectManager
 from utils.system import SystemHost 
 from utils.charts import ChartRenderer
 from interfaces.shell import ShellRenderer
@@ -22,7 +21,6 @@ from interfaces.navigator import Navigator
 class SettingsModule:
     def __init__(self):
         self.console = Console()
-        self.text_fx = TextEffectManager()
 
         self.settings_file = os.path.join(os.getcwd(), "config", "settings.json")
         self.settings = self._load_settings()

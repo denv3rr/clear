@@ -1,5 +1,4 @@
 rich
-terminaltexteffects
 python-dotenv
 finnhub-python
 yfinance

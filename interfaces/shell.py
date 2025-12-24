@@ -213,7 +213,7 @@ class ShellRenderer:
             for idx, key in enumerate(ordered_choices):
                 label = options_map.get(key, "")
                 highlight = idx == selection_idx
-                prefix = "➤ " if highlight else "  "
+                prefix = " " if highlight else "  "
                 style = "bold cyan" if highlight else "dim"
                 line = f"{prefix}[{str(key).upper()}] {label}"
                 table.add_row(Text(line, style=style, overflow="crop"))

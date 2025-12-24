@@ -10,7 +10,6 @@ from rich import box
 from rich.console import Group
 
 from utils.input import InputSafe
-from utils.text_fx import TextEffectManager
 from interfaces.settings import SettingsModule
 from interfaces.shell import ShellRenderer
 from utils.system import SystemHost
@@ -24,7 +23,6 @@ class MainMenu:
     """
     def __init__(self):
         self.console = Console()
-        self.text_fx = TextEffectManager()
         self.settings_module = SettingsModule()
         self._first_render = True
 
@@ -48,6 +46,52 @@ class MainMenu:
 ⠀⠀⠀⡟⣰⠏⣴⣿⣤⣤⣤⣤⣤⣌⣉⣉⣉⣉⣉⣉⣛⡛⠛⠛⠛⠛⠻⠿⠛⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠼⠯⢤⣤⣤⣭⣭⢭⣭⣭⣍⣉⣉⣉⣉⣉⣙⣋⣛⡛⠛⠛⠉
 """
+    def _build_stats_grid(self, items, two_column: bool):
+        """
+        Builds a responsive stats grid.
+        - two_column=True → label/value | label/value
+        - two_column=False → label/value stacked
+        """
+        if two_column:
+            grid = Table.grid(expand=True, padding=(0, 2))
+            grid.add_column(style="bold cyan", width=14)
+            grid.add_column(style="white")
+            grid.add_column(style="bold cyan", width=14)
+            grid.add_column(style="white")
+
+            half = (len(items) + 1) // 2
+            left = items[:half]
+            right = items[half:]
+
+            max_rows = max(len(left), len(right))
+            for i in range(max_rows):
+                l = left[i] if i < len(left) else ("", "")
+                r = right[i] if i < len(right) else ("", "")
+                grid.add_row(l[0], l[1], r[0], r[1])
+        else:
+            grid = Table.grid(expand=True, padding=(0, 1))
+            grid.add_column(style="bold cyan", width=14)
+            grid.add_column(style="white")
+
+            for label, value in items:
+                grid.add_row(label, value)
+
+        return grid
+
+    def _build_two_column_stats(self, left_items, right_items):
+        grid = Table.grid(expand=True, padding=(0, 2))
+        grid.add_column(style="bold cyan", width=14)
+        grid.add_column(style="white")
+        grid.add_column(style="bold cyan", width=14)
+        grid.add_column(style="white")
+
+        max_rows = max(len(left_items), len(right_items))
+        for i in range(max_rows):
+            l = left_items[i] if i < len(left_items) else ("", "")
+            r = right_items[i] if i < len(right_items) else ("", "")
+            grid.add_row(l[0], l[1], r[0], r[1])
+
+        return grid
 
     def _build_bulletin_panel(self, panel_width: int, client_count: int = 0) -> Panel:
         """Main menu bulletin board with status and hints."""
@@ -72,21 +116,28 @@ class MainMenu:
         title.append(user, style="bold cyan")
         title.append(".", style="bold white")
 
-        stat_rows = [
+        cwd = os.getcwd()
+        data_file = os.path.join(cwd, "data", "clients.json")
+        settings_file = os.path.join(cwd, "config", "settings.json")
+
+        stats_items = [
             ("Host", str(host)),
             ("OS", str(os_name)),
             ("CPU", str(cpu)),
             ("Memory", str(mem)),
-            ("Finnhub Key", finnhub_ok),
-            ("OpenSky Creds", opensky_ok),
-            ("Shipping URL", shipping_ok),
+            ("Workdir", cwd),
+            ("Python", data.get("python_version", "N/A")),
+            ("CPU Cores", str(data.get("cpu_cores", "N/A"))),
+            ("Clients", str(client_count)),
+            ("Finnhub", finnhub_ok),
+            ("OpenSky", opensky_ok),
+            ("Shipping", shipping_ok),
+            ("Data File", "FOUND" if os.path.exists(data_file) else "MISSING"),
+            ("Settings", "FOUND" if os.path.exists(settings_file) else "MISSING"),
         ]
-        stats = Table.grid(padding=(0, 1))
-        stats.add_column(style="bold cyan", width=14)
-        stats.add_column(style="white")
-        for label, value in stat_rows:
-            stats.add_row(label, value)
-        stats.add_row("Clients", str(client_count))
+
+        two_column = panel_width >= 110
+        stats = self._build_stats_grid(stats_items, two_column)
 
         hint_rows = [
             "Press 2 for Markets, then 5 for Global Trackers.",
@@ -140,8 +191,6 @@ class MainMenu:
         else:
             right.add_row(Align.center(Text("ASCII ART READY", style="dim")))   
 
-        # If the available width is tight, stack the art above the stats panel
-        # to avoid ellipsizing the content.
         vertical_layout = panel_width < 120 or right_width < 50
         layout = Table.grid(expand=True)
         if vertical_layout:
@@ -240,12 +289,6 @@ class MainMenu:
         action = action_map[choice]
 
         if action == "exit":
-            # To apply Burn animation to the main menu frame before exiting
-            # (or just import/change as needed)
-            # UNCOMMENT:
-            # self.text_fx.play_burn(main_panel)
-
-            #clear the console after animation
             self.clear_console()
 
         return action
