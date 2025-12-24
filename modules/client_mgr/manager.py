@@ -270,6 +270,7 @@ class ClientManager:
                 "2": "Manage Accounts",
                 "3": "Financial Toolkit",
                 "4": "Change Interval",
+                "0": "Back to Clients",
             }
             compact = compact_for_width(self.console.width)
             sidebar = build_sidebar(
@@ -292,6 +293,7 @@ class ClientManager:
             )
 
             # --- 3. Navigation ---
+            if choice == "0": break
             if choice == "m":
                 return "MAIN_MENU"
             if choice == "x":
