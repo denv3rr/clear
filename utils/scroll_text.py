@@ -18,7 +18,7 @@ class ScrollingText:
         highlights: Optional[Iterable[str]] = None,
         highlight_style: str = "bold yellow",
         base_style: Optional[str] = None,
-        band_width: int = 6,
+        band_width: int = 2,
         trail: int = 4,
     ) -> Text:
         if width <= 0:
@@ -98,7 +98,7 @@ def build_scrolling_line(
     highlights: Optional[Iterable[str]] = None,
 ) -> Text:
     config = SCROLL_PRESETS.get(preset, SCROLL_PRESETS["prompt"])
-    speed = float(config.get("speed", 4.0))
+    speed = float(config.get("speed", 1.0))
     if offset is None:
         offset = int(time.time() * speed)
     scroller = ScrollingText(text)

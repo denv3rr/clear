@@ -219,10 +219,8 @@ class MarketFeed:
             yahoo_warn = f"Missing: {', '.join(missing[:5])}"
 
         header = Text()
-        header.append("Market Feed\n", style="bold gold1")
-        header.append("Macro Dashboard loads on demand to keep navigation fast.\n", style="dim")
-        header.append("Use Global Trackers for live flights and shipping.\n", style="dim")
-        header.append("Legend: Trend uses ▲/▼, Heat bar shows move magnitude; cache age shown below.\n", style="dim")
+        header.append("Notes\n", style="bold gold1")
+        header.append("Visit https://seperet.com \n", style="dim")
 
         stats = Table.grid(padding=(0, 1))
         stats.add_column(style="bold cyan", width=16)
@@ -230,22 +228,22 @@ class MarketFeed:
         stats.add_row("Local IP", str(ip))
         stats.add_row("CPU", str(cpu))
         stats.add_row("Memory", str(mem))
-        stats.add_row("Finnhub Key", finnhub_ok)
-        stats.add_row("OpenSky Creds", opensky_ok)
-        stats.add_row("Shipping URL", shipping_ok)
+        stats.add_row("Finnhub", finnhub_ok)
+        stats.add_row("OpenSky", opensky_ok)
+        stats.add_row("Shipping", shipping_ok)
         stats.add_row("Macro Cache", macro_status)
         stats.add_row("Tracker Cache", tracker_status)
         if tracker_warn:
             stats.add_row("Tracker Warn", tracker_warn)
         if yahoo_warn:
-            stats.add_row("Yahoo Warn", yahoo_warn)
+            stats.add_row("YFinance Warn", yahoo_warn)
 
         clock_panel = build_world_clocks_panel(self.console.width)
 
         return Panel(
             Group(header, stats, clock_panel),
             border_style="yellow",
-            title="[bold]Market Overview[/bold]",
+            title="[bold]Markets[/bold]",
         )
 
 

@@ -343,7 +343,7 @@ def build_ai_sections(ai_payload: Dict[str, object]) -> List[Dict[str, object]]:
         if agg.get("sensationalism_markers"):
             rows.append(["Sensationalism", ", ".join(agg.get("sensationalism_markers"))])
         sections.append({
-            "title": "News Emotion Heatmap",
+            "title": "News Emotion",
             "rows": rows,
         })
     return sections

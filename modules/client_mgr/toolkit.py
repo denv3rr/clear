@@ -81,7 +81,7 @@ class ModelSelector:
             recommendations.append("Black-Scholes Option Pricing (Derivatives detected)")
         
         if has_crypto or client.risk_profile == "Aggressive":
-            recommendations.append("Sortino Ratio (Downside volatility focus for high risk)")
+            recommendations.append(f"[red]AGGRESSIVE WARN[/red]: Check Sortino Ratio (Downside volatility focus for high risk assets)\n  - see Multi-Model Risk Dashboard")
         
         recommendations.append("CAPM (Capital Asset Pricing Model) - Standard Equity Baseline")
         
@@ -225,13 +225,13 @@ class FinancialToolkit:
                     width=100
                 ))
             
-            self.console.print("\n[bold white]--- Quantitative Models ---[/bold white]")
+            self.console.print("\n[bold white]Quantitative Models[/bold white]")
             self.console.print("[1] CAPM Analysis (Alpha, Beta, R²)")
             self.console.print("[2] Black-Scholes Option Pricing")
             self.console.print("[3] Multi-Model Risk Dashboard")
             self.console.print("[4] Portfolio Regime Snapshot")
             self.console.print("[5] Portfolio Diagnostics")
-            self.console.print("[6] Pattern Analysis Suite")
+            self.console.print("[6] Pattern Analysis")
             self.console.print("[0] Return to Client Dashboard")
             
             choice = InputSafe.get_option(["1", "2", "3", "4", "5", "6", "0"], prompt_text="[>]")
@@ -818,11 +818,11 @@ class FinancialToolkit:
         InputSafe.pause()
 
     def _run_pattern_suite(self):
-        """Pattern analysis suite using existing return series."""
+        """Pattern analysis is using existing return series."""
         while True:
             self.console.clear()
             print("\x1b[3J", end="")
-            self.console.print(f"[bold blue]PATTERN ANALYSIS SUITE[/bold blue]")
+            self.console.print(f"[bold blue]PATTERN ANALYSIS[/bold blue]")
 
             interval = self._select_interval()
             if not interval:
@@ -1437,7 +1437,7 @@ class FinancialToolkit:
             bar = "█" * blocks if blocks > 0 else "·"
             table.add_row(label, f"{count}", f"[{color}]{bar}[/{color}]")
 
-        return Panel(table, title="[bold]Return Distribution[/bold] [dim](3D Bucket View)[/dim]", box=box.ROUNDED, border_style="magenta")
+        return Panel(table, title="[bold]Return Distribution[/bold]", box=box.ROUNDED, border_style="magenta")
     
     @staticmethod
     def compute_capm_metrics_from_holdings(

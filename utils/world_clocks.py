@@ -13,10 +13,21 @@ except ImportError:
 CLOCK_CITIES: List[Tuple[str, Optional[str]]] = [
     ("Local", None),
     ("UTC", "UTC"),
+    ("Honolulu", "Pacific/Honolulu"),
+    ("Anchorage", "America/Anchorage"), 
+    ("Los Angeles", "America/Los_Angeles"),
+    ("Denver", "America/Denver"),
+    ("Chicago", "America/Chicago"),
     ("New York", "America/New_York"),
+    ("Caracas", "America/Caracas"),
+    ("Rio de Janeiro", "America/Sao_Paulo"),
     ("London", "Europe/London"),
+    ("Berlin", "Europe/Berlin"),
+    ("Moscow", "Europe/Moscow"),
     ("Dubai", "Asia/Dubai"),
-    ("Singapore", "Asia/Singapore"),
+    ("Kabul", "Asia/Kabul"),
+    ("Mumbai", "Asia/Kolkata"),
+    ("Beijing", "Asia/Shanghai"),
     ("Tokyo", "Asia/Tokyo"),
     ("Sydney", "Australia/Sydney"),
 ]
@@ -28,7 +39,7 @@ def _localized_time(tzname: Optional[str]) -> str:
             now = datetime.now(ZoneInfo(tzname))
         else:
             now = datetime.now()
-        return now.strftime("%Y-%m-%d %H:%M")
+        return now.strftime("%Y-%m-%d • %H:%M")
     except Exception:
         return "N/A"
 
@@ -43,7 +54,6 @@ def build_world_clocks_panel(width: Optional[int] = None) -> Panel:
     panel_width = min(max(24, width or 60), 70)
     return Panel(
         table,
-        title="[bold]World Clocks[/bold]",
         box=box.ROUNDED,
         border_style="blue",
         width=panel_width,

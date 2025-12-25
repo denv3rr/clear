@@ -271,15 +271,15 @@ class SettingsModule:
             
             # Context actions
             options = {
-                "1": f"Data Refresh Interval: [bold]{net['refresh_interval']}s[/bold]",
-                "2": f"API Request Timeout: [bold]{net['timeout']}s[/bold]",
-                "3": f"Max Cache Size: [bold]{sys_conf['cache_size_mb']} MB[/bold]",
-                "4": f"Intel Auto Fetch: [bold]{intel.get('auto_fetch', True)}[/bold]",
-                "5": f"Intel Cache TTL: [bold]{intel.get('cache_ttl', 300)}s[/bold]",
-                "6": f"Trackers Auto Refresh: [bold]{trackers.get('auto_refresh', True)}[/bold]",
-                "7": f"GUI Auto Refresh: [bold]{trackers.get('gui_auto_refresh', True)}[/bold]",
-                "8": f"GUI Refresh Interval: [bold]{trackers.get('gui_refresh_interval', 10)}s[/bold]",
-                "9": f"News Cache TTL: [bold]{intel.get('news_cache_ttl', 600)}s[/bold]",
+                "1": f"Data Refresh Interval: {net['refresh_interval']}s",
+                "2": f"API Request Timeout: {net['timeout']}s",
+                "3": f"Max Cache Size: {sys_conf['cache_size_mb']} MB",
+                "4": f"Intel Auto Fetch: {intel.get('auto_fetch', True)}",
+                "5": f"Intel Cache TTL: {intel.get('cache_ttl', 300)}s",
+                "6": f"Trackers Auto Refresh: {trackers.get('auto_refresh', True)}",
+                "7": f"GUI Auto Refresh: {trackers.get('gui_auto_refresh', True)}",
+                "8": f"GUI Refresh Interval: {trackers.get('gui_refresh_interval', 10)}s",
+                "9": f"News Cache TTL: {intel.get('news_cache_ttl', 600)}s",
                 "0": "Back"
             }
             sidebar = build_sidebar(

@@ -637,7 +637,7 @@ class ClientManager:
         InputSafe.pause()
 
     def delete_client_workflow(self):
-        cid = InputSafe.get_string("Client ID to DELETE:")
+        cid = InputSafe.get_string("Client ID (full) to DELETE:")
         client = next((c for c in self.clients if c.client_id == cid), None)
         if client and InputSafe.get_yes_no(f"Delete {client.name}?"):
             self.clients.remove(client)

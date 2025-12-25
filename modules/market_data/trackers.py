@@ -73,13 +73,13 @@ class TrackerProviders:
         password = os.getenv("OPENSKY_PASSWORD")
         auth = (username, password) if username and password else None
         if not auth:
-            warnings.append("Set OPENSKY_USERNAME/OPENSKY_PASSWORD for higher rate limits.")
+            warnings.append("Set API credentials for flight and vessel information.")
 
         try:
             resp = requests.get(
                 TrackerProviders.OPENSKY_URL,
                 auth=auth,
-                headers={"User-Agent": "clear-cli/1.0"},
+                headers={"User-Agent": "clear-cli"},
                 timeout=8,
             )
             if resp.status_code != 200:
@@ -148,7 +148,7 @@ class TrackerProviders:
         warnings: List[str] = []
         url = os.getenv("SHIPPING_DATA_URL")
         if not url:
-            warnings.append("Using demo shipping data. Set SHIPPING_DATA_URL for live vessel positions.")
+            warnings.append("No vessel feed configured!")
             demo = [
                 {"lat": 0.0, "lon": 0.0, "name": "-", "type": "cargo", "industry": None},
                 {"lat": 0.0, "lon": 0.0, "name": "-", "type": "tanker", "industry": None},
@@ -519,8 +519,6 @@ class GlobalTrackers:
             warn_lines = list(dict.fromkeys(warnings))
             warn_lines.append(f"Flights: {len([p for p in points if p.get('kind') == 'flight'])} | Ships: {len([p for p in points if p.get('kind') == 'ship'])}")
             warn_lines.append("Last update: " + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self._last_refresh)))
-            warn_lines.append("Note: OpenSky anonymous access is rate-limited and may return empty datasets.")
-            warn_lines.append("Setup: OpenSky -> OPENSKY_USERNAME/OPENSKY_PASSWORD | Shipping -> SHIPPING_DATA_URL")
             warn_text = Text("\n".join(warn_lines), style="dim")
         else:
             live_lines = [
@@ -534,7 +532,7 @@ class GlobalTrackers:
         layout = Table.grid(expand=True)
         layout.add_column(ratio=1)
         if demo_shipping and mode in ("ships", "combined"):
-            note = Text("Showing default shipping list (no live container ship feed configured).", style="yellow")
+            note = Text("No vessel feed configured!", style="yellow")
             layout.add_row(Panel(note, box=box.SQUARE, border_style="dim"))
         layout.add_row(Panel(table, title="Live Tracker Feed", box=box.ROUNDED))
         layout.add_row(warn_panel)

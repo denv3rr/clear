@@ -128,7 +128,6 @@ class MainMenu:
             ("Workdir", cwd),
             ("Python", data.get("python_version", "N/A")),
             ("CPU Cores", str(data.get("cpu_cores", "N/A"))),
-            ("Clients", str(client_count)),
             ("Finnhub", finnhub_ok),
             ("OpenSky", opensky_ok),
             ("Shipping", shipping_ok),
