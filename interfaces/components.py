@@ -151,8 +151,10 @@ class UIComponents:
         table.add_column("Ticker", style="bold cyan")
         table.add_column("Trend", justify="center", width=5)
         table.add_column("Quantity", justify="right")
-        table.add_column("Avg Cost", justify="right")
+        table.add_column("Price/Share", justify="right")
+        table.add_column("Market Price", justify="right")
         table.add_column("Market Value", style="green", justify="right")
+        table.add_column("Acquired", style="dim", justify="left")
         table.add_column("Alloc %", justify="right", style="dim")
         table.add_column("Heat", justify="center", width=6)
 
@@ -167,6 +169,7 @@ class UIComponents:
             lots = account.lots.get(ticker, [])
 
             mkt_val = float(data.get("market_value", 0.0) or 0.0)
+            mkt_price = float(data.get("price", 0.0) or 0.0)
             change_pct = float(data.get("change_pct", 0.0) or 0.0)
 
             # Calc Avg Cost
@@ -187,7 +190,9 @@ class UIComponents:
                 trend,
                 f"{total_qty:,.4f}",
                 f"${avg_cost:,.2f}",
+                f"${mkt_price:,.2f}",
                 f"${mkt_val:,.2f}",
+                "-",
                 f"{alloc_pct:>.1f}%",
                 heat_bar,
             )
@@ -199,6 +204,8 @@ class UIComponents:
                     "",
                     Text(f"{lot['qty']:,.4f}", style="dim", justify="right"),
                     Text(f"${lot['basis']:,.2f}", style="dim", justify="right"),
+                    Text(f"${mkt_price:,.2f}", style="dim", justify="right"),
+                    "",
                     Text(lot.get("timestamp", "N/A"), style="dim"),
                     "",
                     "",

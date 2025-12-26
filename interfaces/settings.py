@@ -30,9 +30,31 @@ class SettingsModule:
 
     def _default_settings(self):
         return {
-            "display": {"theme": "default", "color_highlight": "blue", "show_animations": True, "show_tips": False},
+            "display": {
+                "theme": "default",
+                "color_highlight": "blue",
+                "show_animations": True,
+                "show_tips": False,
+                "scroll_text": {
+                    "prompt": {
+                        "speed": 8.0,
+                        "band_width": 6,
+                        "trail": 0,
+                        "highlight_style": "bold bright_white",
+                        "base_style": "dim",
+                    },
+                    "warning": {
+                        "speed": 8.0,
+                        "band_width": 6,
+                        "trail": 0,
+                        "highlight_style": "bold bright_white",
+                        "base_style": "dim",
+                    },
+                },
+            },
             "network": {"refresh_interval": 60, "timeout": 5, "retries": 3},
             "system": {"cache_size_mb": 512, "log_level": "INFO"},
+            "tools": {"perm_entropy_order": 3, "perm_entropy_delay": 1},
             "credentials": {"smtp": {}, "finnhub_key": ""},
             "intel": {"auto_fetch": True, "cache_ttl": 300, "news_cache_ttl": 600},
             "trackers": {
@@ -46,15 +68,27 @@ class SettingsModule:
                 "sources_enabled": ["CNBC Top", "CNBC World", "MarketWatch", "BBC Business"],
                 "conflict_sources_enabled": ["CNBC World", "BBC Business", "MarketWatch"],
                 "conflict_categories_enabled": ["conflict", "world", "defense", "shipping", "energy"],
+                "aliases_file": "config/news_aliases.json",
             },
             "ai": {
                 "enabled": True,
-                "provider": "rule_based",
+                "provider": "auto",
                 "model_id": "rule_based_v1",
                 "persona": "advisor_legal_v1",
                 "cache_ttl": 21600,
                 "cache_file": "data/ai_report_cache.json",
                 "endpoint": "",
+                "news_freshness_hours": 4,
+            },
+            "reporting": {
+                "ai": {
+                    "enabled": True,
+                    "provider": "auto",
+                    "model_id": "llama3",
+                    "endpoint": "http://127.0.0.1:11434",
+                    "timeout_seconds": 15,
+                    "news_freshness_hours": 4,
+                }
             },
         }
 
@@ -73,12 +107,25 @@ class SettingsModule:
                     data[k] = v
             if "intel" not in data or not isinstance(data.get("intel"), dict):
                 data["intel"] = defaults["intel"]
+            if "tools" not in data or not isinstance(data.get("tools"), dict):
+                data["tools"] = defaults["tools"]
             if "trackers" not in data or not isinstance(data.get("trackers"), dict):
                 data["trackers"] = defaults["trackers"]
             if "news" not in data or not isinstance(data.get("news"), dict):
                 data["news"] = defaults["news"]
             if "ai" not in data or not isinstance(data.get("ai"), dict):
                 data["ai"] = defaults["ai"]
+            if "display" not in data or not isinstance(data.get("display"), dict):
+                data["display"] = defaults["display"]
+            else:
+                display = data["display"]
+                if "scroll_text" not in display or not isinstance(display.get("scroll_text"), dict):
+                    display["scroll_text"] = defaults["display"]["scroll_text"]
+                else:
+                    scroll_text = display["scroll_text"]
+                    for preset, preset_defaults in defaults["display"]["scroll_text"].items():
+                        if preset not in scroll_text or not isinstance(scroll_text.get(preset), dict):
+                            scroll_text[preset] = preset_defaults
             return data
         except Exception:
             return defaults
@@ -212,6 +259,8 @@ class SettingsModule:
             hl = self.settings['display']['color_highlight']
             anim = self.settings['display']['show_animations']
             tips = self.settings['display'].get('show_tips', False)
+            scroll = self.settings['display'].get('scroll_text', {})
+            prompt_speed = scroll.get('prompt', {}).get('speed', 14.0)
             compact = compact_for_width(self.console.width)
             
             # Context actions
@@ -219,6 +268,7 @@ class SettingsModule:
                 "1": f"Highlight Color (Current: [bold {hl}]{hl}[/])",
                 "2": f"UI Animations (Current: {anim})",
                 "3": f"Show Tips (Current: {tips})",
+                "4": f"Scroll Text (Prompt Speed: {prompt_speed})",
                 "0": "Back"
             }
             sidebar = build_sidebar(
@@ -235,6 +285,7 @@ class SettingsModule:
             status.add_row("Highlight Color", hl)
             status.add_row("Animations", str(anim))
             status.add_row("Show Tips", str(tips))
+            status.add_row("Scroll Prompt Speed", str(prompt_speed))
             panel = Panel(status, title="DISPLAY & UX SETTINGS", box=box.ROUNDED)
             choice = ShellRenderer.render_and_prompt(
                 Group(panel),
@@ -257,8 +308,134 @@ class SettingsModule:
                 self.settings['display']['show_animations'] = not self.settings['display']['show_animations']
             if choice == "3":
                 self.settings['display']['show_tips'] = not bool(self.settings['display'].get('show_tips', False))
+            if choice == "4":
+                self._menu_scroll_text()
             self._save_settings()
 
+    def _menu_scroll_text(self):
+        while True:
+            scroll = self.settings['display'].get('scroll_text', {})
+            prompt = scroll.get("prompt", {})
+            warning = scroll.get("warning", {})
+            compact = compact_for_width(self.console.width)
+            options = {
+                "1": f"Edit Prompt Preset (Speed: {prompt.get('speed', 14.0)})",
+                "2": f"Edit Warning Preset (Speed: {warning.get('speed', 14.0)})",
+                "3": "Reset Scroll Presets to Defaults",
+                "0": "Back",
+            }
+            sidebar = build_sidebar(
+                [("Scroll Text", {k: v for k, v in options.items() if k != "0"})],
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+                compact=compact,
+            )
+            rows = Table(box=box.SIMPLE, show_header=False)
+            rows.add_column("Preset", style="bold cyan")
+            rows.add_column("Speed", justify="right")
+            rows.add_column("Band", justify="right")
+            rows.add_column("Trail", justify="right")
+            rows.add_row(
+                "Prompt",
+                str(prompt.get("speed", 14.0)),
+                str(prompt.get("band_width", 2)),
+                str(prompt.get("trail", 0)),
+            )
+            rows.add_row(
+                "Warning",
+                str(warning.get("speed", 14.0)),
+                str(warning.get("band_width", 2)),
+                str(warning.get("trail", 0)),
+            )
+            panel = Panel(rows, title="SCROLL TEXT", box=box.ROUNDED)
+            choice = ShellRenderer.render_and_prompt(
+                Group(panel),
+                context_actions=options,
+                valid_choices=list(options.keys()) + ["m", "x"],
+                prompt_label=">",
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+                sidebar_override=sidebar,
+            )
+            if choice == "0" or choice == "m":
+                break
+            if choice == "x":
+                Navigator.exit_app()
+            if choice == "1":
+                self._menu_scroll_preset("prompt")
+            if choice == "2":
+                self._menu_scroll_preset("warning")
+            if choice == "3":
+                if InputSafe.get_yes_no("Reset scroll presets to defaults?"):
+                    defaults = self._default_settings()
+                    self.settings['display']['scroll_text'] = defaults['display']['scroll_text']
+            self._save_settings()
+
+    def _menu_scroll_preset(self, preset_name: str):
+        while True:
+            scroll = self.settings['display'].setdefault('scroll_text', {})
+            preset = scroll.setdefault(preset_name, {})
+            compact = compact_for_width(self.console.width)
+            options = {
+                "1": f"Speed (Current: {preset.get('speed', 14.0)})",
+                "2": f"Band Width (Current: {preset.get('band_width', 2)})",
+                "3": f"Trail (Current: {preset.get('trail', 0)})",
+                "4": f"Highlight Style (Current: {preset.get('highlight_style', 'bold bright_white')})",
+                "5": f"Base Style (Current: {preset.get('base_style', 'white')})",
+                "0": "Back",
+            }
+            sidebar = build_sidebar(
+                [(preset_name.title(), {k: v for k, v in options.items() if k != "0"})],
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+                compact=compact,
+            )
+            rows = Table(box=box.SIMPLE, show_header=False)
+            rows.add_column("Field", style="bold cyan")
+            rows.add_column("Value", justify="right")
+            rows.add_row("Speed", str(preset.get("speed", 14.0)))
+            rows.add_row("Band Width", str(preset.get("band_width", 2)))
+            rows.add_row("Trail", str(preset.get("trail", 0)))
+            rows.add_row("Highlight Style", str(preset.get("highlight_style", "bold bright_white")))
+            rows.add_row("Base Style", str(preset.get("base_style", "white")))
+            panel = Panel(rows, title=f"{preset_name.upper()} SCROLL PRESET", box=box.ROUNDED)
+            choice = ShellRenderer.render_and_prompt(
+                Group(panel),
+                context_actions=options,
+                valid_choices=list(options.keys()) + ["m", "x"],
+                prompt_label=">",
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+                sidebar_override=sidebar,
+            )
+            if choice == "0" or choice == "m":
+                break
+            if choice == "x":
+                Navigator.exit_app()
+            if choice == "1":
+                val = InputSafe.get_float("Speed (0.1-60):", 0.1, 60)
+                preset["speed"] = float(val)
+            elif choice == "2":
+                val = InputSafe.get_float("Band width (1-10):", 1, 10)
+                preset["band_width"] = int(val)
+            elif choice == "3":
+                val = InputSafe.get_float("Trail (0-10):", 0, 10)
+                preset["trail"] = int(val)
+            elif choice == "4":
+                val = InputSafe.get_string("Highlight style (e.g., bold bright_white):")
+                if val:
+                    preset["highlight_style"] = val
+            elif choice == "5":
+                val = InputSafe.get_string("Base style (e.g., white or dim):")
+                if val:
+                    preset["base_style"] = val
+            scroll[preset_name] = preset
+            self.settings['display']['scroll_text'] = scroll
+            self._save_settings()
 
     # --- 3. System & Performance ---
     def _menu_system_perf(self):
@@ -343,6 +520,65 @@ class SettingsModule:
                 self.settings['intel']['news_cache_ttl'] = int(val)
             self._save_settings()
 
+    def _menu_tools(self):
+        while True:
+            tools = self.settings.get("tools", {})
+            order = tools.get("perm_entropy_order", 3)
+            delay = tools.get("perm_entropy_delay", 1)
+            compact = compact_for_width(self.console.width)
+
+            options = {
+                "1": f"Permutation Order (m) (Current: {order})",
+                "2": f"Permutation Delay (tau) (Current: {delay})",
+                "0": "Back",
+            }
+            sidebar = build_sidebar(
+                [("Tools", {k: v for k, v in options.items() if k != "0"})],
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+                compact=compact,
+            )
+            rows = Table(box=box.SIMPLE, show_header=False)
+            rows.add_column("Field", style="bold cyan", width=22)
+            rows.add_column("Value", style="white", width=10, justify="right")
+            rows.add_column("Notes", style="dim")
+            rows.add_row("Permutation Order (m)", str(order), "Higher = more patterns; needs more data")
+            rows.add_row("Permutation Delay (tau)", str(delay), "Spacing between points in the ordinal pattern")
+            panel = Panel(rows, title="TOOLS SETTINGS", box=box.ROUNDED)
+            choice = ShellRenderer.render_and_prompt(
+                Group(panel),
+                context_actions=options,
+                valid_choices=list(options.keys()) + ["m", "x"],
+                prompt_label=">",
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+                sidebar_override=sidebar,
+            )
+            if choice == "0" or choice == "m":
+                break
+            if choice == "x":
+                Navigator.exit_app()
+            if choice == "1":
+                val = InputSafe.get_string("Permutation order (m, >=2):")
+                if val and val.isdigit():
+                    num = int(val)
+                    if num >= 2:
+                        tools["perm_entropy_order"] = num
+                    else:
+                        self.console.print("[yellow]Order must be >= 2.[/yellow]")
+            elif choice == "2":
+                val = InputSafe.get_string("Permutation delay (tau, >=1):")
+                if val and val.isdigit():
+                    num = int(val)
+                    if num >= 1:
+                        tools["perm_entropy_delay"] = num
+                    else:
+                        self.console.print("[yellow]Delay must be >= 1.[/yellow]")
+            self.settings["tools"] = tools
+            self._save_settings()
+
     def _menu_tracker_filters(self):
         while True:
             trackers = self.settings.get('trackers', {})
@@ -406,7 +642,13 @@ class SettingsModule:
             conflict_categories = set([str(n).lower() for n in news.get("conflict_categories_enabled", [])])
             compact = compact_for_width(self.console.width)
 
-            options = {"0": "Back", "N": "Manage News Sources", "C": "Manage Conflict Sources", "K": "Manage Conflict Categories"}
+            options = {
+                "0": "Back",
+                "N": "Manage News Sources",
+                "C": "Manage Conflict Sources",
+                "K": "Manage Conflict Categories",
+                "A": "Set Alias File",
+            }
             rows = Table(box=box.SIMPLE, show_header=False)
             rows.add_column("Key", style="bold cyan", width=4)
             rows.add_column("Source", style="white")
@@ -415,6 +657,7 @@ class SettingsModule:
             rows.add_row("N", "News sources", f"{len(enabled)}/{len(DEFAULT_SOURCES)}")
             rows.add_row("C", "Conflict sources", f"{len(conflict_enabled)}/{len(DEFAULT_SOURCES)}")
             rows.add_row("K", "Conflict categories", f"{len(conflict_categories)}/{len(CONFLICT_CATEGORIES)}")
+            rows.add_row("A", "Alias file", str(news.get("aliases_file", "config/news_aliases.json")))
 
             sidebar = build_sidebar(
                 [("Sources", {k: v for k, v in options.items() if k != "0"})],
@@ -463,6 +706,27 @@ class SettingsModule:
                 )
             elif choice == "K":
                 self._menu_conflict_categories(CONFLICT_CATEGORIES, conflict_categories)
+            elif choice == "A":
+                val = InputSafe.get_string("Alias file path (blank for default):")
+                news = self.settings.get("news", {})
+                if val.strip():
+                    alias_path = val.strip()
+                    if not os.path.exists(alias_path):
+                        proceed = InputSafe.get_yes_no("Alias file not found. Save anyway?")
+                        if not proceed:
+                            continue
+                    else:
+                        from modules.market_data.intel import validate_alias_file
+                        ok, message = validate_alias_file(alias_path)
+                        if not ok:
+                            proceed = InputSafe.get_yes_no(f"Alias file invalid ({message}). Save anyway?")
+                            if not proceed:
+                                continue
+                    news["aliases_file"] = alias_path
+                else:
+                    news["aliases_file"] = "config/news_aliases.json"
+                self.settings["news"] = news
+                self._save_settings()
 
     def _menu_news_source_picker(self, title: str, sources: list, enabled: set, target_key: str):
         while True:
@@ -570,12 +834,13 @@ class SettingsModule:
     def _menu_ai_synthesis(self):
         while True:
             ai = self.settings.get("ai", {})
-            provider = ai.get("provider", "rule_based")
+            provider = ai.get("provider", "auto")
             persona = ai.get("persona", "advisor_legal_v1")
             cache_ttl = ai.get("cache_ttl", 21600)
             model_id = ai.get("model_id", "rule_based_v1")
             endpoint = ai.get("endpoint", "")
             enabled = ai.get("enabled", True)
+            freshness = ai.get("news_freshness_hours", 4)
             compact = compact_for_width(self.console.width)
 
             options = {
@@ -585,6 +850,7 @@ class SettingsModule:
                 "4": f"Persona (Current: {persona})",
                 "5": f"Cache TTL (Current: {cache_ttl}s)",
                 "6": f"Endpoint (Current: {endpoint or 'none'})",
+                "7": f"News Freshness (Current: {freshness}h)",
                 "0": "Back",
             }
             sidebar = build_sidebar(
@@ -603,6 +869,7 @@ class SettingsModule:
             rows.add_row("Persona", str(persona))
             rows.add_row("Cache TTL", f"{cache_ttl}s")
             rows.add_row("Endpoint", endpoint or "none")
+            rows.add_row("News Freshness", f"{freshness}h")
             panel = Panel(rows, title="AI SYNTHESIS", box=box.ROUNDED)
             choice = ShellRenderer.render_and_prompt(
                 Group(panel),
@@ -621,7 +888,7 @@ class SettingsModule:
             if choice == "1":
                 ai["enabled"] = not bool(ai.get("enabled", True))
             elif choice == "2":
-                val = InputSafe.get_string("Provider (rule_based, local_http):")
+                val = InputSafe.get_string("Provider (auto, ollama, local_http, rule_based):")
                 if val:
                     ai["provider"] = val.strip()
             elif choice == "3":
@@ -639,7 +906,95 @@ class SettingsModule:
             elif choice == "6":
                 val = InputSafe.get_string("Endpoint URL (blank to clear):")
                 ai["endpoint"] = val.strip()
+            elif choice == "7":
+                val = InputSafe.get_string("News freshness (hours):")
+                if val and val.isdigit():
+                    ai["news_freshness_hours"] = int(val)
             self.settings["ai"] = ai
+            self._save_settings()
+
+    def _menu_reporting_ai(self):
+        while True:
+            reporting = self.settings.get("reporting", {})
+            ai = reporting.get("ai", {})
+            provider = ai.get("provider", "auto")
+            model_id = ai.get("model_id", "llama3")
+            endpoint = ai.get("endpoint", "http://127.0.0.1:11434")
+            enabled = ai.get("enabled", True)
+            timeout = ai.get("timeout_seconds", 15)
+            freshness = ai.get("news_freshness_hours", 4)
+            compact = compact_for_width(self.console.width)
+
+            options = {
+                "1": f"Enabled (Current: {enabled})",
+                "2": f"Provider (Current: {provider})",
+                "3": f"Model ID (Current: {model_id})",
+                "4": f"Endpoint (Current: {endpoint or 'none'})",
+                "5": f"Timeout (Current: {timeout}s)",
+                "6": f"News Freshness (Current: {freshness}h)",
+                "R": "Refresh Health",
+                "0": "Back",
+            }
+            sidebar = build_sidebar(
+                [("Reporting AI", {k: v for k, v in options.items() if k != "0"})],
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+                compact=compact,
+            )
+            rows = Table(box=box.SIMPLE, show_header=False)
+            rows.add_column("Field", style="bold cyan", width=16)
+            rows.add_column("Value", style="white")
+            from modules.reporting.engine import report_health_check
+            health = report_health_check()
+            rows.add_row("Enabled", str(enabled))
+            rows.add_row("Provider", str(provider))
+            rows.add_row("Model ID", str(model_id))
+            rows.add_row("Endpoint", endpoint or "none")
+            rows.add_row("Timeout", f"{timeout}s")
+            rows.add_row("News Freshness", f"{freshness}h")
+            rows.add_row("Ollama", "OK" if health.get("ollama_reachable") else "Unavailable")
+            rows.add_row("Local HTTP", "OK" if health.get("local_http_reachable") else "Unavailable")
+            panel = Panel(rows, title="REPORTING AI", box=box.ROUNDED)
+            choice = ShellRenderer.render_and_prompt(
+                Group(panel),
+                context_actions=options,
+                valid_choices=list(options.keys()) + ["m", "x"],
+                prompt_label=">",
+                show_main=True,
+                show_back=True,
+                show_exit=True,
+                sidebar_override=sidebar,
+            )
+            if choice == "0" or choice == "m":
+                break
+            if choice == "x":
+                Navigator.exit_app()
+            if choice == "R":
+                continue
+            if choice == "1":
+                ai["enabled"] = not bool(ai.get("enabled", True))
+            elif choice == "2":
+                val = InputSafe.get_string("Provider (auto, ollama, local_http, rule_based):")
+                if val:
+                    ai["provider"] = val.strip()
+            elif choice == "3":
+                val = InputSafe.get_string("Model ID:")
+                if val:
+                    ai["model_id"] = val.strip()
+            elif choice == "4":
+                val = InputSafe.get_string("Endpoint URL (blank to clear):")
+                ai["endpoint"] = val.strip()
+            elif choice == "5":
+                val = InputSafe.get_string("Timeout (seconds):")
+                if val and val.isdigit():
+                    ai["timeout_seconds"] = int(val)
+            elif choice == "6":
+                val = InputSafe.get_string("News freshness (hours):")
+                if val and val.isdigit():
+                    ai["news_freshness_hours"] = int(val)
+            reporting["ai"] = ai
+            self.settings["reporting"] = reporting
             self._save_settings()
 
     # --- 4. Diagnostics ---
@@ -746,7 +1101,7 @@ class SettingsModule:
         while True:
             compact = compact_for_width(self.console.width)
             panel = self._build_info_panel()
-            
+
             # Modular Menu Implementation
             options = {
                 "1": "API & Security",
@@ -755,9 +1110,12 @@ class SettingsModule:
                 "4": "Tracker Filters",
                 "5": "News Sources",
                 "6": "AI Synthesis",
-                "7": "Run Quick Diagnostics",
-                "8": "Reset Settings to Defaults",
-                "0": "Return to Main"
+                "7": "Reporting AI",
+                "8": "Tools",
+                "9": "Run Quick Diagnostics",
+                "10": "Reset Settings to Defaults",
+                "11": "Normalize Lot Timestamps",
+                "0": "Return to Main",
             }
             sidebar = build_sidebar(
                 [
@@ -768,10 +1126,13 @@ class SettingsModule:
                         "4": "Tracker Filters",
                         "5": "News Sources",
                         "6": "AI Synthesis",
+                        "7": "Reporting AI",
+                        "8": "Tools",
                     }),
                     ("Diagnostics", {
-                        "7": "Run Quick Diagnostics",
-                        "8": "Reset to Defaults",
+                        "9": "Run Quick Diagnostics",
+                        "10": "Reset to Defaults",
+                        "11": "Normalize Lot Timestamps",
                     }),
                 ],
                 show_main=True,
@@ -787,10 +1148,11 @@ class SettingsModule:
                     ("News TTL", f"{self.settings.get('intel', {}).get('news_cache_ttl', 600)}s"),
                     ("Trackers", str(self.settings.get("trackers", {}).get("auto_refresh", True))),
                     ("AI", str(self.settings.get("ai", {}).get("enabled", True))),
+                    ("Report AI", str(self.settings.get("reporting", {}).get("ai", {}).get("enabled", True))),
                 ],
                 compact=compact,
             )
-            
+
             choice = ShellRenderer.render_and_prompt(
                 Group(status_panel, panel),
                 context_actions=options,
@@ -802,7 +1164,7 @@ class SettingsModule:
                 sidebar_override=sidebar,
             )
 
-            from interfaces.menus import MainMenu as m # for cls/clear
+            from interfaces.menus import MainMenu as m  # for cls/clear
             if choice == "0":
                 m.clear_console()
                 break
@@ -811,14 +1173,49 @@ class SettingsModule:
                 break
             if choice == "x":
                 Navigator.exit_app()
-            elif choice == "1": self._menu_api_security()
-            elif choice == "2": self._menu_display_ux()
-            elif choice == "3": self._menu_system_perf()
-            elif choice == "4": self._menu_tracker_filters()
-            elif choice == "5": self._menu_news_sources()
-            elif choice == "6": self._menu_ai_synthesis()
-            elif choice == "7": self._run_deep_diagnostics()
+            elif choice == "1":
+                self._menu_api_security()
+            elif choice == "2":
+                self._menu_display_ux()
+            elif choice == "3":
+                self._menu_system_perf()
+            elif choice == "4":
+                self._menu_tracker_filters()
+            elif choice == "5":
+                self._menu_news_sources()
+            elif choice == "6":
+                self._menu_ai_synthesis()
+            elif choice == "7":
+                self._menu_reporting_ai()
             elif choice == "8":
+                self._menu_tools()
+            elif choice == "9":
+                self._run_deep_diagnostics()
+            elif choice == "10":
                 if InputSafe.get_yes_no("Reset settings to defaults?"):
                     self.settings = self._default_settings()
                     self._save_settings()
+            elif choice == "11":
+                self._normalize_legacy_lot_timestamps()
+
+    def _normalize_legacy_lot_timestamps(self):
+        self.console.print("\n[bold]Normalize Lot Timestamps[/bold]")
+        if not InputSafe.get_yes_no("Rewrite legacy lot timestamps to ISO-8601?"):
+            return
+        try:
+            from modules.client_mgr.data_handler import DataHandler
+            path = DataHandler.CLIENT_FILE
+            if not os.path.exists(path):
+                self.console.print("[yellow]No clients.json found.[/yellow]")
+                return
+            with open(path, "r", encoding="ascii") as f:
+                payload = json.load(f)
+            payload, migrated = DataHandler._migrate_clients_payload(payload)
+            if not migrated:
+                self.console.print("[dim]No legacy timestamps found.[/dim]")
+                return
+            with open(path, "w", encoding="ascii") as f:
+                json.dump(payload, f, indent=4)
+            self.console.print("[green]Lot timestamps normalized to ISO-8601.[/green]")
+        except Exception as exc:
+            self.console.print(f"[red]Failed to normalize lot timestamps: {exc}[/red]")

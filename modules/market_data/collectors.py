@@ -1,11 +1,15 @@
 import json
 import time
 import os
+import re
+from email.utils import parsedate_to_datetime
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional
 from xml.etree import ElementTree
 
 import requests
+
+USER_AGENT = "ClearNews/1.0 (+local)"
 
 
 @dataclass
@@ -29,7 +33,7 @@ class RSSCollector(Collector):
     def fetch(self) -> CollectorResult:
         items: List[Dict[str, object]] = []
         try:
-            resp = requests.get(self.url, timeout=8)
+            resp = requests.get(self.url, timeout=8, headers={"User-Agent": USER_AGENT})
             if resp.status_code != 200:
                 return CollectorResult(self.name, [])
             root = ElementTree.fromstring(resp.content)
@@ -49,6 +53,48 @@ class RSSCollector(Collector):
                 "source": self.name,
             })
         return CollectorResult(self.name, items)
+
+
+def _normalize_title(title: str) -> str:
+    cleaned = re.sub(r"[^a-z0-9]+", " ", (title or "").lower()).strip()
+    return re.sub(r"\s+", " ", cleaned)
+
+
+def _parse_published_ts(value: str) -> Optional[int]:
+    if not value:
+        return None
+    try:
+        parsed = parsedate_to_datetime(value)
+    except Exception:
+        return None
+    if parsed is None:
+        return None
+    try:
+        return int(parsed.timestamp())
+    except Exception:
+        return None
+
+
+def _dedupe_items(items: List[Dict[str, object]]) -> List[Dict[str, object]]:
+    deduped: Dict[tuple, Dict[str, object]] = {}
+    for item in items:
+        title = _normalize_title(str(item.get("title", "")))
+        source = (item.get("source") or "").strip().lower()
+        url = (item.get("url") or "").strip().lower()
+        key = (title, source)
+        existing = deduped.get(key)
+        if existing is None:
+            deduped[key] = item
+            continue
+        existing_ts = existing.get("published_ts")
+        incoming_ts = item.get("published_ts")
+        if incoming_ts and (not existing_ts or incoming_ts > existing_ts):
+            deduped[key] = item
+            continue
+        if not existing.get("url") and item.get("url"):
+            deduped[key] = item
+            continue
+    return list(deduped.values())
 
 
 DEFAULT_SOURCES = [
@@ -180,13 +226,16 @@ def fetch_news_items(limit: int = 40, enabled: Optional[List[str]] = None) -> Di
     enriched: List[Dict[str, object]] = []
     for item in items:
         title = str(item.get("title", ""))
+        published_ts = _parse_published_ts(str(item.get("published", "")))
         meta = classify_event(title)
         enriched.append({
             **item,
             **meta,
+            "published_ts": published_ts,
         })
-        if len(enriched) >= limit:
-            break
+    enriched = _dedupe_items(enriched)
+    enriched.sort(key=lambda it: (it.get("published_ts") or 0), reverse=True)
+    enriched = enriched[:limit]
     return {
         "items": enriched,
         "skipped": skipped,
@@ -194,14 +243,18 @@ def fetch_news_items(limit: int = 40, enabled: Optional[List[str]] = None) -> Di
     }
 
 
-def load_cached_news(path: str, ttl_seconds: int) -> Optional[List[Dict[str, object]]]:
+def load_cached_news(
+    path: str,
+    ttl_seconds: int,
+    allow_stale: bool = False,
+) -> Optional[List[Dict[str, object]]]:
     try:
         with open(path, "r", encoding="ascii") as f:
             payload = json.load(f)
         if not isinstance(payload, dict):
             return None
         ts = int(payload.get("ts", 0) or 0)
-        if (int(time.time()) - ts) > ttl_seconds:
+        if not allow_stale and (int(time.time()) - ts) > ttl_seconds:
             return None
         return payload.get("items", [])
     except Exception:

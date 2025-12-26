@@ -1,8 +1,12 @@
 # interfaces/navigator.py
 import sys
 import os
-from rich.console import Console
+from rich.console import Console, Group
+from rich.panel import Panel
+from rich.table import Table
+from rich import box
 from utils.input import InputSafe
+from interfaces.shell import ShellRenderer
 
 class Navigator:
     """
@@ -30,12 +34,25 @@ class Navigator:
         # We merge them so InputSafe formats them identically (e.g. [1], [M])
         combined_options = {**local_options, **global_opts}
 
-        # 3. Display & Get Input
+        # 3. Display & Get Input (ShellRenderer selector)
+        table = Table.grid(padding=(0, 1))
+        table.add_column()
         if show_menu:
-            InputSafe.display_options(combined_options, title=title)
-        
-        # Helper to get valid keys including case-insensitivity
-        choice = InputSafe.get_option(list(combined_options.keys()), prompt_text="[>]").upper()
+            for key, label in combined_options.items():
+                table.add_row(f"[bold cyan]{key}[/bold cyan]  {label}")
+        else:
+            table.add_row("[dim]Select an option[/dim]")
+        panel = Panel(table, title=title, border_style="cyan", box=box.ROUNDED)
+        choice = ShellRenderer.render_and_prompt(
+            Group(panel),
+            context_actions=combined_options,
+            valid_choices=list(combined_options.keys()) + ["m", "x"],
+            prompt_label=">",
+            show_main=False,
+            show_back=False,
+            show_exit=False,
+            show_header=False,
+        ).upper()
 
         # 4. Handle Global Actions Immediately
         if choice == "X":

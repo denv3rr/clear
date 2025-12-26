@@ -1,0 +1,8 @@
+{
+  "AAPL": ["Apple", "Apple Inc"],
+  "MSFT": ["Microsoft", "Microsoft Corp"],
+  "GOOGL": ["Alphabet", "Google"],
+  "AMZN": ["Amazon", "Amazon.com"],
+  "SPY": ["S&P 500", "SPDR S&P 500"],
+  "QQQ": ["Nasdaq 100", "Invesco QQQ"]
+}

@@ -179,18 +179,19 @@ class MainMenu:
         left.add_row(Text(""))
         if show_tips:
             left.add_row(Align.center(hints))
-        clock_panel = build_world_clocks_panel(left_width)
-        if clock_panel:
-            left.add_row(Align.center(clock_panel))
 
         right = Table.grid(expand=True)
-        right.add_column(width=right_width, overflow="crop", no_wrap=True)      
+        right.add_column(width=right_width, overflow="crop", no_wrap=True)
         if ascii_art:
             right.add_row(Align.left(Text(ascii_art, overflow="crop", no_wrap=True)))
         else:
-            right.add_row(Align.center(Text("ASCII ART READY", style="dim")))   
+            right.add_row(Align.center(Text("SEPERET.COM", style="dim")))   
 
         vertical_layout = panel_width < 120 or right_width < 50
+        if not vertical_layout:
+            clock_panel = build_world_clocks_panel(left_width)
+            if clock_panel:
+                left.add_row(Align.center(clock_panel))
         layout = Table.grid(expand=True)
         if vertical_layout:
             layout.add_column(ratio=1)

@@ -30,6 +30,194 @@ from utils.report_synth import ReportSynthesizer, build_report_context, build_ai
 _CAPM_CACHE = {}  # key -> {"ts": int, "data": dict}
 _CAPM_TTL_SECONDS = 900  # 15 minutes
 
+# Metric glossary for Tools output (plain-language context).
+_METRIC_GLOSSARY = {
+    "mean_annual": {
+        "label": "Annual Return (mu)",
+        "definition": "Average return per year based on the observed period, annualized.",
+        "high_low": "Higher is better if positive; negative implies losses over the window.",
+        "range": "Varies by asset class; compare to a benchmark.",
+        "units": "Percent per year.",
+        "limits": "Sensitive to outliers and sample length; past mean may not persist.",
+    },
+    "vol_annual": {
+        "label": "Volatility (sigma)",
+        "definition": "Annualized standard deviation of returns.",
+        "high_low": "Higher means larger swings; lower means smoother returns.",
+        "range": "Equities often 10-40% annualized.",
+        "units": "Percent per year.",
+        "limits": "Assumes symmetric risk; does not capture tail risk well.",
+    },
+    "sharpe": {
+        "label": "Sharpe Ratio",
+        "definition": "Excess return per unit of total volatility.",
+        "high_low": "Higher is better; below 0 means underperforming risk-free rate.",
+        "range": "0-1 typical, >1 strong, >2 exceptional (context matters).",
+        "units": "Ratio.",
+        "limits": "Assumes normal returns; very window-dependent.",
+    },
+    "sortino": {
+        "label": "Sortino Ratio",
+        "definition": "Excess return per unit of downside volatility.",
+        "high_low": "Higher is better; focuses on negative moves only.",
+        "range": "Compare within strategy; not directly comparable across assets.",
+        "units": "Ratio.",
+        "limits": "Depends on downside threshold and sample size.",
+    },
+    "beta": {
+        "label": "Beta",
+        "definition": "Sensitivity to benchmark moves (systematic risk).",
+        "high_low": ">1 amplifies benchmark moves; <1 is defensive; <0 moves opposite.",
+        "range": "0-2 common; can be negative for hedges.",
+        "units": "Ratio.",
+        "limits": "Unstable with short histories or regime shifts.",
+    },
+    "alpha_annual": {
+        "label": "Alpha (Annual)",
+        "definition": "Annualized excess return vs CAPM expectation.",
+        "high_low": "Positive suggests outperformance after adjusting for beta.",
+        "range": "Depends on strategy; compare to peers.",
+        "units": "Percent per year.",
+        "limits": "Noisy; sensitive to beta, benchmark, and risk-free rate.",
+    },
+    "r_squared": {
+        "label": "R-Squared",
+        "definition": "Fraction of return variance explained by the benchmark.",
+        "high_low": "Higher means benchmark explains returns; low means more idiosyncratic.",
+        "range": "0 to 1.",
+        "units": "Ratio.",
+        "limits": "High R-squared does not imply good performance.",
+    },
+    "tracking_error": {
+        "label": "Tracking Error",
+        "definition": "Volatility of excess returns vs the benchmark.",
+        "high_low": "Higher means more active deviation from benchmark.",
+        "range": "Often 1-8% for active strategies.",
+        "units": "Percent per year.",
+        "limits": "Does not show direction; can be high for intentional tilts.",
+    },
+    "information_ratio": {
+        "label": "Information Ratio",
+        "definition": "Excess return per unit of tracking error.",
+        "high_low": "Higher is better; negative means underperforming benchmark.",
+        "range": "0-0.5 modest, >0.5 strong (context matters).",
+        "units": "Ratio.",
+        "limits": "Sensitive to window length and benchmark choice.",
+    },
+    "treynor": {
+        "label": "Treynor Ratio",
+        "definition": "Excess return per unit of beta (systematic risk).",
+        "high_low": "Higher is better for market risk taken.",
+        "range": "Compare within similar benchmark exposure.",
+        "units": "Percent per beta.",
+        "limits": "Assumes beta is stable and meaningful.",
+    },
+    "m_squared": {
+        "label": "M-squared",
+        "definition": "Risk-adjusted return scaled to benchmark volatility.",
+        "high_low": "Positive means outperformed at benchmark risk level.",
+        "range": "Compare to benchmark return.",
+        "units": "Percent per year.",
+        "limits": "Assumes benchmark is appropriate and volatility is stable.",
+    },
+    "max_drawdown": {
+        "label": "Max Drawdown",
+        "definition": "Worst peak-to-trough decline in the period.",
+        "high_low": "More negative is worse; close to 0 is better.",
+        "range": "-100% to 0%.",
+        "units": "Percent.",
+        "limits": "Single worst event; highly window-dependent.",
+    },
+    "var_95": {
+        "label": "VaR 95%",
+        "definition": "Historical loss threshold not exceeded 95% of the time.",
+        "high_low": "More negative means larger potential loss.",
+        "range": "Depends on asset and horizon.",
+        "units": "Percent per period.",
+        "limits": "Assumes future resembles past; ignores tail losses beyond VaR.",
+    },
+    "cvar_95": {
+        "label": "CVaR 95%",
+        "definition": "Average loss in the worst 5% of periods.",
+        "high_low": "More negative is worse; captures tail severity.",
+        "range": "Depends on asset and horizon.",
+        "units": "Percent per period.",
+        "limits": "Requires enough tail data; unstable with short samples.",
+    },
+    "var_99": {
+        "label": "VaR 99%",
+        "definition": "Historical loss threshold not exceeded 99% of the time.",
+        "high_low": "More negative means larger potential loss.",
+        "range": "Depends on asset and horizon.",
+        "units": "Percent per period.",
+        "limits": "Sparse tail data; sensitive to outliers.",
+    },
+    "cvar_99": {
+        "label": "CVaR 99%",
+        "definition": "Average loss in the worst 1% of periods.",
+        "high_low": "More negative is worse; focuses on extreme tail risk.",
+        "range": "Depends on asset and horizon.",
+        "units": "Percent per period.",
+        "limits": "Very unstable with limited history.",
+    },
+    "entropy": {
+        "label": "Entropy",
+        "definition": "Shannon entropy of the return distribution (bin-based).",
+        "high_low": "Higher implies more uniform return outcomes; lower implies concentrated outcomes.",
+        "range": "Depends on binning; compare within the same setup.",
+        "units": "Bits (relative).",
+        "limits": "Sensitive to bin choices and sample size; this is not permutation entropy.",
+    },
+    "perm_entropy": {
+        "label": "Permutation Entropy",
+        "definition": "Entropy of ordinal return patterns (order m, delay tau).",
+        "high_low": "Higher implies more complex or irregular time-order patterns.",
+        "range": "Normalized 0 to 1 for the chosen order.",
+        "units": "Ratio (0-1).",
+        "limits": "Sensitive to order and delay; short series can understate complexity. Configure in Settings -> Tools.",
+    },
+    "hurst": {
+        "label": "Hurst Exponent",
+        "definition": "Trend persistence measure from price path.",
+        "high_low": ">0.5 suggests trend persistence; <0.5 suggests mean reversion.",
+        "range": "Typically 0 to 1.",
+        "units": "Ratio.",
+        "limits": "Requires enough data; non-stationary series can mislead.",
+    },
+    "skew": {
+        "label": "Skewness",
+        "definition": "Asymmetry of returns around the mean.",
+        "high_low": "Positive skew implies more right-tail wins; negative implies downside tail.",
+        "range": "Often between -1 and 1 for liquid assets.",
+        "units": "Ratio.",
+        "limits": "Very noisy with small samples.",
+    },
+    "kurtosis": {
+        "label": "Kurtosis",
+        "definition": "Tail heaviness relative to normal distribution.",
+        "high_low": "Higher than 3 implies fatter tails.",
+        "range": "3 is normal; >3 heavy tails.",
+        "units": "Ratio.",
+        "limits": "Highly sensitive to outliers.",
+    },
+    "autocorr_lag1": {
+        "label": "Autocorr (Lag 1)",
+        "definition": "Correlation between returns and prior period returns.",
+        "high_low": "Positive suggests momentum; negative suggests mean reversion.",
+        "range": "-1 to 1.",
+        "units": "Correlation.",
+        "limits": "Unstable with short histories; can flip by regime.",
+    },
+    "downside_vol_annual": {
+        "label": "Downside Volatility",
+        "definition": "Annualized volatility of returns below the threshold.",
+        "high_low": "Higher means more downside variability.",
+        "range": "Varies; compare to total volatility.",
+        "units": "Percent per year.",
+        "limits": "Depends on chosen threshold and sample length.",
+    },
+}
+
 # Interval presets for toolkit models
 TOOLKIT_PERIOD = {"1W": "1mo", "1M": "6mo", "3M": "1y", "6M": "2y", "1Y": "5y"}
 TOOLKIT_INTERVAL = {"1W": "60m", "1M": "1d", "3M": "1d", "6M": "1d", "1Y": "1d"}
@@ -128,6 +316,9 @@ class FinancialToolkit:
     """
     Advanced financial analysis tools context-aware of a specific client's portfolio.
     """
+    PERM_ENTROPY_ORDER = 3
+    PERM_ENTROPY_DELAY = 1
+
     def __init__(self, client: Client):
         self.client = client
         self.console = Console()
@@ -135,11 +326,16 @@ class FinancialToolkit:
         self.benchmark_ticker = "SPY" # Using S&P 500 ETF as standard benchmark
         self._pattern_cache = {}
         self._settings_file = os.path.join(os.getcwd(), "config", "settings.json")
+        tool_settings = self._load_tool_settings()
+        self.perm_entropy_order = tool_settings["perm_entropy_order"]
+        self.perm_entropy_delay = tool_settings["perm_entropy_delay"]
+        interval = str(self.client.active_interval or "1M").upper()
+        self._selected_interval = interval if interval in TOOLKIT_PERIOD else "1M"
 
     def _load_ai_settings(self) -> dict:
         defaults = {
             "enabled": True,
-            "provider": "rule_based",
+            "provider": "auto",
             "model_id": "rule_based_v1",
             "persona": "advisor_legal_v1",
             "cache_ttl": 21600,
@@ -160,6 +356,40 @@ class FinancialToolkit:
             if key not in ai_conf:
                 ai_conf[key] = value
         return ai_conf
+
+    def _load_tool_settings(self) -> dict:
+        defaults = {
+            "perm_entropy_order": self.PERM_ENTROPY_ORDER,
+            "perm_entropy_delay": self.PERM_ENTROPY_DELAY,
+        }
+        if not os.path.exists(self._settings_file):
+            return defaults
+        try:
+            with open(self._settings_file, "r", encoding="ascii") as f:
+                data = json.load(f)
+            tools_conf = data.get("tools", {}) if isinstance(data, dict) else {}
+        except Exception:
+            return defaults
+        if not isinstance(tools_conf, dict):
+            tools_conf = {}
+        order = tools_conf.get("perm_entropy_order", defaults["perm_entropy_order"])
+        delay = tools_conf.get("perm_entropy_delay", defaults["perm_entropy_delay"])
+        try:
+            order = int(order)
+        except Exception:
+            order = defaults["perm_entropy_order"]
+        try:
+            delay = int(delay)
+        except Exception:
+            delay = defaults["perm_entropy_delay"]
+        if order < 2:
+            order = defaults["perm_entropy_order"]
+        if delay < 1:
+            delay = defaults["perm_entropy_delay"]
+        return {
+            "perm_entropy_order": order,
+            "perm_entropy_delay": delay,
+        }
 
     def _render_ai_sections(self, sections: list) -> Optional[Group]:
         if not sections:
@@ -208,12 +438,36 @@ class FinancialToolkit:
         sections = build_ai_sections(ai_payload)
         return self._render_ai_sections(sections)
 
+    def _prompt_menu(
+        self,
+        title: str,
+        options: Dict[str, str],
+        show_main: bool = True,
+        show_back: bool = True,
+        show_exit: bool = True,
+    ) -> str:
+        table = Table.grid(padding=(0, 1))
+        table.add_column()
+        for key, label in options.items():
+            table.add_row(f"[bold cyan]{key}[/bold cyan]  {label}")
+        panel = Panel(table, title=title, border_style="cyan", box=box.ROUNDED)
+        return ShellRenderer.render_and_prompt(
+            Group(panel),
+            context_actions=options,
+            valid_choices=list(options.keys()) + ["m", "x"],
+            prompt_label=">",
+            show_main=show_main,
+            show_back=show_back,
+            show_exit=show_exit,
+            show_header=False,
+        )
+
     def run(self):
-        """Main loop for the Client Financial Toolkit."""
+        """Main loop for the Client Tools module."""
         while True:
             self.console.clear()
             print("\x1b[3J", end="")
-            self.console.print(f"[bold gold1]FINANCIAL TOOLKIT | {self.client.name}[/bold gold1]")
+            self.console.print(f"[bold gold1]TOOLS | {self.client.name}[/bold gold1]")
             
             # --- AUTO MODEL SELECTION ---
             recs = ModelSelector.analyze_suitability(self.client)
@@ -232,12 +486,29 @@ class FinancialToolkit:
             self.console.print("[4] Portfolio Regime Snapshot")
             self.console.print("[5] Portfolio Diagnostics")
             self.console.print("[6] Pattern Analysis")
+            self.console.print(f"[7] Change Interval (Current: {self._selected_interval})")
             self.console.print("[0] Return to Client Dashboard")
             
-            choice = InputSafe.get_option(["1", "2", "3", "4", "5", "6", "0"], prompt_text="[>]")
-            
+            choice = self._prompt_menu(
+                "Tools Menu",
+                {
+                    "1": "CAPM Analysis (Alpha, Beta, R-squared)",
+                    "2": "Black-Scholes Option Pricing",
+                    "3": "Multi-Model Risk Dashboard",
+                    "4": "Portfolio Regime Snapshot",
+                    "5": "Portfolio Diagnostics",
+                    "6": "Pattern Analysis",
+                    "7": f"Change Interval (Current: {self._selected_interval})",
+                    "0": "Return to Client Dashboard",
+                },
+            )
+
             if choice == "0":
                 break
+            if choice == "m":
+                break
+            if choice == "x":
+                return
             elif choice == "1":
                 self._run_capm_analysis()
             elif choice == "2":
@@ -250,6 +521,10 @@ class FinancialToolkit:
                 self._run_portfolio_diagnostics()
             elif choice == "6":
                 self._run_pattern_suite()
+            elif choice == "7":
+                updated = self._get_interval_or_select(force=True)
+                if updated:
+                    self._selected_interval = updated
 
     # --- REAL-TIME DATA ANALYSIS TOOLS ---
 
@@ -310,6 +585,12 @@ class FinancialToolkit:
         )
 
         self.console.print(Align.center(results))
+        self.console.print(
+            self._render_metric_glossary(
+                ["beta", "alpha_annual", "r_squared", "sharpe", "vol_annual"],
+                title="CAPM Metric Context",
+            )
+        )
 
         risk_level = "Moderate"
         if beta is not None and beta > 1.2:
@@ -358,6 +639,7 @@ class FinancialToolkit:
         ai_panel = self._build_ai_panel(report, "capm_analysis")
         if ai_panel:
             self.console.print(ai_panel)
+        self.console.print(self._render_capm_context(capm))
 
         # Interpretation Logic
         if beta and beta > 1.2:
@@ -404,31 +686,56 @@ class FinancialToolkit:
         # 5. Risk Free Rate (r)
         risk_free = InputSafe.get_float("Risk-Free Rate % (e.g. 4.5):", min_val=0.0) / 100.0
 
-        # --- CALCULATION ---
-        d1 = (math.log(spot_price / strike_price) + (risk_free + 0.5 * volatility ** 2) * time_years) / (volatility * math.sqrt(time_years))
-        d2 = d1 - volatility * math.sqrt(time_years)
+        call_price, put_price = self._black_scholes_price(
+            spot_price,
+            strike_price,
+            time_years,
+            volatility,
+            risk_free,
+        )
 
-        def N(x):
-            return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
-
-        call_price = spot_price * N(d1) - strike_price * math.exp(-risk_free * time_years) * N(d2)
-        put_price = strike_price * math.exp(-risk_free * time_years) * N(-d2) - spot_price * N(-d1)
+        def format_price(value: float) -> str:
+            if value is None or not math.isfinite(value):
+                return "N/A"
+            return f"${value:.4f}"
 
         # --- OUTPUT ---
         results = Table(title=f"Option Chain Valuation: {ticker if ticker else 'CUSTOM'}", box=box.ROUNDED)
         results.add_column("Metric", style="dim")
         results.add_column("Value", style="bold white")
-        
+
         results.add_row("Underlying Price", f"${spot_price:.2f}")
         results.add_row("Strike Price", f"${strike_price:.2f}")
         results.add_row("Time (Years)", f"{time_years:.4f}")
         results.add_section()
-        results.add_row("[bold green]CALL Value[/bold green]", f"[bold green]${call_price:.4f}[/bold green]")
-        results.add_row("[bold red]PUT Value[/bold red]", f"[bold red]${put_price:.4f}[/bold red]")
+        results.add_row("[bold green]CALL Value[/bold green]", f"[bold green]{format_price(call_price)}[/bold green]")
+        results.add_row("[bold red]PUT Value[/bold red]", f"[bold red]{format_price(put_price)}[/bold red]")
 
         self.console.print("\n")
         self.console.print(Align.center(results))
+        self.console.print(self._render_black_scholes_context(spot_price, strike_price, time_years, volatility, risk_free))
         InputSafe.pause()
+
+    @staticmethod
+    def _black_scholes_price(
+        spot_price: float,
+        strike_price: float,
+        time_years: float,
+        volatility: float,
+        risk_free: float,
+    ) -> Tuple[float, float]:
+        if spot_price <= 0 or strike_price <= 0 or time_years <= 0 or volatility <= 0:
+            return float("nan"), float("nan")
+
+        d1 = (math.log(spot_price / strike_price) + (risk_free + 0.5 * volatility ** 2) * time_years) / (volatility * math.sqrt(time_years))
+        d2 = d1 - volatility * math.sqrt(time_years)
+
+        def N(x: float) -> float:
+            return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+        call_price = spot_price * N(d1) - strike_price * math.exp(-risk_free * time_years) * N(d2)
+        put_price = strike_price * math.exp(-risk_free * time_years) * N(-d2) - spot_price * N(-d1)
+        return float(call_price), float(put_price)
 
     def _run_multi_model_dashboard(self):
         """Compute a multi-model risk dashboard for the client's portfolio."""
@@ -436,7 +743,7 @@ class FinancialToolkit:
         print("\x1b[3J", end="")
         self.console.print(f"[bold blue]MULTI-MODEL RISK DASHBOARD[/bold blue]")
 
-        interval = self._select_interval()
+        interval = self._get_interval_or_select()
         if not interval:
             return
 
@@ -476,6 +783,7 @@ class FinancialToolkit:
         self.console.print(header)
         self.console.print(self._render_risk_metrics_table(metrics))
         self.console.print(self._render_return_distribution(returns))
+        self.console.print(self._render_risk_dashboard_context(interval, meta))
         InputSafe.pause()
 
     def _aggregate_lots(self) -> Dict[str, List[Dict[str, Any]]]:
@@ -491,7 +799,7 @@ class FinancialToolkit:
         print("\x1b[3J", end="")
         self.console.print(f"[bold blue]PORTFOLIO REGIME SNAPSHOT[/bold blue]")
 
-        interval = self._select_interval()
+        interval = self._get_interval_or_select()
         if not interval:
             return
 
@@ -520,6 +828,7 @@ class FinancialToolkit:
         snap["scope_label"] = "Portfolio"
         snap["interval"] = interval
         self.console.print(RegimeRenderer.render(snap))
+        self.console.print(self._render_regime_context(snap))
         InputSafe.pause()
 
     def _run_portfolio_diagnostics(self):
@@ -528,7 +837,7 @@ class FinancialToolkit:
         print("\x1b[3J", end="")
         self.console.print(f"[bold blue]PORTFOLIO DIAGNOSTICS[/bold blue]")
 
-        interval = self._select_interval()
+        interval = self._get_interval_or_select()
         if not interval:
             return
 
@@ -655,6 +964,24 @@ class FinancialToolkit:
             table.add_row("R-Squared", f"{capm.get('r_squared'):.2f}", "Benchmark fit")
 
         self.console.print(table)
+        self.console.print(
+            self._render_metric_glossary(
+                [
+                    "mean_annual",
+                    "vol_annual",
+                    "sharpe",
+                    "sortino",
+                    "max_drawdown",
+                    "var_95",
+                    "cvar_95",
+                    "beta",
+                    "alpha_annual",
+                    "r_squared",
+                ],
+                title="Diagnostics Metric Context",
+            )
+        )
+        self.console.print(self._render_diagnostics_context(interval, total_val, manual_total, sector_rows, hhi))
         if sector_rows:
             sector_table = Table(box=box.SIMPLE, expand=True, title="Sector Concentration")
             sector_table.add_column("Sector", style="bold cyan")
@@ -824,7 +1151,7 @@ class FinancialToolkit:
             print("\x1b[3J", end="")
             self.console.print(f"[bold blue]PATTERN ANALYSIS[/bold blue]")
 
-            interval = self._select_interval()
+            interval = self._get_interval_or_select()
             if not interval:
                 return
 
@@ -848,8 +1175,15 @@ class FinancialToolkit:
                 return
 
             payload = self._get_pattern_payload(returns, interval, meta)
-            self.console.print(self._render_pattern_summary(payload))
+            self.console.print(
+                self._render_metric_glossary(
+                    ["entropy", "perm_entropy", "hurst"],
+                    title="Pattern Metric Context",
+                )
+            )
+            self.console.print(self._render_entropy_panel(payload))
             entropy = payload.get("entropy")
+            perm_entropy = payload.get("perm_entropy")
             hurst = payload.get("hurst")
             spectrum = payload.get("spectrum") or []
             change_points = payload.get("change_points") or []
@@ -861,6 +1195,8 @@ class FinancialToolkit:
                 signals.append(f"Change points: {len(change_points)}")
             if entropy is not None:
                 signals.append(f"Entropy {float(entropy):.2f}")
+            if perm_entropy is not None:
+                signals.append(f"Perm Entropy {float(perm_entropy):.2f}")
             if hurst is not None:
                 signals.append(f"Hurst {float(hurst):.2f}")
             impacts = []
@@ -893,16 +1229,23 @@ class FinancialToolkit:
             ai_panel = self._build_ai_panel(report, "pattern_suite")
             if ai_panel:
                 self.console.print(ai_panel)
-            self.console.print("")
-            self.console.print("[1] Spectrum + Waveform")
-            self.console.print("[2] Change-Point Timeline")
-            self.console.print("[3] Motif Similarity")
-            self.console.print("[4] Volatility Forecast")
-            self.console.print("[5] Entropy + Hurst Summary")
-            self.console.print("[0] Back")
-            choice = InputSafe.get_option(["1", "2", "3", "4", "5", "0"], prompt_text="[>]")
+            choice = self._prompt_menu(
+                "Pattern Analysis",
+                {
+                    "1": "Spectrum + Waveform",
+                    "2": "Change-Point Timeline",
+                    "3": "Motif Similarity",
+                    "4": "Volatility Forecast",
+                    "0": "Back",
+                },
+                show_back=True,
+            )
 
             if choice == "0":
+                return
+            if choice == "m":
+                return
+            if choice == "x":
                 return
             if choice == "1":
                 self.console.print(self._render_spectrum_panel(payload))
@@ -912,8 +1255,6 @@ class FinancialToolkit:
                 self.console.print(self._render_motif_panel(payload))
             elif choice == "4":
                 self.console.print(self._render_vol_forecast_panel(payload))
-            elif choice == "5":
-                self.console.print(self._render_entropy_panel(payload))
             InputSafe.pause()
 
     def _get_pattern_payload(self, returns: pd.Series, interval: str, meta: str) -> Dict[str, Any]:
@@ -928,6 +1269,11 @@ class FinancialToolkit:
         motifs = self._motif_similarity(returns, window=20, top=3)
         vol_forecast = self._ewma_vol_forecast(returns, lam=0.94, steps=6)
         entropy = self._shannon_entropy(returns, bins=12)
+        perm_entropy = self._permutation_entropy(
+            values,
+            order=self.perm_entropy_order,
+            delay=self.perm_entropy_delay,
+        )
         hurst = self._hurst_exponent(values)
 
         payload = {
@@ -940,6 +1286,9 @@ class FinancialToolkit:
             "motifs": motifs,
             "vol_forecast": vol_forecast,
             "entropy": entropy,
+            "perm_entropy": perm_entropy,
+            "perm_entropy_order": self.perm_entropy_order,
+            "perm_entropy_delay": self.perm_entropy_delay,
             "hurst": hurst,
         }
         self._pattern_cache[key] = payload
@@ -1040,6 +1389,29 @@ class FinancialToolkit:
         return max(0.0, entropy)
 
     @staticmethod
+    def _permutation_entropy(values: List[float], order: int = 3, delay: int = 1) -> float:
+        if not values or order < 2 or delay < 1:
+            return 0.0
+        n = len(values)
+        max_start = n - delay * (order - 1)
+        if max_start <= 0:
+            return 0.0
+        patterns = {}
+        for start in range(max_start):
+            window = [values[start + i * delay] for i in range(order)]
+            ranks = tuple(np.argsort(window))
+            patterns[ranks] = patterns.get(ranks, 0) + 1
+        total = float(sum(patterns.values()))
+        if total <= 0:
+            return 0.0
+        probs = np.array([count / total for count in patterns.values()], dtype=float)
+        entropy = float(-np.sum(probs * np.log2(probs)))
+        max_entropy = math.log2(math.factorial(order))
+        if max_entropy <= 0:
+            return 0.0
+        return max(0.0, min(1.0, entropy / max_entropy))
+
+    @staticmethod
     def _hurst_exponent(values: List[float]) -> float:
         if not values or len(values) < 20:
             return 0.5
@@ -1054,20 +1426,25 @@ class FinancialToolkit:
         poly = np.polyfit(np.log(list(lags)), np.log(tau), 1)
         return float(poly[0] * 2.0)
 
-    def _render_pattern_summary(self, payload: Dict[str, Any]) -> Panel:
+    def _render_pattern_summary(self, payload: Dict[str, Any]) -> Table:
         summary = Table(box=box.SIMPLE, expand=True)
         summary.add_column("Signal", style="bold cyan")
         summary.add_column("Value", justify="right")
         summary.add_column("Notes", style="dim")
 
         summary.add_row("Interval", payload["interval"], payload["meta"])
-        summary.add_row("Entropy", f"{payload['entropy']:.2f}", "Higher = noisier")
-        summary.add_row("Hurst", f"{payload['hurst']:.2f}", " <0.5 mean-revert, >0.5 trend")
-        summary.add_row("Change Points", str(len(payload["change_points"])), "CUSUM breaks")
+        summary.add_row("Entropy", f"{payload['entropy']:.2f}", "Return distribution uniformity")
+        summary.add_row(
+            "Perm Entropy",
+            f"{payload['perm_entropy']:.2f}",
+            f"Ordering complexity (m={payload['perm_entropy_order']}, tau={payload['perm_entropy_delay']})",
+        )
+        summary.add_row("Hurst", f"{payload['hurst']:.2f}", "<0.5 mean-revert, >0.5 trend")
+        summary.add_row("Change Points", str(len(payload["change_points"])), "CUSUM regime shifts")
         if payload["spectrum"]:
             freq, power = payload["spectrum"][0]
             summary.add_row("Top Frequency", f"{freq:.3f}", f"Power {power:.2f}")
-        return Panel(summary, title="Pattern Summary", box=box.ROUNDED, border_style="blue")
+        return summary
 
     def _render_spectrum_panel(self, payload: Dict[str, Any]) -> Panel:
         values = payload["values"]
@@ -1132,13 +1509,51 @@ class FinancialToolkit:
         return Panel(table, title="Volatility Forecast (EWMA)", box=box.ROUNDED, border_style="cyan")
 
     def _render_entropy_panel(self, payload: Dict[str, Any]) -> Panel:
+        summary = self._render_pattern_summary(payload)
         table = Table(box=box.SIMPLE, expand=True)
         table.add_column("Metric", style="bold cyan")
         table.add_column("Value", justify="right")
         table.add_column("Signal", style="dim")
-        table.add_row("Entropy", f"{payload['entropy']:.2f}", "Higher = noisier")
+        table.add_row("Entropy", f"{payload['entropy']:.2f}", "Uniformity of return distribution")
+        table.add_row(
+            "Perm Entropy",
+            f"{payload['perm_entropy']:.2f}",
+            f"Ordering complexity (m={payload['perm_entropy_order']}, tau={payload['perm_entropy_delay']})",
+        )
         table.add_row("Hurst", f"{payload['hurst']:.2f}", "Trend vs mean-revert")
-        return Panel(table, title="Entropy + Hurst", box=box.ROUNDED, border_style="blue")
+        context = Table(box=box.SIMPLE, expand=True)
+        context.add_column("What it measures", style="bold white")
+        context.add_column("How to read it", style="dim")
+        context.add_row(
+            "Entropy (bins)",
+            "Higher = returns spread across bins; lower = clustered outcomes. Sensitive to bin count.",
+        )
+        context.add_row(
+            "Permutation entropy",
+            "Higher = more complex order patterns; lower = repetitive ordering. Needs enough points.",
+        )
+        context.add_row(
+            "Hurst exponent",
+            "<0.5 mean-reverting tendency; >0.5 trend persistence. Not a forecast.",
+        )
+        context.add_row(
+            "Change points",
+            "CUSUM flags shifts in mean level; best used to spot regime breaks.",
+        )
+        context.add_row(
+            "Spectrum",
+            "FFT highlights dominant cycle lengths; power shows cycle strength.",
+        )
+        return Panel(
+            Group(
+                Panel(summary, title="Pattern Summary", box=box.SIMPLE),
+                table,
+                Panel(context, title="Pattern Context", box=box.SIMPLE),
+            ),
+            title="Pattern Analysis",
+            box=box.ROUNDED,
+            border_style="blue",
+        )
 
     @staticmethod
     def _render_waveform(values: List[float], width: int = 60, height: int = 10) -> Text:
@@ -1206,14 +1621,20 @@ class FinancialToolkit:
 
     def _select_interval(self) -> Optional[str]:
         options = list(TOOLKIT_PERIOD.keys())
-        self.console.print("\n[bold white]Select Interval[/bold white]")
-        for opt in options:
-            self.console.print(f"[{opt}]")
-        self.console.print("[0] Back")
-        choice = InputSafe.get_option(options + ["0"], prompt_text="[>]")
-        if choice == "0":
+        options_map = {opt: opt for opt in options}
+        options_map["0"] = "Back"
+        choice = self._prompt_menu("Select Interval", options_map, show_back=True)
+        if choice in ("0", "m"):
             return None
         return choice.upper()
+
+    def _get_interval_or_select(self, force: bool = False) -> Optional[str]:
+        if not force and self._selected_interval:
+            return self._selected_interval
+        choice = self._select_interval()
+        if choice:
+            self._selected_interval = choice
+        return choice
 
     def _aggregate_holdings(self) -> Dict[str, float]:
         consolidated = {}
@@ -1383,6 +1804,33 @@ class FinancialToolkit:
         cvar = float(tail.mean()) if not tail.empty else float(q)
         return float(q), cvar
 
+    def _render_metric_glossary(self, keys: List[str], title: str = "Metric Context") -> Panel:
+        table = Table(box=box.SIMPLE, expand=True)
+        table.add_column("Metric", style="bold cyan", width=18)
+        table.add_column("Definition", style="white")
+        table.add_column("High/Low", style="dim")
+        table.add_column("Units/Range", style="dim")
+        table.add_column("Limits", style="dim")
+
+        seen = set()
+        for key in keys:
+            if key in seen:
+                continue
+            seen.add(key)
+            info = _METRIC_GLOSSARY.get(key)
+            if not info:
+                continue
+            units_range = f"{info.get('units')} | {info.get('range')}"
+            table.add_row(
+                info.get("label", key),
+                info.get("definition", ""),
+                info.get("high_low", ""),
+                units_range,
+                info.get("limits", ""),
+            )
+
+        return Panel(table, title=f"[bold]{title}[/bold]", box=box.ROUNDED, border_style="dim")
+
     def _render_risk_metrics_table(self, metrics: Dict[str, Any]) -> Panel:
         table = Table(box=box.SIMPLE, expand=True)
         table.add_column("Metric", style="bold cyan")
@@ -1409,7 +1857,29 @@ class FinancialToolkit:
         table.add_row("VaR 99%", fmt(metrics.get("var_99"), "{:+.2%}"), "Historical quantile")
         table.add_row("CVaR 99%", fmt(metrics.get("cvar_99"), "{:+.2%}"), "Expected tail loss")
 
-        return Panel(table, title="[bold]Model Metrics[/bold]", box=box.ROUNDED, border_style="blue")
+        metrics_panel = Panel(table, title="[bold]Model Metrics[/bold]", box=box.ROUNDED, border_style="blue")
+        glossary = self._render_metric_glossary(
+            [
+                "mean_annual",
+                "vol_annual",
+                "sharpe",
+                "sortino",
+                "beta",
+                "alpha_annual",
+                "r_squared",
+                "tracking_error",
+                "information_ratio",
+                "treynor",
+                "m_squared",
+                "max_drawdown",
+                "var_95",
+                "cvar_95",
+                "var_99",
+                "cvar_99",
+            ],
+            title="Risk Metric Context",
+        )
+        return Group(metrics_panel, glossary)
 
     def _render_return_distribution(self, returns: pd.Series) -> Panel:
         bins = [-0.10, -0.05, -0.02, -0.01, 0.0, 0.01, 0.02, 0.05, 0.10]
@@ -1438,7 +1908,76 @@ class FinancialToolkit:
             table.add_row(label, f"{count}", f"[{color}]{bar}[/{color}]")
 
         return Panel(table, title="[bold]Return Distribution[/bold]", box=box.ROUNDED, border_style="magenta")
-    
+
+    def _render_capm_context(self, capm: Dict[str, Any]) -> Panel:
+        points = capm.get("points") if isinstance(capm, dict) else None
+        points_label = str(points) if points else "N/A"
+        lines = [
+            f"CAPM compares the portfolio to {self.benchmark_ticker} to estimate beta and alpha.",
+            "Alpha is annualized excess return over CAPM expectations; beta is sensitivity to benchmark moves.",
+            "R-squared shows how much of the return variance the benchmark explains.",
+            f"Sample points: {points_label}; risk-free rate defaults to 4% annual unless configured.",
+            "Short histories or regime shifts can make beta/alpha unstable; treat as descriptive.",
+        ]
+        return Panel("\n".join(lines), title="[bold]CAPM Context[/bold]", box=box.SIMPLE, border_style="dim")
+
+    def _render_risk_dashboard_context(self, interval: str, meta: str) -> Panel:
+        lines = [
+            f"Metrics use historical returns for the selected interval ({interval}).",
+            "VaR/CVaR are historical tail summaries, not guaranteed loss limits.",
+            "Return distribution buckets show frequency, not probability of future outcomes.",
+            f"Data window: {meta}.",
+        ]
+        return Panel("\n".join(lines), title="[bold]Risk Dashboard Context[/bold]", box=box.SIMPLE, border_style="dim")
+
+    def _render_diagnostics_context(
+        self,
+        interval: str,
+        total_val: float,
+        manual_total: float,
+        sector_rows: List[Tuple[str, float]],
+        hhi: float,
+    ) -> Panel:
+        hhi_note = f"HHI {hhi:.3f}" if hhi > 0 else "HHI N/A"
+        manual_note = f"Manual assets included: {manual_total:,.0f}" if manual_total > 0 else "Manual assets excluded"
+        sector_note = "Sector mix based on available sector tags." if sector_rows else "Sector mix unavailable."
+        lines = [
+            f"Diagnostics summarize {interval} performance, concentration, and recent movers.",
+            manual_note,
+            sector_note,
+            f"{hhi_note} (higher = more concentrated).",
+            "Values use current market prices and do not include tax effects.",
+        ]
+        return Panel("\n".join(lines), title="[bold]Diagnostics Context[/bold]", box=box.SIMPLE, border_style="dim")
+
+    def _render_black_scholes_context(
+        self,
+        spot_price: float,
+        strike_price: float,
+        time_years: float,
+        volatility: float,
+        risk_free: float,
+    ) -> Panel:
+        lines = [
+            "Black-Scholes estimates European option fair value using spot, strike, time, volatility, and the risk-free rate.",
+            "Assumes constant volatility and rates, no dividends, and no early exercise.",
+            "Time uses a 365-day year; results are theoretical and ignore bid/ask spreads.",
+            f"Inputs: S={spot_price:.2f}, K={strike_price:.2f}, T={time_years:.2f}y, sigma={volatility:.2%}, r={risk_free:.2%}.",
+            "Higher spot or volatility increases call value; higher strike increases put value.",
+        ]
+        return Panel("\n".join(lines), title="[bold]Model Context[/bold]", box=box.SIMPLE, border_style="dim")
+
+    def _render_regime_context(self, snap: Dict[str, Any]) -> Panel:
+        interval = snap.get("interval", "N/A")
+        scope = snap.get("scope_label", "Portfolio")
+        lines = [
+            f"Regimes are inferred states from the {scope.lower()} value series over the {interval} interval.",
+            "Confidence reflects model separation between regimes, not a forward forecast.",
+            "Short histories or missing data can make regimes unstable; use as descriptive signals.",
+            "Expected next is the most likely transition given the current state.",
+        ]
+        return Panel("\n".join(lines), title="[bold]Regime Context[/bold]", box=box.SIMPLE, border_style="dim")
+
     @staticmethod
     def compute_capm_metrics_from_holdings(
         holdings: Dict[str, float],
@@ -1533,89 +2072,113 @@ class FinancialToolkit:
             port_ret = port_val.pct_change().dropna()
             mkt_ret = close[bench].pct_change().dropna()
 
-            joined = pd.concat([port_ret.rename("p"), mkt_ret.rename("m")], axis=1).dropna()
-            if joined.empty or len(joined) < 30:
-                data = {"error": "Insufficient return history", "beta": None, "alpha_annual": None, "r_squared": None, "sharpe": None, "vol_annual": None, "points": int(len(joined))}
-                _CAPM_CACHE[key] = {"ts": ts, "data": data}
-                return data
-
-            ann_factor = FinancialToolkit._annualization_factor_from_index(joined["p"])
-            p = joined["p"].values
-            m = joined["m"].values
-
-            var_m = float(np.var(m, ddof=1))
-            cov_pm = float(np.cov(p, m, ddof=1)[0][1])
-            beta = (cov_pm / var_m) if var_m > 0 else None
-
-            rf_daily = float(risk_free_annual) / ann_factor
-            avg_p = float(np.mean(p))
-            avg_m = float(np.mean(m))
-
-            alpha_daily = None
-            alpha_annual = None
-            if beta is not None:
-                alpha_daily = avg_p - (rf_daily + beta * (avg_m - rf_daily))
-                alpha_annual = alpha_daily * ann_factor
-
-            corr = float(np.corrcoef(p, m)[0][1])
-            r_squared = corr * corr
-
-            std_p = float(np.std(p, ddof=1))
-            sharpe = ((avg_p - rf_daily) / std_p * (ann_factor ** 0.5)) if std_p > 0 else None
-            vol_annual = std_p * (ann_factor ** 0.5)
-
-            # --- Additional Risk Metrics ---
-
-            # Downside deviation (for Sortino)
-            neg = p[p < rf_daily]
-            downside_std = float(np.std(neg, ddof=1)) if len(neg) > 1 else None
-            downside_vol_annual = downside_std * (ann_factor ** 0.5) if downside_std else None
-
-            sortino = None
-            if downside_std and downside_std > 0:
-                sortino = (avg_p - rf_daily) / downside_std * (ann_factor ** 0.5)
-
-            # Jensen's Alpha (alias of CAPM alpha)
-            jensen_alpha = alpha_annual
-
-            # Information Ratio
-            excess = p - m
-            te = float(np.std(excess, ddof=1))
-            information_ratio = None
-            if te > 0:
-                information_ratio = (avg_p - avg_m) / te * (ann_factor ** 0.5)
-
-            # M-squared (Modigliani-Modigliani)
-            std_m = float(np.std(m, ddof=1))
-            m_squared = None
-            if std_p > 0:
-                m_squared = ((avg_p - rf_daily) / std_p) * std_m * ann_factor + risk_free_annual
-
-            data = {
-                "error": "",
-                "beta": beta,
-                "alpha_annual": alpha_annual,
-                "jensen_alpha": jensen_alpha,
-                "r_squared": r_squared,
-                "sharpe": sharpe,
-                "sortino": sortino,
-                "information_ratio": information_ratio,
-                "m_squared": m_squared,
-                "vol_annual": vol_annual,
-                "downside_vol_annual": downside_vol_annual,
-                "points": int(len(joined)),
+            capm = FinancialToolkit.compute_capm_metrics_from_returns(
+                port_ret,
+                mkt_ret,
+                risk_free_annual=risk_free_annual,
+                min_points=30,
+            )
+            capm.update({
                 "benchmark": bench,
                 "period": period,
                 "risk_free_annual": float(risk_free_annual),
-            }
+            })
 
-            _CAPM_CACHE[key] = {"ts": ts, "data": data}
-            return data
+            _CAPM_CACHE[key] = {"ts": ts, "data": capm}
+            return capm
 
         except Exception as ex:
             data = {"error": f"CAPM compute error: {ex}", "beta": None, "alpha_annual": None, "r_squared": None, "sharpe": None, "vol_annual": None, "points": 0}
             _CAPM_CACHE[key] = {"ts": ts, "data": data}
             return data
+
+    @staticmethod
+    def compute_capm_metrics_from_returns(
+        returns: pd.Series,
+        benchmark_returns: pd.Series,
+        risk_free_annual: float = 0.04,
+        min_points: int = 30,
+    ) -> Dict[str, Any]:
+        if returns is None or benchmark_returns is None:
+            return {"error": "Missing returns", "beta": None, "alpha_annual": None, "r_squared": None, "sharpe": None, "vol_annual": None, "points": 0}
+        if returns.empty or benchmark_returns.empty:
+            return {"error": "No return history", "beta": None, "alpha_annual": None, "r_squared": None, "sharpe": None, "vol_annual": None, "points": 0}
+
+        joined = pd.concat(
+            [returns.rename("p"), benchmark_returns.rename("m")],
+            axis=1,
+        ).dropna()
+        if joined.empty or len(joined) < min_points:
+            return {
+                "error": "Insufficient return history",
+                "beta": None,
+                "alpha_annual": None,
+                "r_squared": None,
+                "sharpe": None,
+                "vol_annual": None,
+                "points": int(len(joined)),
+            }
+
+        ann_factor = FinancialToolkit._annualization_factor_from_index(joined["p"])
+        p = joined["p"].values
+        m = joined["m"].values
+
+        var_m = float(np.var(m, ddof=1))
+        cov_pm = float(np.cov(p, m, ddof=1)[0][1])
+        beta = (cov_pm / var_m) if var_m > 0 else None
+
+        rf_daily = float(risk_free_annual) / ann_factor
+        avg_p = float(np.mean(p))
+        avg_m = float(np.mean(m))
+
+        alpha_daily = None
+        alpha_annual = None
+        if beta is not None:
+            alpha_daily = avg_p - (rf_daily + beta * (avg_m - rf_daily))
+            alpha_annual = alpha_daily * ann_factor
+
+        corr = float(np.corrcoef(p, m)[0][1])
+        r_squared = corr * corr
+
+        std_p = float(np.std(p, ddof=1))
+        sharpe = ((avg_p - rf_daily) / std_p * (ann_factor ** 0.5)) if std_p > 0 else None
+        vol_annual = std_p * (ann_factor ** 0.5)
+
+        neg = p[p < rf_daily]
+        downside_std = float(np.std(neg, ddof=1)) if len(neg) > 1 else None
+        downside_vol_annual = downside_std * (ann_factor ** 0.5) if downside_std else None
+
+        sortino = None
+        if downside_std and downside_std > 0:
+            sortino = (avg_p - rf_daily) / downside_std * (ann_factor ** 0.5)
+
+        jensen_alpha = alpha_annual
+
+        excess = p - m
+        te = float(np.std(excess, ddof=1))
+        information_ratio = None
+        if te > 0:
+            information_ratio = (avg_p - avg_m) / te * (ann_factor ** 0.5)
+
+        std_m = float(np.std(m, ddof=1))
+        m_squared = None
+        if std_p > 0:
+            m_squared = ((avg_p - rf_daily) / std_p) * std_m * ann_factor + risk_free_annual
+
+        return {
+            "error": "",
+            "beta": beta,
+            "alpha_annual": alpha_annual,
+            "jensen_alpha": jensen_alpha,
+            "r_squared": r_squared,
+            "sharpe": sharpe,
+            "sortino": sortino,
+            "information_ratio": information_ratio,
+            "m_squared": m_squared,
+            "vol_annual": vol_annual,
+            "downside_vol_annual": downside_vol_annual,
+            "points": int(len(joined)),
+        }
 
     # toolkit.py changes
 

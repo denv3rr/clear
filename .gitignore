@@ -8,6 +8,8 @@ __pycache__/
 .env.local
 .env.*
 !.env.example
+.envrc
+.envrc.local
 
 # Virtual environments
 venv/
@@ -34,9 +36,45 @@ data/clients.json
 data/intel_news.json
 data/news_health.json
 data/ai_report_cache.json
+data/*.md
+data/*.csv
+data/*.tsv
+data/*.txt
+data/*.pdf
+data/*.html
+data/*.xlsx
+data/*.xls
+data/*.json
+data/*.yaml
+data/*.yml
+data/*.ini
+data/*.toml
+data/*.cache
+data/*session*
+data/cache/
+data/exports/
+data/reports/
+exports/
+reports/
 
 # Settings / local state
 config/settings.json
+config/*local*.json
+config/*local*.yml
+config/*local*.yaml
+config/*secret*.json
+config/*secret*.yml
+config/*secret*.yaml
+config/*.private.json
+config/*.private.yml
+config/*.private.yaml
+
+# Keys / credentials
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
 
 # Build / packaging
 build/
@@ -46,6 +84,10 @@ dist/
 .mypy_cache/
 .ruff_cache/
 .cache/
+.sessions/
+sessions/
+*.session
+*.cache
 .coverage
 coverage.xml
 htmlcov/

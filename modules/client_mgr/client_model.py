@@ -2,6 +2,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import List, Dict, Any
 
+from modules.client_mgr.holdings import normalize_ticker
+
 
 @dataclass
 class Account:
@@ -35,7 +37,7 @@ class Account:
     def _normalize_lots(raw_lots: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
         normalized: Dict[str, List[Dict[str, Any]]] = {}
         for raw_ticker, lot_list in (raw_lots or {}).items():
-            ticker = str(raw_ticker).strip().upper()
+            ticker = normalize_ticker(raw_ticker)
             fixed_lots = []
 
             for lot in lot_list or []:
@@ -43,6 +45,8 @@ class Account:
                     continue
                 if not lot.get("timestamp"):
                     lot["timestamp"] = "LEGACY"
+                if not lot.get("kind"):
+                    lot["kind"] = "lot"
                 fixed_lots.append(lot)
 
             if fixed_lots:
@@ -62,14 +66,14 @@ class Account:
         new_holdings = dict(self.holdings or {})
         lots_map = self.lots if isinstance(self.lots, dict) else {}
         for raw_ticker, lot_list in lots_map.items():
-            ticker = str(raw_ticker).strip().upper()
+            ticker = normalize_ticker(raw_ticker)
             total_qty = 0.0
             if isinstance(lot_list, list):
                 for lot in lot_list:
                     if not isinstance(lot, dict):
                         continue
                     try:
-                        total_qty += float(lot.get('qty', 0.0) or 0.0)
+                        total_qty += float(lot.get("qty", 0.0) or 0.0)
                     except Exception:
                         continue
             new_holdings[ticker] = float(total_qty)
@@ -82,7 +86,7 @@ class Account:
         holdings_raw = data.get("holdings", {}) or {}
         holdings: Dict[str, float] = {}
         for raw_ticker, qty in holdings_raw.items():
-            ticker = str(raw_ticker).strip().upper()
+            ticker = normalize_ticker(raw_ticker)
             try:
                 holdings[ticker] = holdings.get(ticker, 0.0) + float(qty or 0.0)
             except Exception:

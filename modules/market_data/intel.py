@@ -1,3 +1,6 @@
+import json
+import os
+import re
 import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
@@ -186,6 +189,232 @@ def _filter_conflict_news(
     return filtered
 
 
+DEFAULT_TICKER_ALIASES: Dict[str, List[str]] = {
+    "AAPL": ["APPLE", "APPLE INC"],
+    "MSFT": ["MICROSOFT", "MICROSOFT CORP"],
+    "GOOGL": ["ALPHABET", "GOOGLE"],
+    "GOOG": ["ALPHABET", "GOOGLE"],
+    "AMZN": ["AMAZON", "AMAZON.COM"],
+    "TSLA": ["TESLA", "TESLA INC"],
+    "NVDA": ["NVIDIA", "NVIDIA CORP"],
+    "META": ["META", "FACEBOOK", "META PLATFORMS"],
+    "BRK.B": ["BERKSHIRE", "BERKSHIRE HATHAWAY"],
+    "SPY": ["S&P 500", "SPDR S&P 500", "SPDR 500"],
+    "IVV": ["S&P 500", "ISHARES CORE S&P 500"],
+    "VOO": ["S&P 500", "VANGUARD S&P 500"],
+    "VTI": ["TOTAL STOCK MARKET", "VANGUARD TOTAL STOCK MARKET"],
+    "QQQ": ["NASDAQ 100", "INVESCO QQQ"],
+    "IWM": ["RUSSELL 2000", "ISHARES RUSSELL 2000"],
+    "DIA": ["DOW JONES", "SPDR DOW JONES"],
+    "GLD": ["GOLD", "SPDR GOLD"],
+    "TLT": ["TREASURY", "20+ YEAR TREASURY"],
+    "LQD": ["INVESTMENT GRADE CREDIT", "ISHARES IBOXIG"],
+}
+
+_ALIAS_CACHE: Optional[Dict[str, List[str]]] = None
+_ALIAS_CACHE_MTIME: Optional[int] = None
+_ALIAS_CACHE_PATH: Optional[str] = None
+_SETTINGS_MTIME: Optional[int] = None
+_SETTINGS_ALIAS_PATH: Optional[str] = None
+
+
+def _merge_aliases(
+    base: Dict[str, List[str]],
+    extra: Dict[str, List[str]],
+) -> Dict[str, List[str]]:
+    merged: Dict[str, List[str]] = {k: list(v) for k, v in base.items()}
+    for key, values in extra.items():
+        key_u = str(key).upper()
+        merged.setdefault(key_u, [])
+        for value in values:
+            val = str(value).strip()
+            if val and val not in merged[key_u]:
+                merged[key_u].append(val)
+    return merged
+
+
+def load_ticker_aliases(path: str) -> Dict[str, List[str]]:
+    try:
+        with open(path, "r", encoding="ascii") as f:
+            data = json.load(f)
+    except Exception:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    parsed: Dict[str, List[str]] = {}
+    for key, value in data.items():
+        if isinstance(value, list):
+            parsed[str(key).upper()] = [str(v) for v in value if str(v).strip()]
+        elif isinstance(value, str):
+            parsed[str(key).upper()] = [value]
+    return parsed
+
+
+def validate_alias_file(path: str) -> Tuple[bool, str]:
+    try:
+        with open(path, "r", encoding="ascii") as f:
+            data = json.load(f)
+    except Exception as exc:
+        return False, f"Invalid JSON: {exc}"
+    if not isinstance(data, dict):
+        return False, "Alias file must be a JSON object."
+    for key, value in data.items():
+        if isinstance(value, list):
+            if not all(isinstance(v, str) and v.strip() for v in value):
+                return False, f"Alias list for {key} must contain non-empty strings."
+        elif isinstance(value, str):
+            if not value.strip():
+                return False, f"Alias string for {key} must be non-empty."
+        else:
+            return False, f"Alias for {key} must be a string or list of strings."
+    return True, "ok"
+
+
+def _aliases_path_from_settings(settings_path: str) -> Optional[str]:
+    try:
+        with open(settings_path, "r", encoding="ascii") as f:
+            data = json.load(f)
+    except Exception:
+        return None
+    if not isinstance(data, dict):
+        return None
+    news = data.get("news", {})
+    if not isinstance(news, dict):
+        return None
+    alias_path = news.get("aliases_file")
+    if not isinstance(alias_path, str) or not alias_path.strip():
+        return None
+    alias_path = alias_path.strip()
+    if os.path.isabs(alias_path):
+        return alias_path
+    return os.path.normpath(os.path.join(os.getcwd(), alias_path))
+
+
+def get_ticker_aliases(path: Optional[str] = None) -> Dict[str, List[str]]:
+    global _ALIAS_CACHE, _ALIAS_CACHE_MTIME, _ALIAS_CACHE_PATH
+    global _SETTINGS_MTIME, _SETTINGS_ALIAS_PATH
+    if path is None:
+        settings_path = os.path.join("config", "settings.json")
+        try:
+            settings_mtime = int(os.path.getmtime(settings_path))
+        except Exception:
+            settings_mtime = None
+        if settings_mtime != _SETTINGS_MTIME:
+            _SETTINGS_ALIAS_PATH = _aliases_path_from_settings(settings_path)
+            _SETTINGS_MTIME = settings_mtime
+    alias_path = path or _SETTINGS_ALIAS_PATH or os.path.join("config", "news_aliases.json")
+    try:
+        mtime = int(os.path.getmtime(alias_path))
+    except Exception:
+        mtime = None
+    if _ALIAS_CACHE is None or mtime != _ALIAS_CACHE_MTIME or alias_path != _ALIAS_CACHE_PATH:
+        extra = load_ticker_aliases(alias_path) if mtime else {}
+        _ALIAS_CACHE = _merge_aliases(DEFAULT_TICKER_ALIASES, extra)
+        _ALIAS_CACHE_MTIME = mtime
+        _ALIAS_CACHE_PATH = alias_path
+    return _ALIAS_CACHE
+
+
+def _normalize_text_for_match(text: str) -> str:
+    cleaned = re.sub(r"[^A-Z0-9]+", " ", (text or "").upper()).strip()
+    return re.sub(r"\s+", " ", cleaned)
+
+
+def _ticker_matches_title(
+    title: str,
+    tickers: Optional[List[str]],
+    ticker_aliases: Optional[Dict[str, List[str]]] = None,
+) -> bool:
+    if not tickers:
+        return False
+    title_upper = f" {_normalize_text_for_match(title)} "
+    alias_map = ticker_aliases or DEFAULT_TICKER_ALIASES
+    for ticker in tickers:
+        if len(ticker) < 2:
+            continue
+        ticker_norm = _normalize_text_for_match(ticker)
+        if ticker_norm and f" {ticker_norm} " in title_upper:
+            return True
+        for alias in alias_map.get(ticker.upper(), []):
+            alias_norm = _normalize_text_for_match(alias)
+            if alias_norm and f" {alias_norm} " in title_upper:
+                return True
+    return False
+
+
+def score_news_item(
+    item: Dict[str, object],
+    tickers: Optional[List[str]] = None,
+    region: Optional[str] = None,
+    industry: Optional[str] = None,
+    ticker_aliases: Optional[Dict[str, List[str]]] = None,
+) -> int:
+    score = 0
+    title = str(item.get("title", "") or "")
+    title_lower = title.lower()
+    regions = item.get("regions", []) or []
+    industries = item.get("industries", []) or []
+    tags = item.get("tags", []) or []
+    published_ts = item.get("published_ts")
+
+    alias_map = ticker_aliases or get_ticker_aliases()
+    if _ticker_matches_title(title, tickers, ticker_aliases=alias_map):
+        score += 6
+    if industry and industry != "all" and industry in industries:
+        score += 3
+    if region and region != "Global" and region in regions:
+        score += 2
+    if tags:
+        score += 1
+    if published_ts:
+        age_hours = max(0, (int(time.time()) - int(published_ts)) / 3600)
+        if age_hours <= 24:
+            score += 2
+        elif age_hours <= 72:
+            score += 1
+    if "earnings" in title_lower or "guidance" in title_lower:
+        score += 1
+    return score
+
+
+def score_news_items(
+    items: List[Dict[str, object]],
+    tickers: Optional[List[str]] = None,
+    region: Optional[str] = None,
+    industry: Optional[str] = None,
+    ticker_aliases: Optional[Dict[str, List[str]]] = None,
+) -> List[Tuple[int, Dict[str, object]]]:
+    scored: List[Tuple[int, Dict[str, object]]] = []
+    for item in items:
+        scored.append((score_news_item(item, tickers, region, industry, ticker_aliases=ticker_aliases), item))
+    scored.sort(key=lambda pair: (pair[0], pair[1].get("published_ts") or 0), reverse=True)
+    return scored
+
+
+def rank_news_items(
+    items: List[Dict[str, object]],
+    tickers: Optional[List[str]] = None,
+    region: Optional[str] = None,
+    industry: Optional[str] = None,
+    limit: Optional[int] = None,
+) -> List[Dict[str, object]]:
+    scored = score_news_items(items, tickers=tickers, region=region, industry=industry)
+    ranked = [item for _, item in scored]
+    if limit is not None:
+        return ranked[:limit]
+    return ranked
+
+
+def news_cache_status(payload: Optional[Dict[str, object]]) -> str:
+    if not isinstance(payload, dict):
+        return "unknown"
+    if payload.get("stale"):
+        return "stale"
+    if payload.get("items"):
+        return "fresh"
+    return "empty"
+
+
 class WeatherIntel:
     BASE_URL = "https://api.open-meteo.com/v1/forecast"
 
@@ -358,19 +587,48 @@ class MarketIntel:
         if not force:
             cached = load_cached_news(self._news_cache_file, ttl_seconds)
             if cached is not None:
-                return {"items": cached, "cached": True, "skipped": [], "health": {}}
+                return {
+                    "items": cached,
+                    "cached": True,
+                    "stale": False,
+                    "skipped": [],
+                    "health": {},
+                }
         payload = fetch_news_items(limit=60, enabled=enabled_sources)
         items = payload.get("items", [])
         if items:
             store_cached_news(self._news_cache_file, items)
+            return {
+                "items": items,
+                "cached": False,
+                "stale": False,
+                "skipped": payload.get("skipped", []),
+                "health": payload.get("health", {}),
+            }
+        stale = load_cached_news(self._news_cache_file, ttl_seconds, allow_stale=True)
+        if stale:
+            return {
+                "items": stale,
+                "cached": True,
+                "stale": True,
+                "skipped": payload.get("skipped", []),
+                "health": payload.get("health", {}),
+            }
         return {
-            "items": items,
+            "items": [],
             "cached": False,
+            "stale": False,
             "skipped": payload.get("skipped", []),
             "health": payload.get("health", {}),
         }
 
-    def _filter_news(self, items: List[Dict[str, object]], region_name: str, industry_filter: str) -> List[Dict[str, object]]:
+    def _filter_news(
+        self,
+        items: List[Dict[str, object]],
+        region_name: str,
+        industry_filter: str,
+        tickers: Optional[List[str]] = None,
+    ) -> List[Dict[str, object]]:
         filtered = []
         for item in items:
             regions = item.get("regions", []) or []
@@ -379,7 +637,7 @@ class MarketIntel:
             industry_ok = True if industry_filter == "all" else industry_filter in industries
             if region_ok and industry_ok:
                 filtered.append(item)
-        return filtered
+        return rank_news_items(filtered, tickers=tickers, region=region_name, industry=industry_filter)
 
     def _filter_impacts(self, impacts: List[str], industry_filter: str) -> List[str]:
         if not impacts or industry_filter == "all":

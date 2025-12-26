@@ -1,0 +1,571 @@
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import time
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple
+
+from modules.client_mgr.client_model import Client
+from modules.client_mgr.holdings import compute_weighted_avg_cost, normalize_ticker
+from modules.client_mgr.valuation import ValuationEngine
+from modules.market_data.trackers import GlobalTrackers
+from utils.report_synth import filter_fresh_news_items
+from modules.market_data.intel import score_news_items
+
+
+@dataclass
+class ReportSection:
+    title: str
+    rows: List[List[str]]
+
+
+@dataclass
+class ReportPayload:
+    report_type: str
+    client_id: str
+    client_name: str
+    generated_at: str
+    sections: List[ReportSection]
+    data: Dict[str, Any]
+    data_freshness: Dict[str, Any]
+    methodology: List[str]
+
+
+@dataclass
+class ReportResult:
+    content: str
+    payload: ReportPayload
+    output_format: str
+    used_model: bool
+    validation: Dict[str, Any]
+
+
+class PriceService(Protocol):
+    def get_quotes(self, tickers: Iterable[str]) -> Dict[str, float]:
+        ...
+
+
+class OfflinePriceService:
+    def get_quotes(self, tickers: Iterable[str]) -> Dict[str, float]:
+        return {}
+
+
+class LivePriceService:
+    def __init__(self, valuation: Optional[ValuationEngine] = None):
+        self._valuation = valuation or ValuationEngine()
+
+    def get_quotes(self, tickers: Iterable[str]) -> Dict[str, float]:
+        quotes: Dict[str, float] = {}
+        for ticker in tickers:
+            data = self._valuation.get_quote_data(str(ticker))
+            price = float(data.get("price", 0.0) or 0.0)
+            if price > 0:
+                quotes[normalize_ticker(ticker)] = price
+        return quotes
+
+
+class ModelRunner(Protocol):
+    def available(self) -> bool:
+        ...
+
+    def generate(self, prompt: Dict[str, Any]) -> str:
+        ...
+
+
+class NoModelRunner:
+    def available(self) -> bool:
+        return False
+
+    def generate(self, prompt: Dict[str, Any]) -> str:
+        return ""
+
+
+class OllamaRunner:
+    def __init__(self, model_id: str = "llama3", host: str = "http://127.0.0.1:11434", timeout: int = 15):
+        self.model_id = model_id
+        self.host = host.rstrip("/")
+        self.timeout = timeout
+
+    def available(self) -> bool:
+        return bool(shutil.which("ollama"))
+
+    def generate(self, prompt: Dict[str, Any]) -> str:
+        try:
+            import requests
+        except Exception:
+            return ""
+        try:
+            resp = requests.post(
+                f"{self.host}/api/generate",
+                json={
+                    "model": self.model_id,
+                    "prompt": json.dumps(prompt, separators=(",", ":")),
+                    "stream": False,
+                },
+                timeout=self.timeout,
+            )
+            if resp.status_code != 200:
+                return ""
+            data = resp.json()
+            return str(data.get("response", ""))
+        except Exception:
+            return ""
+
+
+class LocalHttpRunner:
+    def __init__(self, model_id: str, endpoint: str, timeout: int = 12):
+        self.model_id = model_id
+        self.endpoint = endpoint.rstrip("/")
+        self.timeout = timeout
+
+    def available(self) -> bool:
+        if not self.endpoint:
+            return False
+        try:
+            import requests
+            resp = requests.get(f"{self.endpoint}/v1/models", timeout=2)
+            return resp.status_code == 200
+        except Exception:
+            return False
+
+    def generate(self, prompt: Dict[str, Any]) -> str:
+        if not self.endpoint:
+            return ""
+        try:
+            import requests
+        except Exception:
+            return ""
+        try:
+            payload = {
+                "model": self.model_id,
+                "messages": [{"role": "user", "content": json.dumps(prompt, separators=(",", ":"))}],
+                "temperature": 0.2,
+                "max_tokens": 1024,
+            }
+            resp = requests.post(f"{self.endpoint}/v1/chat/completions", json=payload, timeout=self.timeout)
+            if resp.status_code != 200:
+                return ""
+            data = resp.json()
+            choices = data.get("choices") or []
+            if not choices:
+                return ""
+            message = choices[0].get("message") or {}
+            content = message.get("content")
+            if isinstance(content, str):
+                return content
+            text = choices[0].get("text")
+            if isinstance(text, str):
+                return text
+        except Exception:
+            return ""
+        return ""
+
+
+def _load_reporting_ai_settings() -> Dict[str, Any]:
+    defaults = {
+        "enabled": True,
+        "provider": "auto",
+        "model_id": "rule_based_v1",
+        "endpoint": "",
+        "timeout_seconds": 15,
+        "news_freshness_hours": 4,
+    }
+    settings_path = os.path.join("config", "settings.json")
+    if not os.path.exists(settings_path):
+        return defaults
+    try:
+        with open(settings_path, "r", encoding="ascii") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return defaults
+    except Exception:
+        return defaults
+    reporting = data.get("reporting", {})
+    if isinstance(reporting, dict):
+        reporting_ai = reporting.get("ai", {})
+        if isinstance(reporting_ai, dict) and reporting_ai:
+            return {**defaults, **reporting_ai}
+    ai = data.get("ai", {})
+    if not isinstance(ai, dict):
+        return defaults
+    return {**defaults, **ai}
+
+
+def _normalize_model_id(model_id: str) -> str:
+    cleaned = (model_id or "").strip()
+    if not cleaned or cleaned == "rule_based_v1":
+        return "llama3"
+    return cleaned
+
+
+def select_model_runner(settings: Optional[Dict[str, Any]] = None) -> ModelRunner:
+    ai = settings or _load_reporting_ai_settings()
+    if not bool(ai.get("enabled", True)):
+        return NoModelRunner()
+    provider = str(ai.get("provider", "auto")).lower()
+    model_id = _normalize_model_id(str(ai.get("model_id", "rule_based_v1")))
+    endpoint = str(ai.get("endpoint", "") or "").strip()
+    timeout = int(ai.get("timeout_seconds", 15) or 15)
+    if provider == "ollama":
+        runner = OllamaRunner(model_id=model_id, timeout=timeout)
+        return runner if runner.available() else NoModelRunner()
+    if provider == "local_http":
+        runner = LocalHttpRunner(model_id=model_id, endpoint=endpoint, timeout=timeout)
+        return runner if runner.available() else NoModelRunner()
+    if provider == "auto":
+        runner = OllamaRunner(model_id=model_id, timeout=timeout)
+        if runner.available():
+            return runner
+        runner = LocalHttpRunner(model_id=model_id, endpoint=endpoint, timeout=timeout)
+        if runner.available():
+            return runner
+    return NoModelRunner()
+
+
+class PromptBuilder:
+    @staticmethod
+    def build(payload: ReportPayload) -> Dict[str, Any]:
+        citations = payload.data.get("citations", [])
+        return {
+            "system": "You are a cautious financial analyst. Output valid JSON only.",
+            "schema": {
+                "summary": "list[str]",
+                "sections": [{"title": "str", "rows": "list[list[str]]"}],
+                "citations": "list[str]",
+                "risks": "list[str]",
+            },
+            "report": {
+                "type": payload.report_type,
+                "client": payload.client_name,
+                "generated_at": payload.generated_at,
+                "sections": [section.__dict__ for section in payload.sections],
+                "data": payload.data,
+                "citations": citations,
+                "methodology": payload.methodology,
+            },
+        }
+
+
+class ReportRenderer:
+    @staticmethod
+    def render_markdown(payload: ReportPayload) -> str:
+        lines = [
+            f"# {payload.report_type.replace('_', ' ').title()}",
+            f"Client: {payload.client_name}",
+            f"Generated: {payload.generated_at}",
+            "",
+        ]
+        for section in payload.sections:
+            lines.append(f"## {section.title}")
+            for row in section.rows:
+                if len(row) == 2:
+                    lines.append(f"- **{row[0]}**: {row[1]}")
+                else:
+                    lines.append(f"- {row[0]}")
+            lines.append("")
+        lines.append("## Data Freshness")
+        for key, value in payload.data_freshness.items():
+            lines.append(f"- **{key}**: {value}")
+        lines.append("")
+        lines.append("## Methodology")
+        for note in payload.methodology:
+            lines.append(f"- {note}")
+        lines.append("")
+        return "\n".join(lines).strip() + "\n"
+
+    @staticmethod
+    def render_json(payload: ReportPayload) -> str:
+        return json.dumps(payload, default=lambda o: o.__dict__, indent=2)
+
+    @staticmethod
+    def render_terminal(payload: ReportPayload) -> str:
+        lines = [
+            f"{payload.report_type.replace('_', ' ').title()}",
+            f"Client: {payload.client_name}",
+            f"Generated: {payload.generated_at}",
+            "",
+        ]
+        for section in payload.sections:
+            lines.append(f"[{section.title}]")
+            for row in section.rows:
+                if len(row) == 2:
+                    lines.append(f"{row[0]}: {row[1]}")
+                else:
+                    lines.append(str(row[0]))
+            lines.append("")
+        return "\n".join(lines).strip() + "\n"
+
+
+def validate_report_schema(raw: Dict[str, Any]) -> Tuple[bool, List[str]]:
+    errors = []
+    if not isinstance(raw, dict):
+        return False, ["Payload is not a dict."]
+    for key in ("summary", "sections", "citations", "risks"):
+        if key not in raw:
+            errors.append(f"Missing key: {key}")
+    if "sections" in raw and not isinstance(raw["sections"], list):
+        errors.append("sections must be a list.")
+    return (len(errors) == 0), errors
+
+
+class ReportEngine:
+    def __init__(
+        self,
+        price_service: Optional[PriceService] = None,
+        model_runner: Optional[ModelRunner] = None,
+    ):
+        self.price_service = price_service or OfflinePriceService()
+        self.model_runner = model_runner or select_model_runner()
+
+    def generate_client_weekly_brief(
+        self,
+        client: Client,
+        output_format: str = "md",
+    ) -> ReportResult:
+        payload = self._build_weekly_brief_payload(client)
+        validation = {"mode": "template", "errors": []}
+        used_model = False
+
+        if self.model_runner.available():
+            prompt = PromptBuilder.build(payload)
+            raw = self.model_runner.generate(prompt)
+            parsed = _safe_json_load(raw)
+            ok, errors = validate_report_schema(parsed)
+            validation = {"mode": "model", "errors": errors}
+            if ok:
+                payload = _payload_from_model(payload, parsed)
+                used_model = True
+            else:
+                validation["mode"] = "fallback"
+
+        content = _render_payload(payload, output_format)
+        return ReportResult(
+            content=content,
+            payload=payload,
+            output_format=output_format,
+            used_model=used_model,
+            validation=validation,
+        )
+
+    def _build_weekly_brief_payload(self, client: Client) -> ReportPayload:
+        generated_at = datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+        holdings = _aggregate_holdings(client)
+        lot_map = _aggregate_lots(client)
+        prices = self.price_service.get_quotes(holdings.keys())
+        portfolio_rows, portfolio_meta = _portfolio_snapshot(holdings, lot_map, prices)
+
+        news_items = _load_cached_news()
+        ai_settings = _load_reporting_ai_settings()
+        freshness_hours = int(ai_settings.get("news_freshness_hours", 4) or 4)
+        news_items = filter_fresh_news_items(news_items, max_age_hours=freshness_hours)
+        news_rows, news_meta = _news_section(news_items, holdings.keys())
+
+        tracker_rows, tracker_meta = _tracker_section()
+
+        risk_rows = [
+            ["Risk Notes", "Risk metrics require market history; offline mode uses templates."],
+        ]
+        conflict_rows = _conflict_rows(news_items)
+
+        sections = [
+            ReportSection("Portfolio Snapshot", portfolio_rows),
+            ReportSection("Ticker News", news_rows),
+            ReportSection("Risk Notes", risk_rows),
+            ReportSection("Conflict/Geo Notes", conflict_rows),
+            ReportSection("Aviation/Maritime Notes", tracker_rows),
+        ]
+
+        data = {
+            "citations": portfolio_meta.get("citations", []) + news_meta.get("citations", []) + tracker_meta.get("citations", []),
+            "news_count": news_meta.get("news_count", 0),
+        }
+        data_freshness = {
+            "portfolio": portfolio_meta.get("as_of", "unknown"),
+            "news_cache": news_meta.get("cache_ts", "unknown"),
+            "trackers_cache": tracker_meta.get("cache_ts", "unknown"),
+        }
+        methodology = [
+            "Cost basis uses weighted average of lots and aggregate entries.",
+            "Market value uses offline prices unless a live price service is enabled.",
+            "News section uses cached feeds only unless refresh is explicitly run.",
+        ]
+        return ReportPayload(
+            report_type="client_weekly_brief",
+            client_id=client.client_id,
+            client_name=client.name,
+            generated_at=generated_at,
+            sections=sections,
+            data=data,
+            data_freshness=data_freshness,
+            methodology=methodology,
+        )
+
+
+def report_health_check() -> Dict[str, Any]:
+    ai = _load_reporting_ai_settings()
+    ollama_installed = bool(shutil.which("ollama"))
+    ollama_reachable = False
+    if ollama_installed:
+        try:
+            import requests
+            resp = requests.get("http://127.0.0.1:11434/api/tags", timeout=2)
+            ollama_reachable = resp.status_code == 200
+        except Exception:
+            ollama_reachable = False
+    local_endpoint = str(ai.get("endpoint", "") or "").strip()
+    local_reachable = False
+    if local_endpoint:
+        try:
+            import requests
+            resp = requests.get(f"{local_endpoint.rstrip('/')}/v1/models", timeout=2)
+            local_reachable = resp.status_code == 200
+        except Exception:
+            local_reachable = False
+    return {
+        "ollama_installed": ollama_installed,
+        "ollama_reachable": ollama_reachable,
+        "local_http_endpoint": local_endpoint or None,
+        "local_http_reachable": local_reachable,
+        "report_engine": "ok",
+        "timestamp": int(time.time()),
+    }
+
+
+def _render_payload(payload: ReportPayload, output_format: str) -> str:
+    fmt = (output_format or "md").lower()
+    if fmt == "json":
+        return ReportRenderer.render_json(payload)
+    if fmt == "terminal":
+        return ReportRenderer.render_terminal(payload)
+    return ReportRenderer.render_markdown(payload)
+
+
+def _safe_json_load(raw: str) -> Dict[str, Any]:
+    try:
+        return json.loads(raw)
+    except Exception:
+        return {}
+
+
+def _payload_from_model(base: ReportPayload, parsed: Dict[str, Any]) -> ReportPayload:
+    sections = []
+    for section in parsed.get("sections", []) or []:
+        title = str(section.get("title", "Section"))
+        rows = section.get("rows", []) or []
+        rows_clean = [[str(cell) for cell in row] for row in rows]
+        sections.append(ReportSection(title, rows_clean))
+    base.sections = sections if sections else base.sections
+    return base
+
+
+def _aggregate_holdings(client: Client) -> Dict[str, float]:
+    holdings: Dict[str, float] = {}
+    for acc in client.accounts:
+        for ticker, qty in (acc.holdings or {}).items():
+            t = normalize_ticker(ticker)
+            holdings[t] = holdings.get(t, 0.0) + float(qty or 0.0)
+    return holdings
+
+
+def _aggregate_lots(client: Client) -> Dict[str, List[Dict[str, Any]]]:
+    lots: Dict[str, List[Dict[str, Any]]] = {}
+    for acc in client.accounts:
+        for ticker, entries in (acc.lots or {}).items():
+            t = normalize_ticker(ticker)
+            lots.setdefault(t, []).extend(entries or [])
+    return lots
+
+
+def _portfolio_snapshot(
+    holdings: Dict[str, float],
+    lot_map: Dict[str, List[Dict[str, Any]]],
+    prices: Dict[str, float],
+) -> Tuple[List[List[str]], Dict[str, Any]]:
+    rows: List[List[str]] = []
+    total_cost = 0.0
+    total_value = 0.0
+    citations = []
+    for ticker, qty in holdings.items():
+        lots = lot_map.get(ticker, [])
+        avg_cost = compute_weighted_avg_cost(lots)
+        total_cost_t = avg_cost * qty
+        price = prices.get(ticker)
+        if price:
+            market_value = price * qty
+            total_value += market_value
+            pl = market_value - total_cost_t
+            rows.append([ticker, f"{qty:,.4f} sh | avg ${avg_cost:,.2f} | mv ${market_value:,.2f} | P/L ${pl:,.2f}"])
+        else:
+            rows.append([ticker, f"{qty:,.4f} sh | avg ${avg_cost:,.2f} | mv N/A"])
+        total_cost += total_cost_t
+    rows.append(["Total Cost Basis", f"${total_cost:,.2f}"])
+    if total_value > 0:
+        rows.append(["Total Market Value", f"${total_value:,.2f}"])
+    return rows, {"citations": citations, "as_of": datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")}
+
+
+def _load_cached_news() -> List[Dict[str, Any]]:
+    path = os.path.join("data", "intel_news.json")
+    if not os.path.exists(path):
+        return []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        return payload.get("items", []) if isinstance(payload, dict) else []
+    except Exception:
+        return []
+
+
+def _news_section(items: List[Dict[str, Any]], tickers: Iterable[str]) -> Tuple[List[List[str]], Dict[str, Any]]:
+    tickers_upper = [normalize_ticker(t) for t in tickers]
+    rows: List[List[str]] = []
+    citations = []
+    scored = score_news_items(items, tickers=tickers_upper)
+    threshold = 4 if tickers_upper else 1
+    for score, item in scored:
+        if score < threshold:
+            continue
+        title = str(item.get("title", ""))
+        source = str(item.get("source", ""))
+        rows.append([source or "News", title[:120]])
+        if source:
+            citations.append(source)
+    if not rows:
+        rows.append(["News", "No cached news matched holdings."])
+    cache_ts = "-"
+    try:
+        cache_ts = datetime.fromtimestamp(int(os.path.getmtime(os.path.join("data", "intel_news.json"))), UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    except Exception:
+        cache_ts = "unknown"
+    return rows[:8], {"citations": citations, "news_count": len(rows), "cache_ts": cache_ts}
+
+
+def _conflict_rows(items: List[Dict[str, Any]]) -> List[List[str]]:
+    rows = []
+    for item in items:
+        tags = [str(t).lower() for t in (item.get("tags") or [])]
+        title = str(item.get("title", ""))
+        if "conflict" in tags or any(word in title.lower() for word in ("conflict", "war", "strike", "attack")):
+            rows.append([item.get("source", "News"), title[:120]])
+    if not rows:
+        rows.append(["Conflict", "No conflict-tagged cached news found."])
+    return rows[:6]
+
+
+def _tracker_section() -> Tuple[List[List[str]], Dict[str, Any]]:
+    tracker = GlobalTrackers()
+    snapshot = tracker.get_snapshot(mode="combined", allow_refresh=False)
+    points = snapshot.get("flights", []) + snapshot.get("ships", [])
+    rows = []
+    if points:
+        rows.append(["Tracker Points", f"{len(points)} cached entities"])
+    else:
+        rows.append(["Tracker Points", "No cached tracker points available."])
+    cache_ts = tracker._last_refresh if hasattr(tracker, "_last_refresh") else None
+    cache_label = "unknown"
+    if cache_ts:
+        cache_label = datetime.fromtimestamp(int(cache_ts), UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return rows, {"citations": ["OpenSky", "Shipping Feed"], "cache_ts": cache_label}

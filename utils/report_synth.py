@@ -132,6 +132,28 @@ def analyze_news_items(items: List[Dict[str, object]]) -> Dict[str, object]:
     return {"aggregate": aggregate, "items": per_item}
 
 
+def filter_fresh_news_items(
+    items: List[Dict[str, object]],
+    max_age_hours: int = 24,
+) -> List[Dict[str, object]]:
+    if not items:
+        return []
+    now = int(time.time())
+    cutoff = now - int(max_age_hours * 3600)
+    fresh: List[Dict[str, object]] = []
+    for item in items:
+        ts = item.get("published_ts")
+        if ts is None:
+            continue
+        try:
+            ts_int = int(ts)
+        except Exception:
+            continue
+        if ts_int >= cutoff:
+            fresh.append(item)
+    return fresh
+
+
 def build_report_context(
     report: Dict[str, object],
     report_type: str,
@@ -154,7 +176,11 @@ def build_report_context(
     )
 
 
-def _context_to_payload(context: ReportContext) -> Dict[str, object]:
+def _context_to_payload(
+    context: ReportContext,
+    news_items_override: Optional[List[Dict[str, object]]] = None,
+) -> Dict[str, object]:
+    news_items = news_items_override if news_items_override is not None else context.news_items
     return {
         "report_type": context.report_type,
         "region": context.region,
@@ -173,26 +199,47 @@ def _context_to_payload(context: ReportContext) -> Dict[str, object]:
                 "regions": item.get("regions", []),
                 "industries": item.get("industries", []),
             }
-            for item in context.news_items
+            for item in news_items
         ],
     }
 
 
-def _compute_cache_key(payload: Dict[str, object], model_id: str, persona: str) -> str:
+def _compute_cache_key(payload: Dict[str, object], provider: str, model_id: str, persona: str) -> str:
     stable = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     digest = hashlib.sha256(stable.encode("ascii", "ignore")).hexdigest()
-    return f"{model_id}:{persona}:{digest}"
+    return f"{provider}:{model_id}:{persona}:{digest}"
+
+
+def _load_news_freshness_hours(default_value: int = 4) -> int:
+    settings_path = os.path.join(os.getcwd(), "config", "settings.json")
+    try:
+        with open(settings_path, "r", encoding="ascii") as f:
+            data = json.load(f)
+    except Exception:
+        return default_value
+    if not isinstance(data, dict):
+        return default_value
+    ai = data.get("ai", {})
+    if not isinstance(ai, dict):
+        return default_value
+    raw = ai.get("news_freshness_hours")
+    try:
+        value = int(raw)
+    except Exception:
+        return default_value
+    return max(1, value)
 
 
 class ReportSynthesizer:
     def __init__(
         self,
-        provider: str = "rule_based",
+        provider: str = "auto",
         model_id: str = "rule_based_v1",
         persona: str = "advisor_legal_v1",
         cache_file: str = "data/ai_report_cache.json",
         cache_ttl: int = 21600,
         endpoint: str = "",
+        news_freshness_hours: Optional[int] = None,
     ):
         self.provider = provider
         self.model_id = model_id
@@ -200,17 +247,38 @@ class ReportSynthesizer:
         self.cache_file = cache_file
         self.cache_ttl = cache_ttl
         self.endpoint = endpoint
+        if news_freshness_hours is None:
+            self.news_freshness_hours = _load_news_freshness_hours()
+        else:
+            self.news_freshness_hours = max(1, int(news_freshness_hours))
 
     def synthesize(self, context: ReportContext) -> Dict[str, object]:
-        payload = _context_to_payload(context)
-        cache_key = _compute_cache_key(payload, self.model_id, self.persona)
-        cached = _load_cache(self.cache_file, cache_key, self.cache_ttl)
+        fresh_news = filter_fresh_news_items(context.news_items, self.news_freshness_hours)
+        payload = _context_to_payload(context, news_items_override=fresh_news)
+        provider = (self.provider or "auto").lower()
+        if provider == "local_http":
+            cache_key = _compute_cache_key(payload, "local_http", self.model_id, self.persona)
+            cached = _load_cache(self.cache_file, cache_key, self.cache_ttl)
+            if cached:
+                cached["cache"] = {"hit": True}
+                return cached
+        elif provider == "auto" and self.endpoint:
+            cache_key = _compute_cache_key(payload, "local_http", self.model_id, self.persona)
+            cached = _load_cache(self.cache_file, cache_key, self.cache_ttl)
+            if cached:
+                cached["cache"] = {"hit": True}
+                return cached
+
+        cache_key_rule = _compute_cache_key(payload, "rule_based", "rule_based_v1", self.persona)
+        cached = _load_cache(self.cache_file, cache_key_rule, self.cache_ttl)
         if cached:
             cached["cache"] = {"hit": True}
             return cached
 
-        analysis = analyze_news_items(context.news_items)
-        if self.provider == "local_http" and self.endpoint:
+        analysis = analyze_news_items(fresh_news)
+        analysis["fresh_article_count"] = len(fresh_news)
+        analysis["stale_filtered"] = max(0, len(context.news_items) - len(fresh_news))
+        if provider in ("local_http", "auto") and self.endpoint:
             response = _try_local_llm(self.endpoint, payload, self.persona)
             if response:
                 result = {
@@ -221,12 +289,13 @@ class ReportSynthesizer:
                     "model_id": self.model_id,
                     "persona": self.persona,
                 }
+                cache_key = _compute_cache_key(payload, "local_http", self.model_id, self.persona)
                 _store_cache(self.cache_file, cache_key, result)
                 result["cache"] = {"hit": False}
                 return result
 
         result = _rule_based_synthesis(context, analysis)
-        _store_cache(self.cache_file, cache_key, result)
+        _store_cache(self.cache_file, cache_key_rule, result)
         result["cache"] = {"hit": False}
         return result
 
@@ -336,8 +405,15 @@ def build_ai_sections(ai_payload: Dict[str, object]) -> List[Dict[str, object]]:
             "title": "Advisor Notes",
             "rows": [[f"- {note}", ""] for note in notes],
         })
-    if density:
-        rows = [[key.title(), f"{value:.2f}"] for key, value in density.items()]
+    fresh_count = analysis.get("fresh_article_count")
+    stale_filtered = analysis.get("stale_filtered")
+    if density or fresh_count is not None:
+        rows = []
+        if fresh_count is not None:
+            rows.append(["Fresh Articles", str(fresh_count)])
+        if stale_filtered is not None:
+            rows.append(["Stale Filtered", str(stale_filtered)])
+        rows.extend([[key.title(), f"{value:.2f}"] for key, value in density.items()])
         if agg.get("bias_markers"):
             rows.append(["Bias Markers", ", ".join(agg.get("bias_markers"))])
         if agg.get("sensationalism_markers"):

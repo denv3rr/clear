@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from modules.market_data.finnhub_client import FinnhubWrapper
 from modules.market_data.yfinance_client import YahooWrapper
 import yfinance as yf
+from modules.client_mgr.holdings import normalize_ticker, parse_timestamp, select_nearest_price
 
 class ValuationEngine:
     """\
@@ -41,36 +42,11 @@ class ValuationEngine:
 
     @staticmethod
     def _normalize_ticker(raw: str) -> str:
-        return (raw or "").strip().upper()
+        return normalize_ticker(raw)
 
     @staticmethod
     def _parse_timestamp(raw: Any) -> Optional[datetime]:
-        if raw is None:
-            return None
-        text = str(raw).strip()
-        if not text:
-            return None
-
-        upper = text.upper()
-        if upper == "LEGACY":
-            return None
-        if upper.startswith("CUSTOM"):
-            text = text.replace("CUSTOM", "").strip(" ()")
-
-        if text.endswith("Z"):
-            text = text[:-1]
-
-        try:
-            return datetime.fromisoformat(text)
-        except Exception:
-            pass
-
-        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%m/%d/%y %H:%M:%S"):
-            try:
-                return datetime.strptime(text, fmt)
-            except Exception:
-                continue
-        return None
+        return parse_timestamp(raw)
 
     # -------------------------------
     # Public: Quote & history fetches
@@ -193,9 +169,8 @@ class ValuationEngine:
                 closes = closes.copy()
                 closes.index = idx
 
-            deltas = (idx - timestamp).to_series().abs()
-            nearest = deltas.idxmin()
-            return float(closes.loc[nearest])
+            series = list(zip(list(idx), list(closes)))
+            return select_nearest_price(series, timestamp)
 
         price = _fetch(interval)
         if price is None and interval != "1d":

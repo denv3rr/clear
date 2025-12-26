@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from modules.client_mgr.client_model import Client, Account
+from modules.client_mgr.holdings import parse_timestamp
 
 
 class TaxEngine:
@@ -43,30 +44,7 @@ class TaxEngine:
 
     @staticmethod
     def _parse_timestamp(raw: Any) -> Optional[datetime]:
-        if raw is None:
-            return None
-        text = str(raw).strip()
-        if not text:
-            return None
-        upper = text.upper()
-        if upper == "LEGACY":
-            return None
-        if upper.startswith("CUSTOM"):
-            text = text.replace("CUSTOM", "").strip(" ()")
-        if text.endswith("Z"):
-            text = text[:-1]
-
-        try:
-            return datetime.fromisoformat(text)
-        except Exception:
-            pass
-
-        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%m/%d/%y %H:%M:%S"):
-            try:
-                return datetime.strptime(text, fmt)
-            except Exception:
-                continue
-        return None
+        return parse_timestamp(raw)
 
     def _get_rules_for_account(self, account: Account, client_tax: Dict[str, Any]) -> Dict[str, Any]:
         jurisdiction = (account.tax_settings or {}).get("jurisdiction") or client_tax.get("tax_country") or client_tax.get("residency_country") or "DEFAULT"
@@ -117,7 +95,7 @@ class TaxEngine:
                 if ts is None:
                     totals["unknown_term"] += gain
                     continue
-                holding_days = (datetime.utcnow() - ts).days
+                holding_days = (datetime.now() - ts).days
                 if holding_days >= long_term_days:
                     totals["long_term"] += gain
                 else:

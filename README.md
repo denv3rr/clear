@@ -89,6 +89,49 @@ cd clear
 python run.py
 ```
 
+## Local Reports (Offline)
+
+Generate a client report without any model installed:
+
+```pwsh
+python -m modules.reporting.cli --client-id <CLIENT_ID> --format md
+```
+
+Optional output file:
+
+```pwsh
+python -m modules.reporting.cli --client-id <CLIENT_ID> --format md --output data/client_weekly_brief.md
+```
+
+  Health check:
+
+  ```pwsh
+  python -m modules.reporting.cli --health-check
+  ```
+
+  Startup safety checks:
+  - `run.py` performs a syntax compile pass across core modules and warns if `config/settings.json` is invalid JSON.
+  - `run.py` warns if `data/clients.json` fails schema checks (client_id/name, account list shape, holdings/lot types).
+  - Legacy lot timestamps are normalized to ISO-8601 on startup (and can be forced via Settings -> Diagnostics -> Normalize Lot Timestamps).
+
+### Local Model Setup (Optional)
+
+If you want model-enhanced reports, install Ollama (recommended) or run a local HTTP server (llama.cpp, vLLM) and run with `--use-model`:
+
+```pwsh
+python -m modules.reporting.cli --client-id <CLIENT_ID> --format md --use-model --model-id llama3
+```
+
+Install instructions:
+
+- Windows (Scoop): `scoop install ollama`
+- macOS (Homebrew): `brew install ollama`
+- Linux: `curl -fsSL https://ollama.com/install.sh | sh`
+
+Local HTTP servers:
+- llama.cpp server with OpenAI-compatible endpoints (`/v1/chat/completions`)
+- vLLM or similar local endpoint
+
 ## Testing
 
 ```pwsh
@@ -140,15 +183,46 @@ Do not commit `.env` files.
 
 AI synthesis is configured in `config/settings.json` under the `ai` key:
 
-| Key | Purpose | Default |
-| --- | --- | --- |
-| `ai.enabled` | Toggle AI notes/outlooks in reports. | `true` |
-| `ai.provider` | `rule_based` (offline) or `local_http`. | `rule_based` |
-| `ai.model_id` | Model identifier for caching. | `rule_based_v1` |
-| `ai.persona` | Persona tag for prompting. | `advisor_legal_v1` |
-| `ai.cache_ttl` | Cache TTL in seconds. | `21600` |
-| `ai.cache_file` | Cache file path. | `data/ai_report_cache.json` |
-| `ai.endpoint` | Local HTTP endpoint for LLM calls. | `""` |
+  | Key | Purpose | Default |
+  | --- | --- | --- |
+  | `reporting.ai.enabled` | Toggle report model usage. | `true` |
+  | `reporting.ai.provider` | `auto`, `ollama`, `local_http`, or `rule_based`. | `auto` |
+  | `reporting.ai.model_id` | Local model identifier. | `llama3` |
+  | `reporting.ai.endpoint` | Local HTTP LLM endpoint for `/v1/chat/completions`. | `http://127.0.0.1:11434` |
+  | `reporting.ai.timeout_seconds` | Per-request timeout in seconds. | `15` |
+
+  The top-level `ai.*` settings remain for other synthesis features; reporting reads `reporting.ai` first and falls back to `ai.*` if missing.
+
+### Tools Settings
+
+Tools settings live in `config/settings.json` under the `tools` key:
+
+  | Key | Purpose | Default |
+  | --- | --- | --- |
+  | `tools.perm_entropy_order` | Permutation entropy order (m). | `3` |
+  | `tools.perm_entropy_delay` | Permutation entropy delay (tau). | `1` |
+
+  These can be adjusted in Settings -> Tools.
+  Tools interval selection persists per client; change it from the Tools menu when needed.
+
+### Scroll Text Settings
+
+Scroll text settings live in `config/settings.json` under `display.scroll_text`:
+
+  | Key | Purpose | Default |
+  | --- | --- | --- |
+  | `display.scroll_text.prompt.speed` | Prompt scroll speed. | `8.0` |
+  | `display.scroll_text.prompt.band_width` | Prompt highlight band width. | `3` |
+  | `display.scroll_text.prompt.trail` | Prompt trail length. | `0` |
+  | `display.scroll_text.prompt.highlight_style` | Prompt highlight style. | `bold bright_white` |
+  | `display.scroll_text.prompt.base_style` | Prompt base style. | `dim` |
+  | `display.scroll_text.warning.speed` | Warning scroll speed. | `8.0` |
+  | `display.scroll_text.warning.band_width` | Warning highlight band width. | `3` |
+  | `display.scroll_text.warning.trail` | Warning trail length. | `0` |
+  | `display.scroll_text.warning.highlight_style` | Warning highlight style. | `bold bright_white` |
+  | `display.scroll_text.warning.base_style` | Warning base style. | `dim` |
+
+  These can be adjusted in Settings -> Display & UX -> Scroll Text.
 
 ### Runtime Files (Generated)
 
@@ -157,8 +231,10 @@ AI synthesis is configured in `config/settings.json` under the `ai` key:
 | `data/intel_news.json` | Cached RSS news items for reports. |
 | `data/news_health.json` | RSS feed health + backoff state. |
 | `data/ai_report_cache.json` | Cached AI synthesis outputs. |
-| `data/clients.json` | Local client/account data. |
+| `data/clients.json` | Local client/account data (legacy lot timestamps auto-normalized to ISO-8601). |
 | `config/settings.json` | Runtime settings saved by the Settings module. |
+| `data/*.md`, `data/*.csv`, `data/*.pdf`, `exports/`, `reports/` | Generated exports (ignored by git). |
+| `.env`, `data/*.json`, `config/*local*.json` | Personal/runtime data (ignored by git). |
 
 ## Modules
 
@@ -194,6 +270,8 @@ All formulas are shown in plain text for consistent rendering. Inline citations 
 | Max drawdown | `DD_t = (V_t / peak(V)) - 1`, `MDD = min(DD_t)` | Uses cumulative value series. | [CFA curriculum](https://www.cfainstitute.org/en/programs/cfa/curriculum) |
 | Historical VaR | `VaR_q = quantile(r, 1 - q)` | Empirical quantile. | [Investor.gov VaR](https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-bulletins/understanding-value-risk) |
 | CVaR (ES) | `CVaR_q = mean(r | r <= VaR_q)` | Tail average beyond VaR. | [Basel ES overview](https://www.bis.org/publ/bcbs265.pdf) |
+| VaR 99% | `VaR_0.99 = quantile(r, 0.01)` | Historical 99% quantile. | [Investor.gov VaR](https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-bulletins/understanding-value-risk) |
+| CVaR 99% | `CVaR_0.99 = mean(r | r <= VaR_0.99)` | 99% tail average. | [Basel ES overview](https://www.bis.org/publ/bcbs265.pdf) |
 | EWMA volatility | `var_t = lambda * var_{t-1} + (1-lambda) * r_t^2` | Lambda defaults to 0.94. | [RiskMetrics 1996](https://www.msci.com/documents/10199/5915b101-4206-4ba0-aee2-3449d5c7e95a) |
 | Concentration (HHI) | `HHI = sum(w_i^2)` | Used for sector concentration. | [Herfindahl-Hirschman Index](https://www.justice.gov/atr/herfindahl-hirschman-index) |
 
@@ -217,7 +295,8 @@ All formulas are shown in plain text for consistent rendering. Inline citations 
 | FFT spectrum | `FFT(x_t - mean(x_t))` then power `|X(f)|^2` | Dominant cycle frequencies. | [DSP Guide (FFT)](http://www.dspguide.com/ch12.htm) |
 | CUSUM change points | `S_t = max(0, S_{t-1} + x_t - mu - k)` | Flags shifts in mean. | [NIST/SEMATECH CUSUM](https://www.itl.nist.gov/div898/handbook/pmc/section3/pmc323.htm) |
 | Motif similarity | `||z_t - z_i||_2` on rolling windows | Similar historical regimes. | [Time series motifs](https://www.cs.ucr.edu/~eamonn/Time_Series_Motifs.pdf) |
-| Shannon entropy | `H = -sum(p_i * log2 p_i)` | Higher = noisier returns. | [Shannon 1948](https://people.math.harvard.edu/~ctm/home/text/others/shannon/entropy/entropy.pdf) |
+| Shannon entropy | `H = -sum(p_i * log2 p_i)` | Histogram-based return entropy; higher = more uniform outcomes, lower = concentrated outcomes. | [Shannon 1948](https://people.math.harvard.edu/~ctm/home/text/others/shannon/entropy/entropy.pdf) |
+| Permutation entropy | `H = -sum(p_i * log2 p_i) / log2(m!)` | Ordinal pattern entropy (order m, delay tau); higher = more complex ordering. Toolkit uses m=3, tau=1. | [Bandt & Pompe 2002](https://doi.org/10.1103/PhysRevLett.88.174102) |
 | Hurst exponent | `H = 2 * slope(log(lag), log(tau))` | <0.5 mean-revert, >0.5 trend. | [Hurst 1951](https://doi.org/10.1098/rspa.1951.0001) |
 
 ### Assumptions and data handling
@@ -230,9 +309,10 @@ All formulas are shown in plain text for consistent rendering. Inline citations 
 
 ### Validation
 
-- Toolkit metric tests live in `tests/test_toolkit_metrics.py`.
-- Market intel news filter tests live in `tests/test_intel_news_filters.py`.
-- Report synthesis tests live in `tests/test_report_synth.py`.
+  - Toolkit metric tests live in `tests/test_toolkit_metrics.py`.
+  - Market intel news filter tests live in `tests/test_intel_news_filters.py`.
+  - Report synthesis tests live in `tests/test_report_synth.py`.
+  - News emotion analysis filters to fresh items (default 4h) and ignores stale headlines.
 
 </details>
 
@@ -251,6 +331,7 @@ Metrics and modeling
 - https://www.itl.nist.gov/div898/handbook/pmc/section3/pmc323.htm
 - https://www.cs.ucr.edu/~eamonn/Time_Series_Motifs.pdf
 - https://people.math.harvard.edu/~ctm/home/text/others/shannon/entropy/entropy.pdf
+- https://doi.org/10.1103/PhysRevLett.88.174102
 - https://doi.org/10.1098/rspa.1951.0001
 
 Market data and platforms

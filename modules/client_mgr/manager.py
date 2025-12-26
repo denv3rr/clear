@@ -3,7 +3,9 @@
 from rich.console import Console, Group
 from rich.layout import Layout
 from rich.table import Table
+from rich.panel import Panel
 from rich.text import Text
+from rich import box
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 import time
@@ -12,9 +14,15 @@ import json
 
 # --- Internal Modules ---
 from modules.client_mgr.client_model import Client, Account
+from modules.client_mgr.holdings import (
+    build_lot_entry,
+    normalize_ticker,
+    parse_timestamp,
+)
 from modules.client_mgr.data_handler import DataHandler
 from modules.client_mgr.valuation import ValuationEngine
 from modules.client_mgr.toolkit import FinancialToolkit, RegimeModels, RegimeRenderer
+from modules.client_mgr.tools import Tools
 from modules.client_mgr.tax import TaxEngine
 from modules.market_data.trackers import GlobalTrackers, TrackerRelevance
 
@@ -201,15 +209,15 @@ class ClientManager:
 
             # CAPM Metrics
             ShellRenderer.set_busy(1.0)
-            capm = FinancialToolkit.compute_capm_metrics_from_holdings(
+            capm = Tools.compute_capm_metrics_from_holdings(
                 all_holdings, benchmark_ticker="SPY", period=CAPM_PERIOD.get(interval, "1y")
             )
             if capm.get("error") or int(capm.get("points", 0) or 0) < 30:
                 ShellRenderer.set_busy(1.0)
-                capm = FinancialToolkit.compute_capm_metrics_from_holdings(
+                capm = Tools.compute_capm_metrics_from_holdings(
                     all_holdings, benchmark_ticker="SPY", period=CAPM_PERIOD_FALLBACK.get(interval, "1y")
                 )
-            auto_risk = FinancialToolkit.assess_risk_profile(capm)
+            auto_risk = Tools.assess_risk_profile(capm)
             if client.risk_profile_source != "manual":
                 client.risk_profile = auto_risk
                 client.risk_profile_source = "auto"
@@ -268,7 +276,7 @@ class ClientManager:
             options = {
                 "1": "Edit Profile",
                 "2": "Manage Accounts",
-                "3": "Financial Toolkit",
+                "3": "Tools",
                 "4": "Change Interval",
                 "0": "Back to Clients",
             }
@@ -302,7 +310,7 @@ class ClientManager:
             elif choice == "2":
                 if self.manage_accounts_router(client) == "MAIN_MENU":
                     return "MAIN_MENU"
-            elif choice == "3": FinancialToolkit(client).run()
+            elif choice == "3": Tools(client).run()
             elif choice == "4": self._change_interval_workflow(client)
             
             DataHandler.save_clients(self.clients)
@@ -646,54 +654,73 @@ class ClientManager:
 
     def _change_interval_workflow(self, client):
         opts = list(INTERVAL_POINTS.keys())
-        self.console.print("[dim]Select Interval ([0] Back)[/dim]")
-        choice = InputSafe.get_option(opts + ["0"], prompt_text="[>]")
-        if choice == "0":
+        options = {str(idx + 1): opt for idx, opt in enumerate(opts)}
+        options["0"] = "Back"
+        choice = self._prompt_menu("Select Interval", options)
+        if choice in ("0", "m"):
             return
-        choice = str(choice).upper()
-        client.active_interval = choice
-        for acc in client.accounts: acc.active_interval = choice
+        selected = options.get(choice)
+        if not selected:
+            return
+        client.active_interval = selected
+        for acc in client.accounts:
+            acc.active_interval = selected
+
+    def _prompt_menu(
+        self,
+        title: str,
+        options: Dict[str, str],
+        show_main: bool = True,
+        show_back: bool = True,
+        show_exit: bool = True,
+    ) -> str:
+        table = Table.grid(padding=(0, 1))
+        table.add_column()
+        for key, label in options.items():
+            table.add_row(f"[bold cyan]{key}[/bold cyan]  {label}")
+        panel = Panel(table, title=title, border_style="cyan", box=box.ROUNDED)
+        return ShellRenderer.render_and_prompt(
+            Group(panel),
+            context_actions=options,
+            valid_choices=list(options.keys()) + ["m", "x"],
+            prompt_label=">",
+            show_main=show_main,
+            show_back=show_back,
+            show_exit=show_exit,
+            show_header=False,
+        )
 
     # --- Account CRUD ---
     def add_account_workflow(self, client):
         name = InputSafe.get_string("Account Name:")
         if not name: return
-        self.console.print("[bold]Account Type[/bold] ([0] Back, Enter to skip)")
-        self.console.print("[1] Taxable  [2] Traditional IRA  [3] Roth IRA  [4] 401k  [5] 403b")
-        self.console.print("[6] 457b  [7] SEP IRA  [8] SIMPLE IRA  [9] HSA  [10] 529")
-        self.console.print("[11] Trust  [12] Joint  [13] Custodial  [14] Corporate  [15] Crypto  [M] Manual")
-        choice = InputSafe.get_string("[>] Type:")
-        if choice.strip() == "0":
+        type_map = {
+            "1": "Taxable",
+            "2": "Traditional IRA",
+            "3": "Roth IRA",
+            "4": "401k",
+            "5": "403b",
+            "6": "457b",
+            "7": "SEP IRA",
+            "8": "SIMPLE IRA",
+            "9": "HSA",
+            "10": "529",
+            "11": "Trust",
+            "12": "Joint",
+            "13": "Custodial",
+            "14": "Corporate",
+            "15": "Crypto",
+            "M": "Manual",
+            "0": "Back",
+        }
+        choice = self._prompt_menu("Account Type", type_map)
+        if choice in ("0", "m"):
             return
-        if not choice.strip():
-            account_type = "Unspecified"
+        if choice.lower() == "m":
+            manual = InputSafe.get_string("Custom Type:")
+            account_type = manual.strip() if manual else "Unspecified"
         else:
-            key = choice.strip().lower()
-            if key == "m":
-                manual = InputSafe.get_string("Custom Type:")
-                if not manual:
-                    account_type = "Unspecified"
-                else:
-                    account_type = manual.strip()
-            else:
-                type_map = {
-                    "1": "Taxable",
-                    "2": "Traditional IRA",
-                    "3": "Roth IRA",
-                    "4": "401k",
-                    "5": "403b",
-                    "6": "457b",
-                    "7": "SEP IRA",
-                    "8": "SIMPLE IRA",
-                    "9": "HSA",
-                    "10": "529",
-                    "11": "Trust",
-                    "12": "Joint",
-                    "13": "Custodial",
-                    "14": "Corporate",
-                    "15": "Crypto",
-                }
-                account_type = type_map.get(key, choice.strip())
+            account_type = type_map.get(choice, "Unspecified")
         account = Account(account_name=name, account_type=account_type)
         tag_hint = ", ".join(sorted(TrackerRelevance.TAG_RULES.keys()))
         if tag_hint:
@@ -730,40 +757,44 @@ class ClientManager:
 
     # --- Holding CRUD ---
     def add_holding_workflow(self, account):
-        # Logic largely remains the same as original, utilizing InputSafe
-        # But relies on simple console prints for the interaction flow
         self.console.print("\n[dim]Enter Ticker or 'MANUAL'[/dim]")
-        ticker = InputSafe.get_string("Ticker:").upper()
-        if not ticker: return
+        ticker_raw = InputSafe.get_string("Ticker:")
+        ticker = normalize_ticker(ticker_raw)
+        if not ticker:
+            return
 
         if ticker == "MANUAL":
             self._add_manual_holding_logic(account)
             return
 
-        # Acquisition Logic
-        self.console.print("[1] Current Price [2] Historical [3] Custom Basis [0] Back")
-        method = InputSafe.get_option(["1", "2", "3", "0"])
-        if method == "0":
-            return
-        
-        qty = InputSafe.get_float("Quantity:")
-        
-        basis, ts_label, source = self._resolve_lot_basis(ticker, method)
-        if basis is None:
-            self.console.print("[red]Unable to resolve cost basis.[/red]")
-            InputSafe.pause()
+        method = self._prompt_menu(
+            "Add/Update Holding",
+            {
+                "1": "Market Price",
+                "2": "Historical (timestamp)",
+                "3": "Manual Basis",
+                "4": "Lot Entry",
+                "5": "Aggregate Entry",
+                "0": "Back",
+            },
+        )
+        if method in ("0", "m"):
             return
 
-        lot_entry = {
-            "qty": qty,
-            "basis": basis,
-            "timestamp": ts_label
-        }
-        if source:
-            lot_entry["source"] = source
+        if method == "4":
+            self._add_lot_entries_workflow(account, ticker)
+            return
+
+        if method == "5":
+            self._add_aggregate_entry_workflow(account, ticker)
+            return
+
+        qty = InputSafe.get_float("Shares:", min_val=0.0000001)
+        lot_entry = self._build_single_lot_entry(ticker, method, qty)
+        if not lot_entry:
+            return
 
         account.lots.setdefault(ticker, []).append(lot_entry)
-        
         account.sync_holdings_from_lots()
         self.console.print("[green]Holding Updated.[/green]")
         InputSafe.pause()
@@ -785,7 +816,7 @@ class ClientManager:
     def _load_ai_settings(self) -> dict:
         defaults = {
             "enabled": True,
-            "provider": "rule_based",
+            "provider": "auto",
             "model_id": "rule_based_v1",
             "persona": "advisor_legal_v1",
             "cache_ttl": 21600,
@@ -903,33 +934,181 @@ class ClientManager:
             return None
         return UIComponents.advisor_panels(sections)
 
-    def _resolve_lot_basis(self, ticker: str, method: str) -> Tuple[Optional[float], str, str]:
-        """Resolve lot basis based on user-selected method."""
+    def _prompt_timestamp(self, prompt: str) -> Optional[datetime]:
+        while True:
+            ts_str = InputSafe.get_string(prompt)
+            if not ts_str:
+                return None
+            ts = parse_timestamp(ts_str)
+            if ts is None:
+                self.console.print(
+                    "[red]Invalid timestamp format. Use ISO 8601 or MM/DD/YY HH:MM:SS[/red]"
+                )
+                continue
+            return ts
+
+    def _prompt_optional_float(self, prompt: str) -> Optional[float]:
+        raw = InputSafe.get_string(prompt)
+        if not raw:
+            return None
+        try:
+            return float(raw)
+        except Exception:
+            self.console.print("[red]Invalid number. Try again.[/red]")
+            return self._prompt_optional_float(prompt)
+
+    def _build_single_lot_entry(self, ticker: str, method: str, qty: float) -> Optional[dict]:
         if method == "1":
             quote = self.valuation_engine.get_quote_data(ticker)
             price = float(quote.get("price", 0.0) or 0.0)
             if price <= 0:
                 price = InputSafe.get_float("Enter current price ($):", min_val=0.01)
-            return price, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "MARKET"
+            ts = datetime.now()
+            try:
+                return build_lot_entry(qty, price, ts, source="MARKET")
+            except ValueError as exc:
+                self.console.print(f"[red]{exc}[/red]")
+                InputSafe.pause()
+                return None
 
         if method == "2":
-            while True:
-                ts_str = InputSafe.get_string("Timestamp (MM/DD/YY HH:MM:SS):")
-                try:
-                    ts = datetime.strptime(ts_str, "%m/%d/%y %H:%M:%S")
-                except ValueError:
-                    self.console.print("[red]Invalid format. Use MM/DD/YY HH:MM:SS[/red]")
-                    continue
-
+            ts = self._prompt_timestamp("Timestamp (ISO 8601 or MM/DD/YY HH:MM:SS):")
+            if ts is None:
+                self.console.print("[red]Timestamp required for historical add.[/red]")
+                InputSafe.pause()
+                return None
+            basis = self._prompt_optional_float(
+                "Cost basis per share (Enter to use historical price):"
+            )
+            if basis is None:
                 price = self.valuation_engine.get_historical_price(ticker, ts)
                 if price is None or price <= 0:
-                    self.console.print("[yellow]Unable to fetch historical price. Enter manually.[/yellow]")
-                    price = InputSafe.get_float("Enter historical price ($):", min_val=0.01)
+                    self.console.print(
+                        "[yellow]Unable to fetch historical price. Enter manually.[/yellow]"
+                    )
+                    basis = InputSafe.get_float(
+                        "Enter historical price ($):",
+                        min_val=0.0,
+                    )
+                else:
+                    basis = float(price)
+            try:
+                return build_lot_entry(
+                    qty,
+                    basis,
+                    ts,
+                    source="HISTORICAL",
+                )
+            except ValueError as exc:
+                self.console.print(f"[red]{exc}[/red]")
+                InputSafe.pause()
+                return None
 
-                return price, ts.strftime("%Y-%m-%d %H:%M:%S"), "HISTORICAL"
+        basis = InputSafe.get_float("Enter cost basis per share ($):", min_val=0.0)
+        ts = datetime.now()
+        try:
+            return build_lot_entry(qty, basis, ts, source="CUSTOM")
+        except ValueError as exc:
+            self.console.print(f"[red]{exc}[/red]")
+            InputSafe.pause()
+            return None
 
-        price = InputSafe.get_float("Enter custom cost basis ($):", min_val=0.01)
-        return price, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "CUSTOM"
+    def _add_lot_entries_workflow(self, account: Account, ticker: str) -> None:
+        entries = []
+        while True:
+            qty = InputSafe.get_float("Lot shares:", min_val=0.0000001)
+            ts = self._prompt_timestamp("Lot timestamp (ISO 8601 or MM/DD/YY HH:MM:SS):")
+            basis = self._prompt_optional_float(
+                "Lot cost basis per share (Enter to use historical price):"
+            )
+            if basis is None and ts is not None:
+                price = self.valuation_engine.get_historical_price(ticker, ts)
+                if price is None or price <= 0:
+                    self.console.print(
+                        "[yellow]Unable to fetch historical price. Enter manually.[/yellow]"
+                    )
+                    basis = InputSafe.get_float(
+                        "Enter historical price ($):",
+                        min_val=0.0,
+                    )
+                else:
+                    basis = float(price)
+            try:
+                entry = build_lot_entry(
+                    qty,
+                    basis,
+                    ts,
+                    source="LOT",
+                )
+            except ValueError as exc:
+                self.console.print(f"[red]{exc}[/red]")
+                if not InputSafe.get_yes_no("Retry lot entry?"):
+                    break
+                continue
+            entries.append(entry)
+            if not InputSafe.get_yes_no("Add another lot?"):
+                break
+
+        if not entries:
+            return
+        account.lots.setdefault(ticker, []).extend(entries)
+        account.sync_holdings_from_lots()
+        self.console.print("[green]Lots Added.[/green]")
+        InputSafe.pause()
+
+    def _add_aggregate_entry_workflow(self, account: Account, ticker: str) -> None:
+        qty = InputSafe.get_float("Aggregate shares:", min_val=0.0000001)
+        mode = self._prompt_menu(
+            "Aggregate Basis",
+            {
+                "1": "Average Cost",
+                "2": "Total Cost",
+                "3": "Timestamp Price",
+                "0": "Back",
+            },
+        )
+        if mode in ("0", "m"):
+            return
+        basis = None
+        ts = None
+        source = "AGGREGATE"
+        if mode == "1":
+            basis = InputSafe.get_float("Average cost per share ($):", min_val=0.0)
+        elif mode == "2":
+            total_cost = InputSafe.get_float("Total cost ($):", min_val=0.0)
+            basis = total_cost / qty if qty > 0 else 0.0
+            source = "AGGREGATE_TOTAL"
+        elif mode == "3":
+            ts = self._prompt_timestamp("Timestamp (ISO 8601 or MM/DD/YY HH:MM:SS):")
+            if ts is None:
+                self.console.print("[red]Timestamp required for historical add.[/red]")
+                InputSafe.pause()
+                return
+        if basis is None and ts is not None:
+            price = self.valuation_engine.get_historical_price(ticker, ts)
+            if price is None or price <= 0:
+                self.console.print(
+                    "[yellow]Unable to fetch historical price. Enter manually.[/yellow]"
+                )
+                basis = InputSafe.get_float("Enter historical price ($):", min_val=0.0)
+            else:
+                basis = float(price)
+        try:
+            entry = build_lot_entry(
+                qty,
+                basis,
+                ts,
+                source=source,
+                kind="aggregate",
+            )
+        except ValueError as exc:
+            self.console.print(f"[red]{exc}[/red]")
+            InputSafe.pause()
+            return
+        account.lots.setdefault(ticker, []).append(entry)
+        account.sync_holdings_from_lots()
+        self.console.print("[green]Aggregate Holding Updated.[/green]")
+        InputSafe.pause()
 
     def _edit_client_tax_profile(self, client: Client):
         profile = client.tax_profile or {}

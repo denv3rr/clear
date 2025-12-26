@@ -1,7 +1,7 @@
 import json
 import os
 import time
-from typing import List
+from typing import Dict, List, Optional
 
 from rich.console import Console, Group
 from rich.table import Table
@@ -20,7 +20,7 @@ from interfaces.navigator import Navigator
 from modules.market_data.finnhub_client import FinnhubWrapper
 from modules.market_data.yfinance_client import YahooWrapper
 from modules.market_data.trackers import GlobalTrackers
-from modules.market_data.intel import MarketIntel, REGIONS
+from modules.market_data.intel import MarketIntel, REGIONS, news_cache_status, rank_news_items
 from utils.clear_access import ClearAccessManager
 from utils.charts import ChartRenderer
 from interfaces.shell import ShellRenderer
@@ -412,6 +412,30 @@ class MarketFeed:
                 return options_list[idx]
         return None
 
+    def _prompt_menu(
+        self,
+        title: str,
+        options: Dict[str, str],
+        show_main: bool = True,
+        show_back: bool = True,
+        show_exit: bool = True,
+    ) -> str:
+        table = Table.grid(padding=(0, 1))
+        table.add_column()
+        for key, label in options.items():
+            table.add_row(f"[bold cyan]{key}[/bold cyan]  {label}")
+        panel = Panel(table, title=title, border_style="cyan", box=box.ROUNDED)
+        return ShellRenderer.render_and_prompt(
+            Group(panel),
+            context_actions=options,
+            valid_choices=list(options.keys()) + ["m", "x"],
+            prompt_label=">",
+            show_main=show_main,
+            show_back=show_back,
+            show_exit=show_exit,
+            show_header=False,
+        )
+
     def _get_intel_report(self, report_mode: str, region: str, industry: str, force: bool = False) -> dict:
         settings = self._load_runtime_settings()
         intel_conf = settings.get("intel", {})
@@ -635,11 +659,13 @@ class MarketFeed:
             else:
                 table.add_row("-", "No news items available.", "-")
 
+            cache_state = news_cache_status(cached)
             status = build_status_header(
                 "News Feed",
                 [
                     ("Region", region_name),
                     ("Industry", industry),
+                    ("Cache", cache_state),
                     ("Items", str(len(filtered))),
                     ("Showing", f"{offset + 1}-{min(len(filtered), offset + page_size)}"),
                 ],
@@ -724,7 +750,7 @@ class MarketFeed:
         if not items:
             return []
         if region == "Global" and industry == "all":
-            return items
+            return rank_news_items(items, region=region, industry=industry)
         filtered = []
         for item in items:
             regions = item.get("regions", []) or []
@@ -733,7 +759,7 @@ class MarketFeed:
             industry_ok = True if industry == "all" else industry in industries
             if region_ok and industry_ok:
                 filtered.append(item)
-        return filtered
+        return rank_news_items(filtered, region=region, industry=industry)
 
     def _build_news_health_panel(self, health: dict, skipped: list) -> Panel:
         ok = 0
@@ -829,15 +855,25 @@ class MarketFeed:
             },
             "news": {
                 "sources_enabled": ["CNBC Top", "CNBC World", "MarketWatch", "BBC Business"],
+                "aliases_file": "config/news_aliases.json",
             },
             "ai": {
                 "enabled": True,
-                "provider": "rule_based",
+                "provider": "auto",
                 "model_id": "rule_based_v1",
                 "persona": "advisor_legal_v1",
                 "cache_ttl": 21600,
                 "cache_file": "data/ai_report_cache.json",
                 "endpoint": "",
+            },
+            "reporting": {
+                "ai": {
+                    "enabled": True,
+                    "provider": "auto",
+                    "model_id": "llama3",
+                    "endpoint": "http://127.0.0.1:11434",
+                    "timeout_seconds": 15,
+                }
             },
         }
         if not os.path.exists(self._settings_file):
@@ -1566,14 +1602,21 @@ class MarketFeed:
                 print("\x1b[3J", end="")
                 self.console.print(main_panel)
                 
-                self.console.print("[bold cyan]OPTIONS:[/bold cyan] [I] Change Interval | [N] New Search | [0] Back")
-                action = InputSafe.get_option(["i", "n", "0", "m", "x"], prompt_text="[>]").lower()
+                action = self._prompt_menu(
+                    "Ticker Actions",
+                    {
+                        "I": "Change Interval",
+                        "N": "New Search",
+                        "0": "Back",
+                    },
+                    show_back=True,
+                ).lower()
 
                 if action == "i":
                     local_interval_idx = (local_interval_idx + 1) % len(self.interval_options)
-                    continue 
+                    continue
                 elif action == "n":
-                    break 
+                    break
                 elif action == "0":
                     return
                 elif action == "m":
