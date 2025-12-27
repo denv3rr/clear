@@ -24,14 +24,14 @@
 
 <div align="center">
 
-[Overview](#overview) ?
-[Screenshots](#screenshots) ?
-[Quick Start](#quick-start) ?
-[Configuration](#configuration) ?
-[Modules](#modules) ?
-[Data Sources](#data-sources) ?
-[Financial Methods](#financial-methods) ?
-[Sources Index](#sources-index) ?
+[Overview](#overview) •
+[Screenshots](#screenshots) •
+[Quick Start](#quick-start) •
+[Configuration](#configuration) •
+[Modules](#modules) •
+[Data Sources](#data-sources) •
+[Financial Methods](#financial-methods) •
+[Sources Index](#sources-index) •
 [Disclaimer](#disclaimer)
 
 </div>
@@ -63,6 +63,7 @@ A portfolio management, analytics, and global tracking platform.
 - Health-aware sources with retry/backoff handling
 
 </details>
+
 ## Screenshots
 
 <!--
@@ -200,7 +201,8 @@ Although the basic Finnhub.io service is free, some international exchanges requ
 FINNHUB_API_KEY=your_api_key_here
 ```
 
-Do not commit `.env` files.
+> [!WARNING]
+> Do not commit any `.env` files.
 
 ### Environment Variables
 
