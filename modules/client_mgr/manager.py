@@ -24,7 +24,8 @@ from modules.client_mgr.valuation import ValuationEngine
 from modules.client_mgr.toolkit import FinancialToolkit, RegimeModels, RegimeRenderer
 from modules.client_mgr.tools import Tools
 from modules.client_mgr.tax import TaxEngine
-from modules.market_data.trackers import GlobalTrackers, TrackerRelevance
+from modules.market_data.trackers import GlobalTrackers, TrackerRelevance       
+from modules.reporting.engine import ReportEngine
 
 # --- Interface & Utils ---
 from interfaces.components import UIComponents
@@ -97,7 +98,7 @@ class ClientManager:
             sidebar = build_sidebar(
                 [("Clients", options)],
                 show_main=True,
-                show_back=False,
+                show_back=True,
                 show_exit=True,
                 compact=compact,
             )
@@ -107,14 +108,14 @@ class ClientManager:
                 valid_choices=list(options.keys()) + ["m", "x"],
                 prompt_label=">",
                 show_main=True,
-                show_back=False,
+                show_back=True,
                 show_exit=True,
                 show_header=False,
                 sidebar_override=sidebar,
             )
 
             # 3. Navigation
-            if choice == "m":
+            if choice in ("0", "m"):
                 break
             if choice == "x":
                 Navigator.exit_app()
@@ -278,13 +279,14 @@ class ClientManager:
                 "2": "Manage Accounts",
                 "3": "Tools",
                 "4": "Change Interval",
+                "5": "Export Reports",
                 "0": "Back to Clients",
             }
             compact = compact_for_width(self.console.width)
             sidebar = build_sidebar(
                 [("Client", options)],
                 show_main=True,
-                show_back=False,
+                show_back=True,
                 show_exit=True,
                 compact=compact,
             )
@@ -294,7 +296,7 @@ class ClientManager:
                 valid_choices=list(options.keys()) + ["m", "x"],
                 prompt_label=">",
                 show_main=True,
-                show_back=False,
+                show_back=True,
                 show_exit=True,
                 show_header=False,
                 sidebar_override=sidebar,
@@ -312,6 +314,7 @@ class ClientManager:
                     return "MAIN_MENU"
             elif choice == "3": Tools(client).run()
             elif choice == "4": self._change_interval_workflow(client)
+            elif choice == "5": self._export_client_reports(client)
             
             DataHandler.save_clients(self.clients)
         return None
@@ -548,7 +551,7 @@ class ClientManager:
             sidebar = build_sidebar(
                 [("Account", options)],
                 show_main=True,
-                show_back=False,
+                show_back=True,
                 show_exit=True,
                 compact=compact,
             )
@@ -558,13 +561,15 @@ class ClientManager:
                 valid_choices=list(options.keys()) + ["m", "x"],
                 prompt_label=">",
                 show_main=True,
-                show_back=False,
+                show_back=True,
                 show_exit=True,
                 show_header=False,
                 sidebar_override=sidebar,
             )
 
             # --- 3. Navigation ---
+            if choice == "0":
+                break
             if choice == "m":
                 return "MAIN_MENU"
             if choice == "x":
@@ -666,6 +671,97 @@ class ClientManager:
         for acc in client.accounts:
             acc.active_interval = selected
 
+    def _export_client_reports(self, client: Client) -> None:
+        engine = ReportEngine()
+        while True:
+            options = {
+                "1": "Client Summary",
+                "2": "Client Detailed",
+                "3": "Account Report",
+                "0": "Back",
+            }
+            choice = self._prompt_menu("Export Reports", options)
+            if choice in ("0", "m"):
+                return
+
+            fmt = self._prompt_menu(
+                "Export Format",
+                {"1": "Markdown", "2": "JSON", "0": "Back"},
+            )
+            if fmt in ("0", "m"):
+                continue
+            fmt_val = "md" if fmt == "1" else "json"
+
+            if choice == "1":
+                report = engine.generate_client_portfolio_report(
+                    client,
+                    output_format=fmt_val,
+                    detailed=False,
+                )
+                self._write_report_file(
+                    report.content,
+                    client_id=client.client_id,
+                    report_slug="client_summary",
+                    ext=fmt_val,
+                )
+            elif choice == "2":
+                report = engine.generate_client_portfolio_report(
+                    client,
+                    output_format=fmt_val,
+                    detailed=True,
+                )
+                self._write_report_file(
+                    report.content,
+                    client_id=client.client_id,
+                    report_slug="client_detailed",
+                    ext=fmt_val,
+                )
+            elif choice == "3":
+                if not client.accounts:
+                    self.console.print("[yellow]No accounts available.[/yellow]")
+                    InputSafe.pause()
+                    continue
+                account_options = {
+                    str(idx + 1): acc.account_name
+                    for idx, acc in enumerate(client.accounts)
+                }
+                account_options["0"] = "Back"
+                account_choice = self._prompt_menu("Select Account", account_options)
+                if account_choice in ("0", "m"):
+                    continue
+                try:
+                    account_idx = int(account_choice) - 1
+                except Exception:
+                    continue
+                if not (0 <= account_idx < len(client.accounts)):
+                    continue
+                account = client.accounts[account_idx]
+                report = engine.generate_account_portfolio_report(
+                    client,
+                    account,
+                    output_format=fmt_val,
+                )
+                self._write_report_file(
+                    report.content,
+                    client_id=client.client_id,
+                    report_slug=f"account_{account.account_id}",
+                    ext=fmt_val,
+                )
+
+    def _write_report_file(self, content: str, client_id: str, report_slug: str, ext: str) -> None:
+        reports_dir = os.path.join("data", "reports", client_id)
+        os.makedirs(reports_dir, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{report_slug}_{timestamp}.{ext}"
+        path = os.path.join(reports_dir, filename)
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(content)
+            self.console.print(f"[green]Report saved: {path}[/green]")
+        except Exception as exc:
+            self.console.print(f"[red]Failed to save report: {exc}[/red]")
+        InputSafe.pause()
+
     def _prompt_menu(
         self,
         title: str,
@@ -710,13 +806,13 @@ class ClientManager:
             "13": "Custodial",
             "14": "Corporate",
             "15": "Crypto",
-            "M": "Manual",
+            "U": "Manual",
             "0": "Back",
         }
         choice = self._prompt_menu("Account Type", type_map)
-        if choice in ("0", "m"):
+        if choice in ("0", "MAIN_MENU"):
             return
-        if choice.lower() == "m":
+        if choice.lower() == "u":
             manual = InputSafe.get_string("Custom Type:")
             account_type = manual.strip() if manual else "Unspecified"
         else:

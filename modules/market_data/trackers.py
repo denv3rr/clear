@@ -1,3 +1,4 @@
+import json
 import os
 import time
 import math
@@ -15,6 +16,7 @@ from rich import box
 from utils.system import SystemHost
 from utils.scroll_text import build_scrolling_line
 from utils.charts import ChartRenderer
+from modules.market_data.flight_registry import get_operator_info
 
 
 @dataclass
@@ -24,6 +26,11 @@ class TrackerPoint:
     label: str
     category: str
     kind: str
+    icao24: Optional[str] = None
+    callsign: Optional[str] = None
+    operator: Optional[str] = None
+    flight_number: Optional[str] = None
+    tail_number: Optional[str] = None
     altitude_ft: Optional[float] = None
     speed_kts: Optional[float] = None
     heading_deg: Optional[float] = None
@@ -33,7 +40,6 @@ class TrackerPoint:
 
 
 class TrackerProviders:
-    OPENSKY_URL = "https://opensky-network.org/api/states/all"
 
     @staticmethod
     def _safe_float(value: Any) -> Optional[float]:
@@ -65,55 +71,77 @@ class TrackerProviders:
         return "commercial"
 
     @staticmethod
+    def _parse_flight_identity(callsign: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+        cs = (callsign or "").strip().upper()
+        if not cs:
+            return None, None, None
+        operator = None
+        flight_number = None
+        tail_number = None
+        if len(cs) >= 3 and cs[:3].isalpha():
+            operator = cs[:3]
+            flight_number = cs[3:] if cs[3:].isdigit() else cs[3:]
+        tail_prefixes = ("N", "G-", "D-", "C-", "VH-", "ZS-", "F-", "I-", "JA")
+        if cs.startswith(tail_prefixes):
+            tail_number = cs
+        return operator, flight_number, tail_number
+
+    @staticmethod
     def fetch_flights(limit: int = 200) -> Tuple[List[TrackerPoint], List[str]]:
         warnings: List[str] = []
         include_commercial = os.getenv("CLEAR_INCLUDE_COMMERCIAL", "0") == "1"
         include_private = os.getenv("CLEAR_INCLUDE_PRIVATE", "0") == "1"
-        username = os.getenv("OPENSKY_USERNAME")
-        password = os.getenv("OPENSKY_PASSWORD")
-        auth = (username, password) if username and password else None
-        if not auth:
-            warnings.append("Set API credentials for flight and vessel information.")
+        url = os.getenv("FLIGHT_DATA_URL")
+        data_path = os.getenv("FLIGHT_DATA_PATH")
+        rows = None
+        if not url and not data_path:
+            warnings.append("No flight feed configured.")
+            return [], warnings
 
         try:
-            resp = requests.get(
-                TrackerProviders.OPENSKY_URL,
-                auth=auth,
-                headers={"User-Agent": "clear-cli"},
-                timeout=8,
-            )
-            if resp.status_code != 200:
-                warnings.append(f"OpenSky HTTP {resp.status_code}")
-                return [], warnings
-            data = resp.json() or {}
+            if data_path:
+                with open(data_path, "r", encoding="utf-8") as handle:
+                    payload = json.load(handle)
+                    rows = payload if isinstance(payload, list) else payload.get("data", [])
+            else:
+                resp = requests.get(url, timeout=8)
+                if resp.status_code != 200:
+                    warnings.append(f"Flight feed HTTP {resp.status_code}")
+                    return [], warnings
+                payload = resp.json()
+                rows = payload if isinstance(payload, list) else payload.get("data", [])
         except Exception as exc:
-            warnings.append(f"OpenSky fetch failed: {exc}")
-            data = {}
-            states = []
-        else:
-            states = data.get("states", []) or []
+            warnings.append(f"Flight feed fetch failed: {exc}")
+            return [], warnings
 
         points: List[TrackerPoint] = []
-        for row in states:
-            if not isinstance(row, list) or len(row) < 7:
+        for row in rows or []:
+            if not isinstance(row, dict):
                 continue
-            callsign = (row[1] or "").strip()
-            lon = TrackerProviders._safe_float(row[5])
-            lat = TrackerProviders._safe_float(row[6])
+            lat = TrackerProviders._safe_float(row.get("lat"))
+            lon = TrackerProviders._safe_float(row.get("lon"))
             if lat is None or lon is None:
                 continue
-            origin = row[2] if len(row) > 2 else None
-            baro_alt = TrackerProviders._safe_float(row[7] if len(row) > 7 else None)
-            geo_alt = TrackerProviders._safe_float(row[13] if len(row) > 13 else None)
-            altitude = geo_alt if geo_alt is not None else baro_alt
-            velocity = TrackerProviders._safe_float(row[9] if len(row) > 9 else None)
-            heading = TrackerProviders._safe_float(row[10] if len(row) > 10 else None)
-            updated = int(row[4] or 0) if len(row) > 4 and row[4] else None
-
-            altitude_ft = altitude * 3.28084 if altitude is not None else None
-            speed_kts = velocity * 1.94384 if velocity is not None else None
-            category = TrackerProviders._callsign_category(callsign)
-            label = callsign or (row[0] or "UNKNOWN")
+            callsign = str(row.get("callsign") or row.get("label") or "").strip()
+            label = callsign or str(row.get("label") or row.get("icao24") or "UNKNOWN")
+            icao24 = str(row.get("icao24") or "").strip().upper() or None
+            altitude_ft = TrackerProviders._safe_float(row.get("altitude_ft") or row.get("alt_ft"))
+            speed_kts = TrackerProviders._safe_float(row.get("speed_kts"))
+            heading = TrackerProviders._safe_float(row.get("heading_deg") or row.get("heading"))
+            updated = row.get("updated_ts") or row.get("timestamp")
+            try:
+                updated_ts = int(updated) if updated is not None else None
+            except Exception:
+                updated_ts = None
+            category = str(row.get("category") or TrackerProviders._callsign_category(callsign)).lower()
+            operator = row.get("operator")
+            flight_number = row.get("flight_number")
+            tail_number = row.get("tail_number")
+            if operator is None or flight_number is None or tail_number is None:
+                op_guess, flight_guess, tail_guess = TrackerProviders._parse_flight_identity(callsign)
+                operator = operator or op_guess
+                flight_number = flight_number or flight_guess
+                tail_number = tail_number or tail_guess
             if category == "commercial" and not include_commercial:
                 high_speed = speed_kts is not None and speed_kts >= 520
                 high_alt = altitude_ft is not None and altitude_ft >= 38000
@@ -128,19 +156,24 @@ class TrackerProviders:
                 lat=lat,
                 lon=lon,
                 label=label,
-                category=category,
+                category=category or "unknown",
                 kind="flight",
+                icao24=icao24,
+                callsign=callsign or None,
+                operator=operator,
+                flight_number=flight_number,
+                tail_number=tail_number,
                 altitude_ft=altitude_ft,
                 speed_kts=speed_kts,
                 heading_deg=heading,
-                country=origin,
-                updated_ts=updated,
+                country=str(row.get("country") or row.get("origin") or "") or None,
+                updated_ts=updated_ts,
             ))
             if len(points) >= limit:
                 break
 
         if not points:
-            warnings.append("No live flight data returned from OpenSky.")
+            warnings.append("No live flight data returned from the flight feed.")
         return points, warnings
 
     @staticmethod
@@ -148,15 +181,8 @@ class TrackerProviders:
         warnings: List[str] = []
         url = os.getenv("SHIPPING_DATA_URL")
         if not url:
-            warnings.append("No vessel feed configured!")
-            demo = [
-                {"lat": 0.0, "lon": 0.0, "name": "-", "type": "cargo", "industry": None},
-                {"lat": 0.0, "lon": 0.0, "name": "-", "type": "tanker", "industry": None},
-                {"lat": 0.0, "lon": 0.0, "name": "-", "type": "passenger", "industry": None},
-                {"lat": 0.0, "lon": 0.0, "name": "-", "type": "fishing", "industry": None},
-                {"lat": 0.0, "lon": 0.0, "name": "-", "type": "military", "industry": None},
-            ]
-            rows = demo
+            warnings.append("No vessel feed configured.")
+            return [], warnings
         else:
             rows = None
 
@@ -256,6 +282,9 @@ class GlobalTrackers:
             "warnings": [],
         },
         "history": {},
+        "path_history": {},
+        "id_index": {},
+        "route_cache": {},
         "last_seen": {},
     }
     _HISTORY_WINDOW_SEC = 900
@@ -272,12 +301,18 @@ class GlobalTrackers:
             "warnings": [],
         })
         self._history = self._state.get("history", {})
+        self._path_history = self._state.get("path_history", {})
+        self._id_index = self._state.get("id_index", {})
+        self._route_cache = self._state.get("route_cache", {})
         self._last_seen = self._state.get("last_seen", {})
 
     def _sync_state(self) -> None:
         self._state["cached"] = self._cached
         self._state["last_refresh"] = self._last_refresh
         self._state["history"] = self._history
+        self._state["path_history"] = self._path_history
+        self._state["id_index"] = self._id_index
+        self._state["route_cache"] = self._route_cache
         self._state["last_seen"] = self._last_seen
 
     @staticmethod
@@ -308,22 +343,32 @@ class GlobalTrackers:
         window = self._HISTORY_WINDOW_SEC
         for pt in points:
             if pt.speed_kts is None:
-                continue
+                speed = None
+            else:
+                speed = float(pt.speed_kts)
             key = self._point_id(pt)
             self._last_seen[key] = now
             if key not in self._history:
                 self._history[key] = deque()
             series: Deque[Tuple[int, float]] = self._history[key]
             ts = int(pt.updated_ts or now)
-            series.append((ts, float(pt.speed_kts)))
+            if speed is not None:
+                series.append((ts, speed))
             while series and (now - series[0][0]) > window:
                 series.popleft()
+            if key not in self._path_history:
+                self._path_history[key] = deque()
+            path_series: Deque[Tuple[int, float, float, Optional[float], Optional[float], Optional[float]]] = self._path_history[key]
+            path_series.append((ts, float(pt.lat), float(pt.lon), pt.speed_kts, pt.altitude_ft, pt.heading_deg))
+            while path_series and (now - path_series[0][0]) > window:
+                path_series.popleft()
 
         stale_cutoff = now - (window * 2)
         stale_keys = [k for k, last in self._last_seen.items() if last < stale_cutoff]
         for key in stale_keys:
             self._last_seen.pop(key, None)
             self._history.pop(key, None)
+            self._path_history.pop(key, None)
 
     def _point_metrics(self, point: TrackerPoint) -> Dict[str, Optional[float]]:
         key = self._point_id(point)
@@ -340,6 +385,58 @@ class GlobalTrackers:
             "vol_heat": vol_heat,
         }
 
+    @staticmethod
+    def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        radius_km = 6371.0
+        lat1_r = math.radians(lat1)
+        lon1_r = math.radians(lon1)
+        lat2_r = math.radians(lat2)
+        lon2_r = math.radians(lon2)
+        dlat = lat2_r - lat1_r
+        dlon = lon2_r - lon1_r
+        a = math.sin(dlat / 2) ** 2 + math.cos(lat1_r) * math.cos(lat2_r) * math.sin(dlon / 2) ** 2
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+        return radius_km * c
+
+    @staticmethod
+    def _bearing_deg(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        lat1_r = math.radians(lat1)
+        lat2_r = math.radians(lat2)
+        dlon = math.radians(lon2 - lon1)
+        x = math.sin(dlon) * math.cos(lat2_r)
+        y = math.cos(lat1_r) * math.sin(lat2_r) - math.sin(lat1_r) * math.cos(lat2_r) * math.cos(dlon)
+        bearing = math.degrees(math.atan2(x, y))
+        return (bearing + 360) % 360
+
+    @staticmethod
+    def _direction_label(bearing: Optional[float]) -> str:
+        if bearing is None:
+            return "Unknown"
+        directions = [
+            (22.5, "N"),
+            (67.5, "NE"),
+            (112.5, "E"),
+            (157.5, "SE"),
+            (202.5, "S"),
+            (247.5, "SW"),
+            (292.5, "W"),
+            (337.5, "NW"),
+            (360.0, "N"),
+        ]
+        for cutoff, label in directions:
+            if bearing < cutoff:
+                return label
+        return "N"
+
+    @staticmethod
+    def _normalize_query(text: Optional[str]) -> str:
+        return (text or "").strip().lower()
+
+    def _match_query(self, value: Optional[str], query: str) -> bool:
+        if not value:
+            return False
+        return query in value.lower()
+
     def refresh(self, force: bool = False) -> Dict[str, Any]:
         self._last_refresh = float(self._state.get("last_refresh", 0.0) or 0.0)
         self._cached = self._state.get("cached", self._cached)
@@ -354,7 +451,7 @@ class GlobalTrackers:
         # Preserve last good data if provider returns empty.
         if not flights and self._cached.get("flights"):
             flights = self._cached.get("flights", [])
-            warnings.append("OpenSky returned empty; showing last cached flights.")
+            warnings.append("Flight feed returned empty; showing last cached flights.")
         if not ships and self._cached.get("ships"):
             ships = self._cached.get("ships", [])
             warnings.append("Shipping feed returned empty; showing last cached ships.")
@@ -372,6 +469,9 @@ class GlobalTrackers:
         self._last_refresh = float(self._state.get("last_refresh", 0.0) or 0.0)
         self._cached = self._state.get("cached", self._cached)
         self._history = self._state.get("history", self._history)
+        self._path_history = self._state.get("path_history", self._path_history)
+        self._id_index = self._state.get("id_index", self._id_index)
+        self._route_cache = self._state.get("route_cache", self._route_cache)
         self._last_seen = self._state.get("last_seen", self._last_seen)
         data = self.refresh() if allow_refresh else self._cached
         flights: List[TrackerPoint] = data.get("flights", [])
@@ -388,10 +488,22 @@ class GlobalTrackers:
         payload = []
         for pt in points:
             metrics = self._point_metrics(pt)
+            point_id = self._point_id(pt)
+            tracker_id = pt.icao24 or point_id
+            self._id_index[str(tracker_id).lower()] = point_id
+            operator_info = get_operator_info(pt.operator)
             payload.append({
+                "id": tracker_id,
                 "kind": pt.kind,
                 "category": pt.category,
                 "label": pt.label,
+                "icao24": pt.icao24,
+                "callsign": pt.callsign,
+                "operator": pt.operator,
+                "operator_name": operator_info.get("name"),
+                "operator_country": operator_info.get("country"),
+                "flight_number": pt.flight_number,
+                "tail_number": pt.tail_number,
                 "lat": pt.lat,
                 "lon": pt.lon,
                 "altitude_ft": pt.altitude_ft,
@@ -405,11 +517,123 @@ class GlobalTrackers:
                 "vol_heat": metrics.get("vol_heat"),
             })
 
+        self._sync_state()
         return {
             "mode": mode,
             "count": len(payload),
             "warnings": warnings,
             "points": payload,
+        }
+
+    def search_snapshot(
+        self,
+        snapshot: Dict[str, Any],
+        query: str,
+        fields: Optional[List[str]] = None,
+        kind: Optional[str] = None,
+        limit: int = 50,
+    ) -> Dict[str, Any]:
+        query_norm = self._normalize_query(query)
+        if not query_norm:
+            return {"query": query, "count": 0, "points": []}
+        allowed_fields = {
+            "label",
+            "category",
+            "country",
+            "icao24",
+            "callsign",
+            "operator",
+            "flight_number",
+            "tail_number",
+        }
+        if fields:
+            search_fields = [f for f in fields if f in allowed_fields]
+            if not search_fields:
+                search_fields = list(allowed_fields)
+        else:
+            search_fields = list(allowed_fields)
+        points = snapshot.get("points", [])
+        results = []
+        for pt in points:
+            if kind and str(pt.get("kind", "")).lower() != kind.lower():
+                continue
+            for field in search_fields:
+                if self._match_query(str(pt.get(field) or ""), query_norm):
+                    results.append(pt)
+                    break
+            if len(results) >= limit:
+                break
+        return {"query": query, "count": len(results), "points": results}
+
+    def get_history(self, tracker_id: str) -> Dict[str, Any]:
+        if not tracker_id:
+            return {"id": tracker_id, "history": []}
+        tracker_key = self._id_index.get(tracker_id.lower())
+        if not tracker_key:
+            tracker_key = self._id_index.get(tracker_id.strip().lower())
+        if not tracker_key:
+            return {"id": tracker_id, "history": []}
+        series = self._path_history.get(tracker_key, [])
+        history = [
+            {
+                "ts": ts,
+                "lat": lat,
+                "lon": lon,
+                "speed_kts": speed,
+                "altitude_ft": altitude,
+                "heading_deg": heading,
+            }
+            for ts, lat, lon, speed, altitude, heading in series
+        ]
+        summary: Dict[str, Any] = {"points": len(history)}
+        cache_key = None
+        if series:
+            cache_key = f"{tracker_key}:{series[-1][0]}:{len(series)}"
+            cached = self._route_cache.get(cache_key)
+            if cached:
+                return {"id": tracker_id, "history": history, "summary": cached}
+        if len(history) >= 2:
+            start = history[0]
+            end = history[-1]
+            distance_km = self._haversine_km(start["lat"], start["lon"], end["lat"], end["lon"])
+            bearing = self._bearing_deg(start["lat"], start["lon"], end["lat"], end["lon"])
+            speeds = [float(pt["speed_kts"]) for pt in history if pt.get("speed_kts") is not None]
+            altitudes = [float(pt["altitude_ft"]) for pt in history if pt.get("altitude_ft") is not None]
+            avg_speed = round(sum(speeds) / len(speeds), 1) if speeds else None
+            avg_alt = round(sum(altitudes) / len(altitudes), 1) if altitudes else None
+            duration = max(0, int(end["ts"]) - int(start["ts"])) if end.get("ts") and start.get("ts") else None
+            summary.update(
+                {
+                    "start": {"lat": start["lat"], "lon": start["lon"], "ts": start["ts"]},
+                    "end": {"lat": end["lat"], "lon": end["lon"], "ts": end["ts"]},
+                    "distance_km": round(distance_km, 2),
+                    "bearing_deg": round(bearing, 1),
+                    "direction": self._direction_label(bearing),
+                    "avg_speed_kts": avg_speed,
+                    "avg_altitude_ft": avg_alt,
+                    "duration_sec": duration,
+                    "route_hint": f"{round(start['lat'], 2)},{round(start['lon'], 2)} -> {round(end['lat'], 2)},{round(end['lon'], 2)}",
+                }
+            )
+        if cache_key:
+            self._route_cache[cache_key] = summary
+            self._sync_state()
+        return {"id": tracker_id, "history": history, "summary": summary}
+
+    def get_detail(self, tracker_id: str, allow_refresh: bool = False) -> Dict[str, Any]:
+        snapshot = self.get_snapshot(mode="combined", allow_refresh=allow_refresh)
+        points = snapshot.get("points", [])
+        target = None
+        for pt in points:
+            if str(pt.get("id", "")).lower() == tracker_id.lower():
+                target = pt
+                break
+        history = self.get_history(tracker_id)
+        return {
+            "id": tracker_id,
+            "point": target,
+            "history": history.get("history", []),
+            "summary": history.get("summary", {}),
         }
 
     @staticmethod
@@ -430,11 +654,12 @@ class GlobalTrackers:
         snapshot: Optional[Dict[str, Any]] = None,
         filter_label: Optional[str] = None,
         max_rows: Optional[int] = None,
+        row_offset: int = 0,
     ) -> Panel:
         snapshot = snapshot or self.get_snapshot(mode=mode)
         points = snapshot.get("points", [])
         warnings: List[str] = snapshot.get("warnings", [])
-        demo_shipping = any("demo shipping" in str(w).lower() for w in warnings)
+        no_shipping = any("no vessel feed" in str(w).lower() for w in warnings)
 
         table = Table(box=box.MINIMAL_DOUBLE_HEAD, expand=True)
         table.add_column("Type", style="bold", width=8)
@@ -453,7 +678,11 @@ class GlobalTrackers:
         table.add_column("Industry", width=10)
 
         sample_limit = max_rows if max_rows is not None else 60
-        sample = points[:max(1, sample_limit)]
+        sample, clamped_offset, total_rows = self._slice_points(
+            points,
+            row_offset,
+            max(1, sample_limit),
+        )
         now = int(time.time())
         color_map = {
             "flight": {
@@ -524,15 +753,14 @@ class GlobalTrackers:
             live_lines = [
                 "Live data active.",
                 "Last update: " + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self._last_refresh)),
-                "Note: OpenSky anonymous access is rate-limited and may return empty datasets.",
             ]
             warn_text = Text("\n".join(live_lines), style="green")
         warn_panel = Panel(warn_text, title="Status", border_style="dim", box=box.SQUARE)
 
         layout = Table.grid(expand=True)
         layout.add_column(ratio=1)
-        if demo_shipping and mode in ("ships", "combined"):
-            note = Text("No vessel feed configured!", style="yellow")
+        if no_shipping and mode in ("ships", "combined"):
+            note = Text("No vessel feed configured.", style="yellow")
             layout.add_row(Panel(note, box=box.SQUARE, border_style="dim"))
         layout.add_row(Panel(table, title="Live Tracker Feed", box=box.ROUNDED))
         layout.add_row(warn_panel)
@@ -540,7 +768,12 @@ class GlobalTrackers:
         title = "Global Trackers"
         mode_label = "Flights + Shipping" if mode == "combined" else mode.title()
         filter_text = filter_label or "All"
-        count_text = f"{len(points)} rows"
+        if total_rows:
+            start = clamped_offset + 1
+            end = clamped_offset + len(sample)
+            count_text = f"Rows {start}-{end} of {total_rows}"
+        else:
+            count_text = "0 rows"
         subtitle = Text.assemble(
             ("Mode: ", "dim"),
             (mode_label, "bold cyan"),
@@ -550,6 +783,21 @@ class GlobalTrackers:
             (count_text, "bold white"),
         )
         return Panel(Group(layout), title=title, subtitle=subtitle, box=box.DOUBLE, border_style="cyan")
+
+    @staticmethod
+    def _slice_points(
+        points: List[Dict[str, Any]],
+        offset: int,
+        limit: int,
+    ) -> Tuple[List[Dict[str, Any]], int, int]:
+        total = len(points)
+        if total == 0:
+            return [], 0, 0
+        if limit <= 0:
+            return [], 0, total
+        max_offset = max(0, total - limit)
+        clamped = max(0, min(int(offset or 0), max_offset))
+        return points[clamped:clamped + limit], clamped, total
 
 
 class TrackerRelevance:

@@ -16,7 +16,12 @@ def build_sidebar(
 ) -> Panel:
     table = Table(box=box.SIMPLE, show_header=False)
     table.add_column("Key", style="bold cyan", width=3, justify="left")
-    table.add_column("Action", style="white", overflow="crop", no_wrap=True)
+    table.add_column("Action", style="white", overflow="crop", no_wrap=True)    
+    reserved_keys = {
+        str(key).upper()
+        for _, actions in sections
+        for key in (actions or {}).keys()
+    }
 
     for title, actions in sections:
         if title and not compact:
@@ -27,11 +32,11 @@ def build_sidebar(
             table.add_row("", "")
 
     core = {}
-    if show_back:
+    if show_back and "0" not in reserved_keys:
         core["0"] = "Back"
-    if show_main:
+    if show_main and "M" not in reserved_keys:
         core["M"] = "Main Menu"
-    if show_exit:
+    if show_exit and "X" not in reserved_keys:
         core["X"] = "Exit"
     if core:
         if not compact:

@@ -24,14 +24,14 @@
 
 <div align="center">
 
-[Overview](#overview) •
-[Screenshots](#screenshots) •
-[Quick Start](#quick-start) •
-[Configuration](#configuration) •
-[Modules](#modules) •
-[Data Sources](#data-sources) •
-[Financial Methods](#financial-methods) •
-[Sources Index](#sources-index) •
+[Overview](#overview) ?
+[Screenshots](#screenshots) ?
+[Quick Start](#quick-start) ?
+[Configuration](#configuration) ?
+[Modules](#modules) ?
+[Data Sources](#data-sources) ?
+[Financial Methods](#financial-methods) ?
+[Sources Index](#sources-index) ?
 [Disclaimer](#disclaimer)
 
 </div>
@@ -40,41 +40,29 @@
 
 ## Overview
 
-A portfolio management and analytics CLI.
-
-<!--
-Fast, readable client dashboards, regime modeling, and market context.
-Designed for iterative expansion across client workflows, risk analytics, and international tax settings when needed.
-
+A portfolio management, analytics, and global tracking platform.
 
 ## Features
 
-*Work in progress.*
-
 - Client and account management
-- Regime analysis (Markov)
-- Portfolio and account metrics
-- Tools (diagnostics, regime snapshots, and option pricing)
-- Market dashboard
-- Global flight and shipping trackers
-- Compiled reports
-- News feed (multiple sources)
-- Tax profile scaffolding
+- Portfolio analytics + regime modeling
+- Market dashboard and macro snapshots
+- Global flight and maritime tracking
+- Intel and news aggregation
+- Reports and exports (CLI + web)
+- Web API with streaming trackers
 
 <details>
 <summary><strong>More Details</strong></summary>
 
-- Lot-aware holdings
-- Regime analysis transition matrices and surfaces
-- CAPM + derived analytics
-- Multi-interval views and macro paging
-- CLI + GUI MapLibre view for Tracking
-- Tracker heat/volatility metrics with relevance tagging by account
-- Weather + conflict reporting with caching and exports
-- Health-aware sources and lazy loading
+- Lot-aware holdings and position-level analysis
+- Regime transition matrices, CAPM, and derived analytics
+- Multi-interval views with paging and cached snapshots
+- Tracker heat/volatility metrics and relevance tagging
+- Weather + conflict intel with caching and exports
+- Health-aware sources with retry/backoff handling
 
 </details>
--->
 ## Screenshots
 
 <!--
@@ -86,8 +74,50 @@ Designed for iterative expansion across client workflows, risk analytics, and in
 ```pwsh
 git clone git@github.com:denv3rr/clear.git --depth 1
 cd clear
-python run.py
+python clearctl.py start
 ```
+
+## Web App (API + UI)
+
+```pwsh
+python clearctl.py start
+```
+
+If npm is not found, install Node.js first (includes npm) and retry:
+
+- Windows (winget): `winget install OpenJS.NodeJS.LTS`
+- Windows (scoop): `scoop install nodejs-lts`
+- macOS: `brew install node`
+- Linux: https://nodejs.org/en/download/package-manager
+
+## Launcher Commands
+
+```pwsh
+# Start API + web UI
+python clearctl.py start
+
+# Start API only (no web UI)
+python clearctl.py start --no-web
+
+# Stop background services
+python clearctl.py stop
+
+# Status + health
+python clearctl.py status
+
+# Logs (last 200 lines)
+python clearctl.py logs
+
+# Doctor (deps + port + health checks)
+python clearctl.py doctor
+```
+
+Convenience wrappers:
+
+- Windows PowerShell: `.\clearctl.ps1 start`
+- macOS/Linux: `./clearctl.sh start`
+
+Service templates for always-on usage: `docs/platform_services.md`
 
 ## Local Reports (Offline)
 
@@ -135,17 +165,23 @@ Local HTTP servers:
 ## Testing
 
 ```pwsh
-# Run all unit tests
-python -m unittest
+# Run all tests
+python -m pytest
+```
 
-# Run all unit tests with verbose output (tests package is discoverable)
-python -m unittest -v
+Web smoke tests (requires Node/npm):
 
-# Run test discovery with verbose output
-python -m unittest discover -s tests -v
+```pwsh
+cd web
+npm install
+npx playwright install
+npm run test:e2e
+```
 
-# Run toolkit metric tests only
-python -m unittest tests/test_toolkit_metrics.py
+Optional: validate Playwright browsers via the launcher:
+
+```pwsh
+python clearctl.py doctor --web-tests
 ```
 
 ## Configuration
@@ -171,13 +207,15 @@ Do not commit `.env` files.
 | Variable | Purpose | Used By |
 | --- | --- | --- |
 | `FINNHUB_API_KEY` | Enables Finnhub symbol/quote lookups. | Market Feed, Settings |
-| `OPENSKY_USERNAME` | OpenSky auth for flight tracker data. | Global Trackers |
-| `OPENSKY_PASSWORD` | OpenSky auth for flight tracker data. | Global Trackers |
+| `FLIGHT_DATA_URL` | Flight feed endpoint (JSON list or `{ "data": [] }`). | Global Trackers |
+| `FLIGHT_DATA_PATH` | Local JSON file path for flight feed data. | Global Trackers |
 | `SHIPPING_DATA_URL` | Shipping feed endpoint for vessel tracker. | Global Trackers |
 | `CLEAR_INCLUDE_COMMERCIAL` | Include commercial flights (set to `1`). | Global Trackers |
 | `CLEAR_INCLUDE_PRIVATE` | Include private flights (set to `1`). | Global Trackers |
 | `CLEAR_GUI_REFRESH` | GUI tracker refresh seconds (default `10`). | GUI Tracker |
 | `CLEAR_GUI_PAUSED` | Start GUI tracker paused when `1`. | GUI Tracker |
+
+Flight operator metadata can be extended by copying `config/flight_operators.example.json` to `config/flight_operators.json`.
 
 ### AI Synthesis (Optional)
 
@@ -379,3 +417,4 @@ No information presented should be construed as an offer to buy or sell securiti
     <img width="100" src="https://github.com/denv3rr/denv3rr/blob/main/IMG_4225.gif" />
   </a>
 </div>
+

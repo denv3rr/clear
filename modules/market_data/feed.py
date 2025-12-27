@@ -23,9 +23,10 @@ from modules.market_data.trackers import GlobalTrackers
 from modules.market_data.intel import MarketIntel, REGIONS, news_cache_status, rank_news_items
 from utils.clear_access import ClearAccessManager
 from utils.charts import ChartRenderer
-from interfaces.shell import ShellRenderer
+from interfaces.shell import ShellRenderer, MainMenuRequested
 from interfaces.menu_layout import build_sidebar, compact_for_width, build_status_header
 from utils.scroll_text import build_scrolling_line
+from utils.layout import fit_renderable_to_height
 from utils.system import SystemHost
 from utils.world_clocks import build_world_clocks_panel
 from utils.report_synth import ReportSynthesizer, build_report_context, build_ai_sections
@@ -122,7 +123,7 @@ class MarketFeed:
                 "6": "Reports",
                 "7": f"Export Last Report ({self._intel_export_format})",
                 "8": "Macro Dashboard",
-                "0": "Return to Main Menu",
+                "0": "Back",
             }
             sidebar = build_sidebar(
                 [
@@ -194,7 +195,7 @@ class MarketFeed:
         mem = info.get("mem_usage", "N/A")
 
         finnhub_ok = "YES" if self.finnhub.api_key else "NO"
-        opensky_ok = "YES" if os.getenv("OPENSKY_USERNAME") and os.getenv("OPENSKY_PASSWORD") else "NO"
+        flight_ok = "YES" if (os.getenv("FLIGHT_DATA_URL") or os.getenv("FLIGHT_DATA_PATH")) else "NO"
         shipping_ok = "YES" if os.getenv("SHIPPING_DATA_URL") else "NO"
 
         macro_status = "Not loaded"
@@ -229,7 +230,7 @@ class MarketFeed:
         stats.add_row("CPU", str(cpu))
         stats.add_row("Memory", str(mem))
         stats.add_row("Finnhub", finnhub_ok)
-        stats.add_row("OpenSky", opensky_ok)
+        stats.add_row("Flight Feed", flight_ok)
         stats.add_row("Shipping", shipping_ok)
         stats.add_row("Macro Cache", macro_status)
         stats.add_row("Tracker Cache", tracker_status)
@@ -890,13 +891,68 @@ class MarketFeed:
                 data[key] = val
         return data
 
-    def _tracker_snapshot(self, mode: str, allow_refresh: bool) -> dict:
+    def _tracker_snapshot(self, mode: str, allow_refresh: bool) -> dict:        
         snapshot = self.trackers.get_snapshot(mode=mode, allow_refresh=allow_refresh)
         if not allow_refresh:
             warnings = list(snapshot.get("warnings", []) or [])
             warnings.append("Auto-refresh disabled. Press Refresh to fetch.")
             snapshot["warnings"] = warnings
         return snapshot
+
+    def _tracker_search_flow(self, snapshot: dict) -> None:
+        query = InputSafe.get_string("Search flights (operator/flight/tail/ICAO24):")
+        if not query:
+            return
+        result = self.trackers.search_snapshot(snapshot, query=query, fields=None, kind="flight", limit=20)
+        rows = result.get("points", [])
+        table = Table(box=box.SIMPLE, show_header=True)
+        table.add_column("ID", style="cyan", width=10)
+        table.add_column("Label", width=10)
+        table.add_column("Operator", width=12)
+        table.add_column("Flight", width=8)
+        table.add_column("Tail", width=10)
+        table.add_column("Country", width=12)
+        for item in rows:
+            table.add_row(
+                str(item.get("id", ""))[:10],
+                str(item.get("label", ""))[:10],
+                str(item.get("operator_name", "") or item.get("operator", "") or "-")[:12],
+                str(item.get("flight_number", "") or "-")[:8],
+                str(item.get("tail_number", "") or "-")[:10],
+                str(item.get("country", "") or "-")[:12],
+            )
+        panel = Panel(table, title=f"Search Results ({result.get('count', 0)})", border_style="cyan")
+        ShellRenderer.render(Group(panel), show_header=False, show_main=True, show_back=True, show_exit=True)
+        if rows:
+            selection = InputSafe.get_string("Enter ID for history (blank to skip):")
+            if selection:
+                history = self.trackers.get_history(selection)
+                hist_rows = history.get("history", [])[-10:]
+                summary = history.get("summary", {})
+                summary_lines = [
+                    f"Points: {summary.get('points', 0)}",
+                    f"Distance: {summary.get('distance_km', '-')}",
+                    f"Direction: {summary.get('direction', '-')}",
+                    f"Avg Speed: {summary.get('avg_speed_kts', '-')}",
+                    f"Avg Alt: {summary.get('avg_altitude_ft', '-')}",
+                    f"Duration: {summary.get('duration_sec', '-')}",
+                    f"Route: {summary.get('route_hint', '-')}",
+                ]
+                hist_table = Table(box=box.SIMPLE, show_header=True)
+                hist_table.add_column("TS", width=10)
+                hist_table.add_column("Lat", width=8)
+                hist_table.add_column("Lon", width=8)
+                hist_table.add_column("Spd", width=6)
+                for item in hist_rows:
+                    hist_table.add_row(
+                        str(item.get("ts", ""))[-10:],
+                        f"{float(item.get('lat', 0.0)):.2f}",
+                        f"{float(item.get('lon', 0.0)):.2f}",
+                        "-" if item.get("speed_kts") is None else f"{float(item.get('speed_kts', 0.0)):.0f}",
+                    )
+                summary_panel = Panel(Text("\n".join(summary_lines), style="dim"), title="Summary", border_style="dim")
+                hist_panel = Panel(hist_table, title=f"History: {selection}", border_style="dim")
+                ShellRenderer.render(Group(summary_panel, hist_panel), show_header=False, show_main=True, show_back=True, show_exit=True)
 
     def run_global_trackers(self):
         mode = "combined"
@@ -921,6 +977,17 @@ class MarketFeed:
             paused = True
         snapshot = self._tracker_snapshot(mode, allow_refresh=auto_refresh)
         category_filter = "all"
+        scroll_offset = 0
+
+        def _available_categories(data: dict) -> list[str]:
+            categories = sorted({str(pt.get("category", "")).lower() for pt in data.get("points", []) if pt.get("category")})
+            return ["all"] + categories if categories else ["all"]
+
+        def _clamp_offset(offset: int, total: int, page: int) -> int:
+            if total <= 0:
+                return 0
+            max_offset = max(0, total - page)
+            return max(0, min(offset, max_offset))
 
         try:
             import msvcrt
@@ -929,69 +996,136 @@ class MarketFeed:
             use_live = False
 
         if not use_live:
-            panel = self.trackers.render(mode=mode, snapshot=snapshot)
-            compact = compact_for_width(self.console.width)
-            sidebar = build_sidebar(
-                [("Trackers", {
-                    "1": "Flights",
-                    "2": "Shipping",
-                    "3": "Combined",
-                    "4": "Refresh",
-                    "G": "Open GUI Tracker",
-                })],
-                show_main=True,
-                show_back=True,
-                show_exit=True,
-                compact=compact,
-            )
-            if include_commercial:
-                warn = Text(
-                    "Commercial flights enabled. High-volume traffic may obscure geopolitical signals.",
-                    style="yellow",
-                )
-                panel = Panel(Group(warn, panel), border_style="yellow", title="Tracker Notice")
-            if include_private:
-                warn = Text(
-                    "Private flights enabled. Adds more noise and may reduce signal clarity.",
-                    style="yellow",
-                )
-                panel = Panel(Group(warn, panel), border_style="yellow", title="Tracker Notice")
-            if include_private:
-                warn = Text(
-                    "Private flights enabled. Adds more noise and may reduce signal clarity.",
-                    style="yellow",
-                )
-                panel = Panel(Group(warn, panel), border_style="yellow", title="Tracker Notice")
             options = {
                 "1": "Flights",
                 "2": "Shipping",
                 "3": "Combined",
                 "4": "Refresh",
+                "N": "Next Page",
+                "P": "Prev Page",
+                "F": "Category Filter",
+                "A": "Filter: All",
+                "S": "Search Flights",
                 "G": "Open GUI Tracker",
                 "0": "Back",
             }
-            choice = ShellRenderer.render_and_prompt(
-                Group(panel),
-                context_actions=options,
-                valid_choices=list(options.keys()) + ["m", "x"],
-                prompt_label=">",
-                show_main=True,
-                show_back=True,
-                show_exit=True,
-                show_header=False,
-                sidebar_override=sidebar,
-            )
-            if choice in ("0", "m"):
-                return
-            if choice == "x":
-                Navigator.exit_app()
-            if choice == "g":
-                self._run_tracker_gui()
-                return
-            if choice == "4":
-                ShellRenderer.set_busy(1.0)
-                self.trackers.refresh(force=True)
-            return
+            while True:
+                compact = compact_for_width(self.console.width)
+                compact_height = self.console.height < 32
+                sidebar = build_sidebar(
+                    [("Trackers", {k: v for k, v in options.items() if k not in ("0",)})],
+                    show_main=True,
+                    show_back=True,
+                    show_exit=True,
+                    compact=compact,
+                ) if not compact_height else None
+                access_label = "Active" if self.clear_access.has_access() else "Inactive"
+                status_panel = build_status_header(
+                    "Tracker Status",
+                    [
+                        ("Mode", mode),
+                        ("Auto Refresh", "On" if auto_refresh else "Off"),
+                        ("Commercial", "On" if include_commercial else "Off"),
+                        ("Private", "On" if include_private else "Off"),
+                        ("Access", access_label),
+                    ],
+                    compact=compact,
+                ) if not compact_height else None
+                footer_text = "N/P page | 1/2/3 mode | 4 refresh | F filter | A all | S search | G gui | 0 back | M main | X exit"
+                footer_panel = (
+                    Text(footer_text, style="dim")
+                    if compact_height
+                    else Panel(Text(footer_text, style="dim"), box=box.SQUARE, border_style="dim")
+                )
+                filtered = GlobalTrackers.apply_category_filter(snapshot, category_filter)
+                total_rows = len(filtered.get("points", []))
+
+                def _layout(rows: int) -> Group:
+                    return self._build_tracker_stack(
+                        snapshot=snapshot,
+                        mode=mode,
+                        category_filter=category_filter,
+                        max_rows=rows,
+                        row_offset=scroll_offset,
+                        sidebar=sidebar,
+                        status_panel=status_panel,
+                        footer_panel=footer_panel,
+                        include_commercial=include_commercial,
+                        include_private=include_private,
+                    )
+
+                page_size = fit_renderable_to_height(
+                    self.console,
+                    _layout,
+                    max_items=total_rows if total_rows else 1,
+                    min_items=1,
+                )
+                scroll_offset = _clamp_offset(scroll_offset, total_rows, page_size)
+                layout = _layout(page_size)
+                choice = ShellRenderer.render_and_prompt(
+                    Group(layout),
+                    context_actions=options,
+                    valid_choices=list(options.keys()),
+                    prompt_label=">",
+                    show_main=True,
+                    show_back=True,
+                    show_exit=True,
+                    show_header=False,
+                    show_sidebar=False,
+                )
+                key = choice.lower()
+                if key in ("0", "m"):
+                    return
+                if key == "x":
+                    Navigator.exit_app()
+                if key == "g":
+                    self._run_tracker_gui()
+                    return
+                if key == "1":
+                    mode = "flights"
+                    snapshot = self._tracker_snapshot(mode, allow_refresh=auto_refresh)
+                    category_filter = "all"
+                    scroll_offset = 0
+                    continue
+                if key == "2":
+                    mode = "ships"
+                    snapshot = self._tracker_snapshot(mode, allow_refresh=auto_refresh)
+                    category_filter = "all"
+                    scroll_offset = 0
+                    continue
+                if key == "3":
+                    mode = "combined"
+                    snapshot = self._tracker_snapshot(mode, allow_refresh=auto_refresh)
+                    category_filter = "all"
+                    scroll_offset = 0
+                    continue
+                if key == "4":
+                    ShellRenderer.set_busy(1.0)
+                    self.trackers.refresh(force=True)
+                    snapshot = self.trackers.get_snapshot(mode=mode)
+                    scroll_offset = 0
+                    continue
+                if key == "n":
+                    scroll_offset += page_size
+                    continue
+                if key == "p":
+                    scroll_offset = max(0, scroll_offset - page_size)
+                    continue
+                if key == "f":
+                    categories = _available_categories(snapshot)
+                    if category_filter not in categories:
+                        category_filter = "all"
+                    idx = categories.index(category_filter)
+                    category_filter = categories[(idx + 1) % len(categories)]
+                    scroll_offset = 0
+                    continue
+                if key == "a":
+                    category_filter = "all"
+                    scroll_offset = 0
+                    continue
+                if key == "s":
+                    self._tracker_search_flow(snapshot)
+                    continue
 
         from rich.live import Live
         from rich.table import Table
@@ -1008,23 +1142,27 @@ class MarketFeed:
             "C": "Cadence",
             "F": "Category Filter",
             "A": "Filter: All",
+            "S": "Search Flights",
             "SPC": "Pause/Resume",
             "G": "Open GUI Tracker",
             "0": "Back",
         }
 
-        def _available_categories(data: dict) -> list[str]:
-            categories = sorted({str(pt.get("category", "")).lower() for pt in data.get("points", []) if pt.get("category")})
-            return ["all"] + categories if categories else ["all"]
-
-        def build_layout():
+        def _layout_for(page_size: int, offset_override: Optional[int] = None) -> Table:
+            nonlocal scroll_offset
             filtered = GlobalTrackers.apply_category_filter(snapshot, category_filter)
-            max_rows = max(8, self.console.height - 18)
+            points = filtered.get("points", [])
+            if offset_override is None:
+                scroll_offset = _clamp_offset(scroll_offset, len(points), page_size)
+                offset = scroll_offset
+            else:
+                offset = _clamp_offset(offset_override, len(points), page_size)
             panel = self.trackers.render(
                 mode=mode,
                 snapshot=filtered,
                 filter_label=category_filter,
-                max_rows=max_rows,
+                max_rows=page_size,
+                row_offset=offset,
             )
             if include_commercial:
                 warn = Text(
@@ -1035,13 +1173,14 @@ class MarketFeed:
             access_label = "Active" if self.clear_access.has_access() else "Inactive"
             options["5"] = f"Clear Access ({access_label})"
             compact = compact_for_width(self.console.width)
+            compact_height = self.console.height < 32
             sidebar = build_sidebar(
                 [("Trackers", {k: v for k, v in options.items() if k in ("1", "2", "3", "4", "5", "C", "F", "A", "SPC", "0")})],
                 show_main=True,
                 show_back=True,
                 show_exit=True,
                 compact=compact,
-            )
+            ) if not compact_height else None
             status = "PAUSED" if paused else "LIVE"
             cadence = cadence_options[cadence_idx]
             commercial_label = "On (High Volume)" if include_commercial else "Off"
@@ -1049,10 +1188,10 @@ class MarketFeed:
             footer = Text.assemble(
                 ("[>]", "dim"),
                 (" ", "dim"),
-                (status, "bold green" if status == "LIVE" else "bold yellow"),
+                (status, "bold green" if status == "LIVE" else "bold yellow"),  
                 (" | Cadence: ", "dim"),
                 (f"{cadence}s", "bold cyan"),
-                (" | 1/2/3 mode 4 refresh 5 access C cadence F filter A all Space pause 0 back M main X exit", "dim"),
+                (" | Arrows scroll PgUp/PgDn page | 1/2/3 mode 4 refresh 5 access C cadence F filter A all S search Space pause 0 back M main X exit", "dim"),
             )
             mode_hint = Text.assemble(
                 ("Mode: ", "dim"),
@@ -1063,7 +1202,11 @@ class MarketFeed:
                 ("3", "bold bright_white"),
                 (" Combined", "cyan"),
             )
-            footer_panel = Panel(Group(footer, mode_hint), box=box.SQUARE, border_style="dim")
+            footer_panel = (
+                Text.assemble(footer, "\n", mode_hint)
+                if compact_height
+                else Panel(Group(footer, mode_hint), box=box.SQUARE, border_style="dim")
+            )
 
             auto_refresh_label = "On" if auto_refresh else "Off"
             status_panel = build_status_header(
@@ -1074,22 +1217,45 @@ class MarketFeed:
                     ("Auto Refresh", auto_refresh_label),
                     ("Commercial", commercial_label),
                     ("Private", private_label),
+                    ("Access", access_label),
                 ],
                 compact=compact,
-            )
+            ) if not compact_height else None
             layout = Table.grid(expand=True)
             layout.add_column(ratio=1)
-            layout.add_row(status_panel)
+            if status_panel:
+                layout.add_row(status_panel)
             body = Table.grid(expand=True)
-            body.add_column(width=30)
             body.add_column(ratio=1)
-            body.add_row(sidebar, Group(panel))
+            if sidebar:
+                body.add_row(Align.center(sidebar))
+            body.add_row(Group(panel))
             layout.add_row(body)
-            layout.add_row(footer_panel)
+            if footer_panel:
+                layout.add_row(footer_panel)
             return layout
 
+        def _page_size() -> int:
+            filtered = GlobalTrackers.apply_category_filter(snapshot, category_filter)
+            total_rows = len(filtered.get("points", []))
+            return fit_renderable_to_height(
+                self.console,
+                lambda rows: _layout_for(rows, offset_override=0),
+                max_items=total_rows if total_rows else 1,
+                min_items=1,
+            )
+
+        def build_layout():
+            return _layout_for(_page_size())
+
         dirty = True
-        with Live(build_layout(), console=self.console, refresh_per_second=1, screen=True) as live:
+        with Live(
+            build_layout(),
+            console=self.console,
+            refresh_per_second=4,
+            screen=False,
+            auto_refresh=False,
+        ) as live:
             while True:
                 now = time.time()
                 cadence = cadence_options[cadence_idx]
@@ -1102,7 +1268,22 @@ class MarketFeed:
 
                 if msvcrt.kbhit():
                     ch = msvcrt.getwch()
-                    if ch in ("\r", "\n"):
+                    if ch in ("\x00", "\xe0"):
+                        arrow = msvcrt.getwch()
+                        page_size = _page_size()
+                        if arrow == "H":  # up
+                            scroll_offset = max(0, scroll_offset - 1)
+                            dirty = True
+                        elif arrow == "P":  # down
+                            scroll_offset += 1
+                            dirty = True
+                        elif arrow == "I":  # page up
+                            scroll_offset = max(0, scroll_offset - page_size)
+                            dirty = True
+                        elif arrow == "Q":  # page down
+                            scroll_offset += page_size
+                            dirty = True
+                    elif ch in ("\r", "\n"):
                         pass
                     elif ch == " ":
                         paused = not paused
@@ -1112,29 +1293,33 @@ class MarketFeed:
                         if key == "0":
                             return
                         if key == "m":
-                            return
+                            raise MainMenuRequested()
                         if key == "x":
                             Navigator.exit_app()
                         if key == "1":
                             mode = "flights"
                             snapshot = self._tracker_snapshot(mode, allow_refresh=auto_refresh)
                             category_filter = "all"
+                            scroll_offset = 0
                             dirty = True
                         elif key == "2":
                             mode = "ships"
                             snapshot = self._tracker_snapshot(mode, allow_refresh=auto_refresh)
                             category_filter = "all"
+                            scroll_offset = 0
                             dirty = True
                         elif key == "3":
                             mode = "combined"
                             snapshot = self._tracker_snapshot(mode, allow_refresh=auto_refresh)
                             category_filter = "all"
+                            scroll_offset = 0
                             dirty = True
                         elif key == "4":
                             ShellRenderer.set_busy(1.0)
                             self.trackers.refresh(force=True)
-                            snapshot = self.trackers.get_snapshot(mode=mode)
+                            snapshot = self.trackers.get_snapshot(mode=mode)    
                             last_refresh = time.time()
+                            scroll_offset = 0
                             dirty = True
                         elif key == "5":
                             self._clear_access_flow()
@@ -1143,14 +1328,19 @@ class MarketFeed:
                             cadence_idx = (cadence_idx + 1) % len(cadence_options)
                             dirty = True
                         elif key == "f":
-                            categories = _available_categories(snapshot)
+                            categories = _available_categories(snapshot)        
                             if category_filter not in categories:
                                 category_filter = "all"
                             idx = categories.index(category_filter)
                             category_filter = categories[(idx + 1) % len(categories)]
+                            scroll_offset = 0
                             dirty = True
                         elif key == "a":
                             category_filter = "all"
+                            scroll_offset = 0
+                            dirty = True
+                        elif key == "s":
+                            self._tracker_search_flow(snapshot)
                             dirty = True
                         elif key == "g":
                             self._run_tracker_gui()
@@ -1249,6 +1439,7 @@ class MarketFeed:
                 Panel(Text("\n".join(status_lines), style="dim"), border_style="cyan", title="GUI Setup"),
                 console=console,
                 refresh_per_second=4,
+                screen=False,
             ) as live:
                 runtime_settings = self._load_runtime_settings()
                 trackers = runtime_settings.get("trackers", {})
@@ -1258,6 +1449,49 @@ class MarketFeed:
             if err:
                 msg = Text(err, style="yellow")
                 ShellRenderer.render(Group(Panel(msg, border_style="yellow", title="Tracker GUI")), show_header=False)
+
+    def _build_tracker_stack(
+        self,
+        snapshot: dict,
+        mode: str,
+        category_filter: str,
+        max_rows: int,
+        row_offset: int,
+        sidebar: Optional[Panel],
+        status_panel: Optional[Panel],
+        footer_panel: Optional[object],
+        include_commercial: bool,
+        include_private: bool,
+    ) -> Group:
+        filtered = GlobalTrackers.apply_category_filter(snapshot, category_filter)
+        panel = self.trackers.render(
+            mode=mode,
+            snapshot=filtered,
+            filter_label=category_filter,
+            max_rows=max_rows,
+            row_offset=row_offset,
+        )
+        sections: List = []
+        if status_panel:
+            sections.append(status_panel)
+        if include_commercial:
+            warn = Text(
+                "Commercial flights enabled. High-volume traffic may obscure geopolitical signals.",
+                style="yellow",
+            )
+            sections.append(Panel(warn, border_style="yellow", title="Tracker Notice"))
+        if include_private:
+            warn = Text(
+                "Private flights enabled. Adds more noise and may reduce signal clarity.",
+                style="yellow",
+            )
+            sections.append(Panel(warn, border_style="yellow", title="Tracker Notice"))
+        if sidebar:
+            sections.append(sidebar)
+        sections.append(panel)
+        if footer_panel:
+            sections.append(footer_panel)
+        return Group(*sections)
 
     def display_futures(self, view_label="1D"):
         """Renders categorized macro data inside a clean panel with Sparklines."""
@@ -1424,7 +1658,7 @@ class MarketFeed:
             if choice == "4":
                 self.toggle_interval()
 
-    def _render_macro_page(self, view_label: str, page: int = 0) -> Panel:
+    def _render_macro_page(self, view_label: str, page: int = 0) -> Panel:      
         ShellRenderer.set_busy(0.8)
         raw_data = self.yahoo.get_macro_snapshot(
             period=self.current_period,
@@ -1445,76 +1679,83 @@ class MarketFeed:
 
         raw_data.sort(key=_sort_key)
 
-        # Determine page sizing
-        max_rows = max(8, self.console.height - 12)
-        rows_per_page = max(8, max_rows)
-        total = len(raw_data)
-        page_count = max(1, (total + rows_per_page - 1) // rows_per_page)
-        page = max(0, min(page, page_count - 1))
+        def _build_table(view: list[dict]) -> Table:
+            table = Table(expand=True, box=box.MINIMAL_DOUBLE_HEAD)
+            table.add_column("Trend", justify="center", width=5)
+            table.add_column("Ticker", style="cyan", justify="left")
+            table.add_column("Price", justify="right")
+            table.add_column("Change", justify="right")
+            table.add_column("% Chg", justify="right")
+            table.add_column("Heat", justify="center", width=6)
+            table.add_column(f"Chart ({view_label})", justify="center", width=20, no_wrap=True)
+            table.add_column("Vol", justify="right", style="dim")
+            table.add_column("Security", min_width=20)
 
-        start = page * rows_per_page
-        end = min(total, start + rows_per_page)
-        view = raw_data[start:end]
+            current_cat = None
+            current_subcat = None
+            for item in view:
+                cat = item.get("category", "Other")
+                subcat = item.get("subcategory", "")
 
-        table = Table(expand=True, box=box.MINIMAL_DOUBLE_HEAD)
-        table.add_column("Trend", justify="center", width=5)
-        table.add_column("Ticker", style="cyan", justify="left")
-        table.add_column("Price", justify="right")
-        table.add_column("Change", justify="right")
-        table.add_column("% Chg", justify="right")
-        table.add_column("Heat", justify="center", width=6)
-        table.add_column(f"Chart ({view_label})", justify="center", width=20, no_wrap=True)
-        table.add_column("Vol", justify="right", style="dim")
-        table.add_column("Security", min_width=20)
+                if cat != current_cat:
+                    table.add_row("", "", "", "", "", "", "", "", "")
+                    table.add_row("", f"[bold underline gold1]{cat.upper()}[/bold underline gold1]", "", "", "", "", "", "", "")
+                    current_cat = cat
+                    current_subcat = None
 
-        current_cat = None
-        current_subcat = None
-        for item in view:
-            cat = item.get("category", "Other")
-            subcat = item.get("subcategory", "")
+                if subcat and subcat != current_subcat:
+                    table.add_row("", f"[dim italic white]{subcat}[/dim italic white]", "", "", "", "", "", "", "")
+                    current_subcat = subcat
 
-            if cat != current_cat:
-                table.add_row("", "", "", "", "", "", "", "", "") 
-                table.add_row("", f"[bold underline gold1]{cat.upper()}[/bold underline gold1]", "", "", "", "", "", "", "")
-                current_cat = cat
-                current_subcat = None 
+                change = float(item.get("change", 0.0) or 0.0)
+                pct = float(item.get("pct", 0.0) or 0.0)
+                c_color = "green" if change >= 0 else "red"
+                trend_arrow = ChartRenderer.get_trend_arrow(change)
+                heat_val = min(abs(pct) / 2.0, 1.0)
+                heat_bar = ChartRenderer.generate_heatmap_bar(heat_val, width=6)
+                history = item.get("history", []) or []
+                sparkline = ChartRenderer.generate_sparkline(history, length=20)
+                spark_color = "green" if (history and history[-1] >= history[0]) else ("red" if history else "dim")
 
-            if subcat and subcat != current_subcat:
-                table.add_row("", f"[dim italic white]{subcat}[/dim italic white]", "", "", "", "", "", "", "")
-                current_subcat = subcat
+                table.add_row(
+                    trend_arrow,
+                    item.get("ticker", ""),
+                    f"{float(item.get('price', 0.0) or 0.0):,.2f}",
+                    f"[{c_color}]{change:+.2f}[/{c_color}]",
+                    f"[{c_color}]{pct:+.2f}%[/{c_color}]",
+                    heat_bar,
+                    f"[{spark_color}]{sparkline}[/{spark_color}]",
+                    f"{int(item.get('volume', 0) or 0):,}",
+                    item.get("name", "")
+                )
+            return table
 
-            change = float(item.get("change", 0.0) or 0.0)
-            pct = float(item.get("pct", 0.0) or 0.0)
-            c_color = "green" if change >= 0 else "red"
-            trend_arrow = ChartRenderer.get_trend_arrow(change)
-            heat_val = min(abs(pct) / 2.0, 1.0)
-            heat_bar = ChartRenderer.generate_heatmap_bar(heat_val, width=6)
-            history = item.get("history", []) or []
-            sparkline = ChartRenderer.generate_sparkline(history, length=20)
-            spark_color = "green" if (history and history[-1] >= history[0]) else ("red" if history else "dim")
+        legend = "[dim]Legend: Trend ▲/▼, Heat=|pct|/2, Sparkline=recent history, Cache age shown on dashboard[/dim]"
 
-            table.add_row(
-                trend_arrow,
-                item.get("ticker", ""),
-                f"{float(item.get('price', 0.0) or 0.0):,.2f}",
-                f"[{c_color}]{change:+.2f}[/{c_color}]",
-                f"[{c_color}]{pct:+.2f}%[/{c_color}]",
-                heat_bar,
-                f"[{spark_color}]{sparkline}[/{spark_color}]",
-                f"{int(item.get('volume', 0) or 0):,}",
-                item.get("name", "")
+        def _build_panel_for_rows(row_count: int) -> Panel:
+            total = len(raw_data)
+            page_count = max(1, (total + row_count - 1) // row_count)
+            page_idx = max(0, min(page, page_count - 1))
+            start = page_idx * row_count
+            end = min(total, start + row_count)
+            view = raw_data[start:end]
+            subtitle = f"[dim]Interval: {view_label} | Period: {self.current_period} | Bars: {self.current_interval} | Page {page_idx + 1}/{page_count}[/dim]"
+            return Panel(
+                Align.center(_build_table(view)),
+                title=f"[bold gold1]MACRO DASHBOARD ([bold green]{view_label}[/bold green])[/bold gold1]",
+                border_style="yellow",
+                box=box.ROUNDED,
+                padding=(0, 2),
+                subtitle=f"{subtitle}\n{legend}",
             )
 
-        subtitle = f"[dim]Interval: {view_label} | Period: {self.current_period} | Bars: {self.current_interval} | Page {page + 1}/{page_count}[/dim]"
-        legend = "[dim]Legend: Trend ▲/▼, Heat=|pct|/2, Sparkline=recent history, Cache age shown on dashboard[/dim]"
-        return Panel(
-            Align.center(table),
-            title=f"[bold gold1]MACRO DASHBOARD ([bold green]{view_label}[/bold green])[/bold gold1]",
-            border_style="yellow",
-            box=box.ROUNDED,
-            padding=(0, 2),
-            subtitle=f"{subtitle}\n{legend}",
+        rows_per_page = fit_renderable_to_height(
+            self.console,
+            _build_panel_for_rows,
+            max_items=len(raw_data),
+            min_items=8,
         )
+        return _build_panel_for_rows(rows_per_page)
 
     def stock_lookup_loop(self):
         """

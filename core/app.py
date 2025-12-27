@@ -3,6 +3,7 @@ from rich.console import Console
 
 # Import internal modules
 from interfaces.menus import MainMenu
+from interfaces.shell import MainMenuRequested
 from utils.input import InputSafe
 from modules.market_data.feed import MarketFeed
 from modules.client_mgr.manager import ClientManager
@@ -27,13 +28,15 @@ class ClearApp:
 
     def run(self):
         """The Main Event Loop."""
-        
+
         while self.running:
             # 1. Display Menu & Get Action
-            action = self.menu.display()
-
-            # 2. Route Action
-            self.handle_action(action)
+            try:
+                action = self.menu.display()
+                # 2. Route Action
+                self.handle_action(action)
+            except MainMenuRequested:
+                continue
 
     def handle_action(self, action: str):
         """Routing Logic"""
@@ -51,7 +54,10 @@ class ClearApp:
 
         elif action == "intel_reports":
             self.market_feed.run_intel_reports()
-            
+
+        elif action == "global_trackers":
+            self.market_feed.run_global_trackers()
+
         elif action == "fin_tools":
             self.placeholder_module("Financial Math Toolkit")
             

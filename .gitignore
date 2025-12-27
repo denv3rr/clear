@@ -32,6 +32,7 @@ env/
 notes.txt
 plan.md
 agent.ps1
+AGENTS.md
 data/clients.json
 data/intel_news.json
 data/news_health.json
@@ -54,11 +55,14 @@ data/*session*
 data/cache/
 data/exports/
 data/reports/
+data/logs/
+data/runtime/
 exports/
 reports/
 
 # Settings / local state
 config/settings.json
+config/flight_operators.json
 config/*local*.json
 config/*local*.yml
 config/*local*.yaml
@@ -100,3 +104,8 @@ htmlcov/
 Thumbs.db
 Desktop.ini
 *.lnk
+
+# Web UI
+web/node_modules/
+web/dist/
+web/.vite/

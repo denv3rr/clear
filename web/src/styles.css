@@ -1,0 +1,65 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;600&family=Space+Grotesk:wght@400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ink-900: #0b0e13;
+  --ink-950: #07090d;
+  --accent-emerald: #48f1a6;
+  --accent-sky: #38bdf8;
+  --accent-ember: #f97316;
+  --panel-border: rgba(56, 189, 248, 0.15);
+  --panel-shadow: 0 20px 60px rgba(7, 9, 13, 0.6);
+  --gridline: rgba(56, 189, 248, 0.08);
+}
+
+body {
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  background: radial-gradient(circle at top, rgba(72, 241, 166, 0.08), transparent 40%),
+    radial-gradient(circle at 20% 20%, rgba(56, 189, 248, 0.08), transparent 35%),
+    radial-gradient(circle at 80% 20%, rgba(249, 115, 22, 0.05), transparent 40%),
+    var(--ink-950);
+  min-height: 100vh;
+}
+
+.glass-panel {
+  background: linear-gradient(135deg, rgba(17, 24, 39, 0.9), rgba(7, 9, 13, 0.855));
+  border: 1px solid var(--panel-border);
+  box-shadow: var(--panel-shadow);
+  backdrop-filter: blur(16px);
+}
+
+.gridlines {
+  background-image: linear-gradient(var(--gridline) 1px, transparent 1px),
+    linear-gradient(90deg, var(--gridline) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.scanline {
+  position: relative;
+  overflow: hidden;
+}
+
+.scanline::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(transparent, rgba(72, 241, 166, 0.1), transparent);
+  animation: scan 8s linear infinite;
+}
+
+@keyframes scan {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(200%);
+  }
+}
+
+.tag {
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular;
+  letter-spacing: 0.08em;
+}

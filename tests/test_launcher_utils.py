@@ -1,0 +1,47 @@
+import os
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+from utils import launcher
+
+
+def test_port_in_use_detects_listener() -> None:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(("127.0.0.1", 0))
+    sock.listen(1)
+    port = sock.getsockname()[1]
+    try:
+        assert launcher.port_in_use(port) is True
+    finally:
+        sock.close()
+
+
+def test_read_write_pid_roundtrip(tmp_path: Path) -> None:
+    pid_file = tmp_path / "pid.txt"
+    launcher.write_pid(pid_file, 12345)
+    assert launcher.read_pid(pid_file) == 12345
+
+
+def test_tail_lines_returns_last_lines(tmp_path: Path) -> None:
+    file_path = tmp_path / "log.txt"
+    file_path.write_text("\n".join([f"line-{i}" for i in range(10)]), encoding="ascii")
+    assert launcher.tail_lines(file_path, limit=3) == ["line-7", "line-8", "line-9"]
+
+
+def test_process_alive_current_pid() -> None:
+    assert launcher.process_alive(os.getpid()) is True
+
+
+def test_terminate_pid_stops_process() -> None:
+    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        assert launcher.process_alive(proc.pid) is True
+        assert launcher.terminate_pid(proc.pid, timeout=2.0) is True
+        time.sleep(0.2)
+        assert proc.poll() is not None
+    finally:
+        if proc.poll() is None:
+            proc.kill()

@@ -82,6 +82,10 @@ class TickerStrip:
         return Panel(content, box=box.SQUARE, border_style="dim", padding=(0, 0))
 
 
+class MainMenuRequested(Exception):
+    pass
+
+
 class ShellRenderer:
     _ticker = TickerStrip()
     _first_render = True
@@ -109,19 +113,20 @@ class ShellRenderer:
         show_exit: bool = True,
     ) -> Panel:
         table = Table(box=box.SIMPLE, show_header=False)
-        table.add_column("Key", style="bold cyan", width=3, justify="left")
+        table.add_column("Key", style="bold cyan", width=3, justify="left")     
         table.add_column("Action", style="white")
+        reserved_keys = {str(k).upper() for k in (context_actions or {}).keys()}
 
         if context_actions:
             for key, label in context_actions.items():
                 table.add_row(str(key), label)
             table.add_row("", "")
 
-        if show_back and "0" not in context_actions:
+        if show_back and "0" not in reserved_keys:
             table.add_row("0", "Back")
-        if show_main:
+        if show_main and "M" not in reserved_keys:
             table.add_row("M", "Main Menu")
-        if show_exit:
+        if show_exit and "X" not in reserved_keys:
             table.add_row("X", "Exit")
 
         return Panel(table, title="[bold]Actions[/bold]", box=box.ROUNDED, width=26)
@@ -192,12 +197,32 @@ class ShellRenderer:
         console = Console()
         width = console.width
         choices = [str(c).lower() for c in valid_choices]
-        options_map = context_actions or {}
+        raw_options = context_actions or {}
+        options_map = {str(k): v for k, v in raw_options.items()}
+        local_keys = {str(k).upper() for k in raw_options.keys()}
+        global_main = show_main and "M" not in local_keys
+        if show_back and "0" not in local_keys:
+            options_map.setdefault("0", "Back")
+        if global_main:
+            options_map.setdefault("M", "Main Menu")
+        if show_exit and "X" not in local_keys:
+            options_map.setdefault("X", "Exit")
+        if show_back and "0" not in choices:
+            choices.append("0")
+        if global_main and "m" not in choices:
+            choices.append("m")
+        if show_exit and "x" not in choices:
+            choices.append("x")
         ordered_choices = list(options_map.keys()) if options_map else list(choices)
         for extra in ("0", "m", "x"):
             if extra in choices and extra not in ordered_choices:
                 ordered_choices.append(extra)
         selection_idx = 0
+
+        def _normalize_choice(selection: str) -> str:
+            if global_main and selection == "m":
+                raise MainMenuRequested()
+            return selection
 
         try:
             import msvcrt
@@ -288,8 +313,8 @@ class ShellRenderer:
             console.print(_build_prompt_block())
             selection = console.input(f"{prompt_label} ").strip().lower()
             if not selection and ordered_choices:
-                return str(ordered_choices[selection_idx]).lower()
-            return selection
+                return _normalize_choice(str(ordered_choices[selection_idx]).lower())
+            return _normalize_choice(selection)
 
         input_text = ""
         error_text = ""
@@ -320,9 +345,9 @@ class ShellRenderer:
                     if ch in ("\r", "\n"):
                         val = input_text.strip().lower()
                         if not val and ordered_choices:
-                            return str(ordered_choices[selection_idx]).lower()
+                            return _normalize_choice(str(ordered_choices[selection_idx]).lower())
                         if val in choices:
-                            return val
+                            return _normalize_choice(val)
                         error_text = f"Invalid. Options: {', '.join(valid_choices)}"
                         input_text = ""
                         continue

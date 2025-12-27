@@ -350,6 +350,38 @@ class ReportEngine:
             validation=validation,
         )
 
+    def generate_client_portfolio_report(
+        self,
+        client: Client,
+        output_format: str = "md",
+        detailed: bool = False,
+    ) -> ReportResult:
+        payload = self._build_client_portfolio_payload(client, detailed=detailed)
+        content = _render_payload(payload, output_format)
+        return ReportResult(
+            content=content,
+            payload=payload,
+            output_format=output_format,
+            used_model=False,
+            validation={"mode": "template", "errors": []},
+        )
+
+    def generate_account_portfolio_report(
+        self,
+        client: Client,
+        account,
+        output_format: str = "md",
+    ) -> ReportResult:
+        payload = self._build_account_portfolio_payload(client, account)
+        content = _render_payload(payload, output_format)
+        return ReportResult(
+            content=content,
+            payload=payload,
+            output_format=output_format,
+            used_model=False,
+            validation={"mode": "template", "errors": []},
+        )
+
     def _build_weekly_brief_payload(self, client: Client) -> ReportPayload:
         generated_at = datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
         holdings = _aggregate_holdings(client)
@@ -401,6 +433,127 @@ class ReportEngine:
             data=data,
             data_freshness=data_freshness,
             methodology=methodology,
+        )
+
+    def _build_client_portfolio_payload(
+        self,
+        client: Client,
+        detailed: bool = False,
+    ) -> ReportPayload:
+        generated_at = datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+        holdings = _aggregate_holdings(client)
+        lot_map = _aggregate_lots(client)
+        prices = self.price_service.get_quotes(holdings.keys())
+        client_manual = sum(_manual_holdings_total(acc.manual_holdings) for acc in client.accounts)
+        totals = _portfolio_totals(holdings, lot_map, prices, manual_value=client_manual)
+        portfolio_rows, portfolio_meta = _portfolio_snapshot(holdings, lot_map, prices)
+
+        account_rows = []
+        account_sections = []
+        for account in client.accounts:
+            account_holdings = _account_holdings(account)
+            account_lots = _account_lots(account)
+            account_prices = self.price_service.get_quotes(account_holdings.keys())
+            account_manual = _manual_holdings_total(account.manual_holdings)
+            account_totals = _portfolio_totals(
+                account_holdings,
+                account_lots,
+                account_prices,
+                manual_value=account_manual,
+            )
+            account_rows.append([
+                account.account_name,
+                account.account_type,
+                str(len(account_holdings)),
+                f"${account_totals['total_cost']:,.2f}",
+                _format_value(account_totals["total_value"]),
+                _format_value(account_totals["manual_value"]),
+            ])
+            if detailed:
+                account_detail_rows, _ = _portfolio_snapshot(account_holdings, account_lots, account_prices)
+                account_sections.append(ReportSection(f"Account Detail: {account.account_name}", account_detail_rows))
+
+        profile_rows = [
+            ["Client ID", client.client_id],
+            ["Risk Profile", client.risk_profile],
+            ["Reporting Currency", (client.tax_profile or {}).get("reporting_currency", "USD")],
+            ["Accounts", str(len(client.accounts))],
+            ["Holdings", str(len(holdings))],
+        ]
+        totals_rows = [
+            ["Total Cost Basis", f"${totals['total_cost']:,.2f}"],
+            ["Total Market Value", _format_value(totals["total_value"])],
+            ["Manual Holdings", _format_value(totals["manual_value"])],
+        ]
+        account_header = ["Account", "Type", "Holdings", "Cost Basis", "Market Value", "Manual Value"]
+        sections = [
+            ReportSection("Client Profile", profile_rows),
+            ReportSection("Portfolio Totals", totals_rows),
+            ReportSection("Accounts Summary", [account_header] + account_rows if account_rows else [["No accounts"]]),
+            ReportSection("Holdings Detail", portfolio_rows),
+        ]
+        if detailed and account_sections:
+            sections.extend(account_sections)
+
+        data_freshness = {"portfolio": portfolio_meta.get("as_of", generated_at)}
+        methodology = [
+            "Account cost basis uses weighted average of lots and aggregate entries.",
+            "Market value uses offline prices unless a live price service is enabled.",
+            "Manual holdings are included when explicit total values are provided.",
+        ]
+        return ReportPayload(
+            report_type="client_portfolio_detail" if detailed else "client_portfolio_export",
+            client_id=client.client_id,
+            client_name=client.name,
+            generated_at=generated_at,
+            sections=sections,
+            data={"citations": portfolio_meta.get("citations", [])},
+            data_freshness=data_freshness,
+            methodology=methodology,
+        )
+
+    def _build_account_portfolio_payload(
+        self,
+        client: Client,
+        account,
+    ) -> ReportPayload:
+        generated_at = datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+        holdings = _account_holdings(account)
+        lot_map = _account_lots(account)
+        prices = self.price_service.get_quotes(holdings.keys())
+        manual_value = _manual_holdings_total(account.manual_holdings)
+        totals = _portfolio_totals(holdings, lot_map, prices, manual_value=manual_value)
+        rows, meta = _portfolio_snapshot(holdings, lot_map, prices)
+
+        profile_rows = [
+            ["Client", client.name],
+            ["Account ID", account.account_id],
+            ["Account Name", account.account_name],
+            ["Account Type", account.account_type],
+            ["Holdings", str(len(holdings))],
+        ]
+        totals_rows = [
+            ["Total Cost Basis", f"${totals['total_cost']:,.2f}"],
+            ["Total Market Value", _format_value(totals["total_value"])],
+            ["Manual Holdings", _format_value(totals["manual_value"])],
+        ]
+        sections = [
+            ReportSection("Account Profile", profile_rows),
+            ReportSection("Account Totals", totals_rows),
+            ReportSection("Holdings Detail", rows),
+        ]
+        return ReportPayload(
+            report_type="account_portfolio_export",
+            client_id=client.client_id,
+            client_name=client.name,
+            generated_at=generated_at,
+            sections=sections,
+            data={"citations": meta.get("citations", [])},
+            data_freshness={"portfolio": meta.get("as_of", generated_at)},
+            methodology=[
+                "Account cost basis uses weighted average of lots and aggregate entries.",
+                "Market value uses offline prices unless a live price service is enabled.",
+            ],
         )
 
 
@@ -479,6 +632,31 @@ def _aggregate_lots(client: Client) -> Dict[str, List[Dict[str, Any]]]:
     return lots
 
 
+def _account_holdings(account) -> Dict[str, float]:
+    holdings: Dict[str, float] = {}
+    for raw_ticker, qty in (account.holdings or {}).items():
+        ticker = normalize_ticker(raw_ticker)
+        try:
+            holdings[ticker] = holdings.get(ticker, 0.0) + float(qty or 0.0)
+        except Exception:
+            holdings[ticker] = holdings.get(ticker, 0.0)
+    return holdings
+
+
+def _account_lots(account) -> Dict[str, List[Dict[str, Any]]]:
+    lots: Dict[str, List[Dict[str, Any]]] = {}
+    for raw_ticker, entries in (account.lots or {}).items():
+        ticker = normalize_ticker(raw_ticker)
+        lots[ticker] = list(entries or [])
+    return lots
+
+
+def _format_value(value: Optional[float]) -> str:
+    if value is None:
+        return "N/A"
+    return f"${value:,.2f}"
+
+
 def _portfolio_snapshot(
     holdings: Dict[str, float],
     lot_map: Dict[str, List[Dict[str, Any]]],
@@ -505,6 +683,38 @@ def _portfolio_snapshot(
     if total_value > 0:
         rows.append(["Total Market Value", f"${total_value:,.2f}"])
     return rows, {"citations": citations, "as_of": datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")}
+
+
+def _portfolio_totals(
+    holdings: Dict[str, float],
+    lot_map: Dict[str, List[Dict[str, Any]]],
+    prices: Dict[str, float],
+    manual_value: float = 0.0,
+) -> Dict[str, Optional[float]]:
+    total_cost = 0.0
+    total_value = 0.0
+    for ticker, qty in holdings.items():
+        lots = lot_map.get(ticker, [])
+        avg_cost = compute_weighted_avg_cost(lots)
+        total_cost += avg_cost * qty
+        price = prices.get(ticker)
+        if price:
+            total_value += price * qty
+    return {
+        "total_cost": total_cost,
+        "total_value": total_value if total_value > 0 else None,
+        "manual_value": manual_value if manual_value > 0 else None,
+    }
+
+
+def _manual_holdings_total(entries: List[Dict[str, Any]]) -> float:
+    total = 0.0
+    for entry in entries or []:
+        try:
+            total += float(entry.get("total_value", 0.0) or 0.0)
+        except Exception:
+            continue
+    return total
 
 
 def _load_cached_news() -> List[Dict[str, Any]]:
@@ -568,4 +778,4 @@ def _tracker_section() -> Tuple[List[List[str]], Dict[str, Any]]:
     cache_label = "unknown"
     if cache_ts:
         cache_label = datetime.fromtimestamp(int(cache_ts), UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    return rows, {"citations": ["OpenSky", "Shipping Feed"], "cache_ts": cache_label}
+    return rows, {"citations": ["Flight Feed", "Shipping Feed"], "cache_ts": cache_label}

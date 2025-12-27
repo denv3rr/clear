@@ -108,7 +108,7 @@ class MainMenu:
         mem = data.get("mem_usage", "N/A")
 
         finnhub_ok = "YES" if os.getenv("FINNHUB_API_KEY") else "NO"
-        opensky_ok = "YES" if os.getenv("OPENSKY_USERNAME") and os.getenv("OPENSKY_PASSWORD") else "NO"
+        flight_ok = "YES" if (os.getenv("FLIGHT_DATA_URL") or os.getenv("FLIGHT_DATA_PATH")) else "NO"
         shipping_ok = "YES" if os.getenv("SHIPPING_DATA_URL") else "NO"
 
         title = Text()
@@ -129,7 +129,7 @@ class MainMenu:
             ("Python", data.get("python_version", "N/A")),
             ("CPU Cores", str(data.get("cpu_cores", "N/A"))),
             ("Finnhub", finnhub_ok),
-            ("OpenSky", opensky_ok),
+            ("Flight Feed", flight_ok),
             ("Shipping", shipping_ok),
             ("Data File", "FOUND" if os.path.exists(data_file) else "MISSING"),
             ("Settings", "FOUND" if os.path.exists(settings_file) else "MISSING"),
@@ -238,6 +238,7 @@ class MainMenu:
             "2": "market_data",
             "3": "settings",
             "4": "intel_reports",
+            "5": "global_trackers",
             "0": "exit",
             "x": "exit"
         }
@@ -255,6 +256,7 @@ class MainMenu:
                     "2": "Markets",
                     "3": "Settings",
                     "4": "Reports",
+                    "5": "Global Trackers",
                 }),
                 ("Session", {"0": "Exit"}),
             ],
@@ -271,6 +273,7 @@ class MainMenu:
                 "2": "Markets",
                 "3": "Settings",
                 "4": "Reports",
+                "5": "Global Trackers",
                 "0": "Exit",
             },
             valid_choices=list(action_map.keys()),
