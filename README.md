@@ -21,6 +21,13 @@
   </a>
 </div>
 
+![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=white)
+![Rich](https://img.shields.io/badge/Rich-121212?style=for-the-badge&logo=python&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-07405E?style=for-the-badge&logo=sqlite&logoColor=white)
+![Finnhub](https://img.shields.io/badge/Finnhub-00C805?style=for-the-badge&logoColor=white)
+![Yahoo Finance](https://img.shields.io/badge/Yahoo%20Finance-6001D2?style=for-the-badge&logo=yahoo&logoColor=white)
+
+<br></br>
 
 <div align="center">
 
