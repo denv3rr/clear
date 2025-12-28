@@ -21,21 +21,6 @@
   </a>
 </div>
 
-![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=white)
-![Rich](https://img.shields.io/badge/Rich-121212?style=for-the-badge&logo=python&logoColor=white)
-![Finnhub](https://img.shields.io/badge/Finnhub-00C805?style=for-the-badge&logoColor=white)
-![Yahoo Finance](https://img.shields.io/badge/Yahoo%20Finance-6001D2?style=for-the-badge&logo=yahoo&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
-![React](https://img.shields.io/badge/React-111827?style=for-the-badge&logo=react&logoColor=61DAFB)
-![Vite](https://img.shields.io/badge/Vite-1A1B3A?style=for-the-badge&logo=vite&logoColor=646CFF)
-![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-0F172A?style=for-the-badge&logo=tailwindcss&logoColor=38BDF8)
-![MapLibre](https://img.shields.io/badge/MapLibre-0F172A?style=for-the-badge&logo=maplibre&logoColor=white)
-![Framer Motion](https://img.shields.io/badge/Framer%20Motion-0B0E13?style=for-the-badge&logo=framer&logoColor=white)
-![TanStack Table](https://img.shields.io/badge/TanStack%20Table-161B22?style=for-the-badge&logo=reacttable&logoColor=white)
-![Recharts](https://img.shields.io/badge/Recharts-1F2937?style=for-the-badge&logo=chartdotjs&logoColor=white)
-![Plotly](https://img.shields.io/badge/Plotly-111827?style=for-the-badge&logo=plotly&logoColor=white)
-![Leaflet](https://img.shields.io/badge/Leaflet-0B3D2E?style=for-the-badge&logo=leaflet&logoColor=white)
-
 <br></br>
 
 <div align="center">
@@ -57,6 +42,23 @@
 ## Overview
 
 A portfolio management, analytics, and global tracking platform.
+
+## Stack
+
+![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=white)
+![Rich](https://img.shields.io/badge/Rich-121212?style=for-the-badge&logo=python&logoColor=white)
+![Finnhub](https://img.shields.io/badge/Finnhub-00C805?style=for-the-badge&logoColor=white)
+![Yahoo Finance](https://img.shields.io/badge/Yahoo%20Finance-6001D2?style=for-the-badge&logo=yahoo&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/React-111827?style=for-the-badge&logo=react&logoColor=61DAFB)
+![Vite](https://img.shields.io/badge/Vite-1A1B3A?style=for-the-badge&logo=vite&logoColor=646CFF)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-0F172A?style=for-the-badge&logo=tailwindcss&logoColor=38BDF8)
+![MapLibre](https://img.shields.io/badge/MapLibre-0F172A?style=for-the-badge&logo=maplibre&logoColor=white)
+![Framer Motion](https://img.shields.io/badge/Framer%20Motion-0B0E13?style=for-the-badge&logo=framer&logoColor=white)
+![TanStack Table](https://img.shields.io/badge/TanStack%20Table-161B22?style=for-the-badge&logo=reacttable&logoColor=white)
+![Recharts](https://img.shields.io/badge/Recharts-1F2937?style=for-the-badge&logo=chartdotjs&logoColor=white)
+![Plotly](https://img.shields.io/badge/Plotly-111827?style=for-the-badge&logo=plotly&logoColor=white)
+![Leaflet](https://img.shields.io/badge/Leaflet-0B3D2E?style=for-the-badge&logo=leaflet&logoColor=white)
 
 ## Features
 
