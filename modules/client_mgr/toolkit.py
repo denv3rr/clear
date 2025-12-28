@@ -1813,6 +1813,26 @@ class FinancialToolkit:
             {"freq": float(freq), "power": float(power)}
             for freq, power in spectrum
         ]
+        wave_surface = self._wave_surface(values)
+        fft_surface = self._fft_surface(values)
+        if wave_surface.get("z"):
+            wave_surface["axis"] = {
+                "x_label": "Sample Index",
+                "y_label": "Window Row",
+                "z_label": "Return Value",
+                "x_unit": "index",
+                "y_unit": "row",
+                "z_unit": "return",
+            }
+        if fft_surface.get("z"):
+            fft_surface["axis"] = {
+                "x_label": "Frequency",
+                "y_label": "Window Start",
+                "z_label": "Log Power",
+                "x_unit": "cycles/sample",
+                "y_unit": "index",
+                "z_unit": "log power",
+            }
         return {
             "label": label,
             "scope": scope,
@@ -1827,8 +1847,8 @@ class FinancialToolkit:
             "motifs": payload.get("motifs", []) or [],
             "vol_forecast": payload.get("vol_forecast", []) or [],
             "spectrum": formatted_spectrum,
-            "wave_surface": self._wave_surface(values),
-            "fft_surface": self._fft_surface(values),
+            "wave_surface": wave_surface,
+            "fft_surface": fft_surface,
         }
 
     def _select_interval(self) -> Optional[str]:

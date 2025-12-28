@@ -51,3 +51,97 @@ def test_terminate_port_processes_auto_yes(monkeypatch) -> None:
 
     assert clearctl._terminate_port_processes(8000, "API", True) is True
     assert killed == [222, 333]
+
+
+def test_start_forwards_api_key_to_ui_env(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("CLEAR_WEB_API_KEY", "secret-key")
+    monkeypatch.setattr(clearctl, "API_PID", tmp_path / "api.pid")
+    monkeypatch.setattr(clearctl, "WEB_PID", tmp_path / "web.pid")
+    monkeypatch.setattr(clearctl, "API_LOG", tmp_path / "api.log")
+    monkeypatch.setattr(clearctl, "WEB_LOG", tmp_path / "web.log")
+    monkeypatch.setattr(clearctl, "ensure_runtime_dirs", lambda: None)
+    monkeypatch.setattr(clearctl, "_cleanup_existing_processes", lambda: None)
+    monkeypatch.setattr(clearctl, "_python_deps_ready", lambda _auto: True)
+    monkeypatch.setattr(clearctl, "_terminate_port_processes", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(clearctl, "_wait_for_api", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(clearctl, "_npm_available", lambda: "npm")
+    monkeypatch.setattr(clearctl, "_ensure_node_modules", lambda *_args, **_kwargs: True)
+
+    captured_env = {}
+
+    class DummyProc:
+        def __init__(self, pid: int) -> None:
+            self.pid = pid
+
+    def fake_spawn(cmd, cwd=None, env=None, detach=True, log_path=None):
+        if env is not None:
+            captured_env.update(env)
+        return DummyProc(123)
+
+    monkeypatch.setattr(clearctl, "_spawn_process", fake_spawn)
+
+    args = type(
+        "Args",
+        (),
+        dict(
+            api_port=8000,
+            ui_port=5173,
+            no_web=False,
+            no_open=True,
+            foreground=False,
+            reload=False,
+            yes=True,
+        ),
+    )()
+
+    assert clearctl._start(args) == 0
+    assert captured_env.get("VITE_API_KEY") == "secret-key"
+
+
+def test_start_stops_when_ui_fails(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(clearctl, "API_PID", tmp_path / "api.pid")
+    monkeypatch.setattr(clearctl, "WEB_PID", tmp_path / "web.pid")
+    monkeypatch.setattr(clearctl, "API_LOG", tmp_path / "api.log")
+    monkeypatch.setattr(clearctl, "WEB_LOG", tmp_path / "web.log")
+    monkeypatch.setattr(clearctl, "ensure_runtime_dirs", lambda: None)
+    monkeypatch.setattr(clearctl, "_cleanup_existing_processes", lambda: None)
+    monkeypatch.setattr(clearctl, "_python_deps_ready", lambda _auto: True)
+    monkeypatch.setattr(clearctl, "_terminate_port_processes", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(clearctl, "_wait_for_api", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(clearctl, "_npm_available", lambda: "npm")
+    monkeypatch.setattr(clearctl, "_ensure_node_modules", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(clearctl, "wait_for_port", lambda *_args, **_kwargs: False)
+
+    stop_called = {"value": False}
+
+    def fake_stop(_args):
+        stop_called["value"] = True
+        return 1
+
+    monkeypatch.setattr(clearctl, "_stop", fake_stop)
+
+    class DummyProc:
+        def __init__(self, pid: int) -> None:
+            self.pid = pid
+
+    def fake_spawn(cmd, cwd=None, env=None, detach=True, log_path=None):
+        return DummyProc(123)
+
+    monkeypatch.setattr(clearctl, "_spawn_process", fake_spawn)
+
+    args = type(
+        "Args",
+        (),
+        dict(
+            api_port=8000,
+            ui_port=5173,
+            no_web=False,
+            no_open=True,
+            foreground=False,
+            reload=False,
+            yes=True,
+        ),
+    )()
+
+    assert clearctl._start(args) == 1
+    assert stop_called["value"] is True

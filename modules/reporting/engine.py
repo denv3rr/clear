@@ -12,6 +12,12 @@ from modules.client_mgr.client_model import Client
 from modules.client_mgr.holdings import compute_weighted_avg_cost, normalize_ticker
 from modules.client_mgr.valuation import ValuationEngine
 from modules.market_data.trackers import GlobalTrackers
+from modules.view_models import (
+    account_dashboard,
+    account_patterns,
+    client_patterns,
+    portfolio_dashboard,
+)
 from utils.report_synth import filter_fresh_news_items
 from modules.market_data.intel import score_news_items
 
@@ -28,6 +34,7 @@ class ReportPayload:
     client_id: str
     client_name: str
     generated_at: str
+    interval: str
     sections: List[ReportSection]
     data: Dict[str, Any]
     data_freshness: Dict[str, Any]
@@ -256,6 +263,7 @@ class ReportRenderer:
             f"# {payload.report_type.replace('_', ' ').title()}",
             f"Client: {payload.client_name}",
             f"Generated: {payload.generated_at}",
+            f"Interval: {payload.interval}",
             "",
         ]
         for section in payload.sections:
@@ -286,6 +294,7 @@ class ReportRenderer:
             f"{payload.report_type.replace('_', ' ').title()}",
             f"Client: {payload.client_name}",
             f"Generated: {payload.generated_at}",
+            f"Interval: {payload.interval}",
             "",
         ]
         for section in payload.sections:
@@ -354,9 +363,14 @@ class ReportEngine:
         self,
         client: Client,
         output_format: str = "md",
+        interval: str = "1M",
         detailed: bool = False,
     ) -> ReportResult:
-        payload = self._build_client_portfolio_payload(client, detailed=detailed)
+        payload = self._build_client_portfolio_payload(
+            client,
+            interval=interval,
+            detailed=detailed,
+        )
         content = _render_payload(payload, output_format)
         return ReportResult(
             content=content,
@@ -371,8 +385,9 @@ class ReportEngine:
         client: Client,
         account,
         output_format: str = "md",
+        interval: str = "1M",
     ) -> ReportResult:
-        payload = self._build_account_portfolio_payload(client, account)
+        payload = self._build_account_portfolio_payload(client, account, interval=interval)
         content = _render_payload(payload, output_format)
         return ReportResult(
             content=content,
@@ -384,6 +399,7 @@ class ReportEngine:
 
     def _build_weekly_brief_payload(self, client: Client) -> ReportPayload:
         generated_at = datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+        interval = "1W"
         holdings = _aggregate_holdings(client)
         lot_map = _aggregate_lots(client)
         prices = self.price_service.get_quotes(holdings.keys())
@@ -429,6 +445,7 @@ class ReportEngine:
             client_id=client.client_id,
             client_name=client.name,
             generated_at=generated_at,
+            interval=interval,
             sections=sections,
             data=data,
             data_freshness=data_freshness,
@@ -438,9 +455,11 @@ class ReportEngine:
     def _build_client_portfolio_payload(
         self,
         client: Client,
+        interval: str = "1M",
         detailed: bool = False,
     ) -> ReportPayload:
         generated_at = datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+        interval = str(interval or "1M").upper()
         holdings = _aggregate_holdings(client)
         lot_map = _aggregate_lots(client)
         prices = self.price_service.get_quotes(holdings.keys())
@@ -492,20 +511,142 @@ class ReportEngine:
             ReportSection("Accounts Summary", [account_header] + account_rows if account_rows else [["No accounts"]]),
             ReportSection("Holdings Detail", portfolio_rows),
         ]
-        if detailed and account_sections:
-            sections.extend(account_sections)
+        if detailed:
+            dashboard = portfolio_dashboard(client, interval=interval)
+            patterns = client_patterns(client, interval=interval)
+            interval_rows = [
+                ["Interval", interval],
+                ["Total Value", _format_value(dashboard["totals"].get("total_value"))],
+                ["Market Value", _format_value(dashboard["totals"].get("market_value"))],
+                ["Manual Value", _format_value(dashboard["totals"].get("manual_value"))],
+                ["Holdings Count", str(dashboard["totals"].get("holdings_count", 0))],
+                ["Manual Assets", str(dashboard["totals"].get("manual_count", 0))],
+            ]
+            sections.append(ReportSection("Interval Overview", interval_rows))
 
-        data_freshness = {"portfolio": portfolio_meta.get("as_of", generated_at)}
+            risk_payload = dashboard.get("risk", {}) or {}
+            metrics = risk_payload.get("metrics", {}) or {}
+            metric_labels = {
+                "mean_annual": "Annual Return",
+                "vol_annual": "Volatility",
+                "sharpe": "Sharpe",
+                "sortino": "Sortino",
+                "beta": "Beta",
+                "alpha_annual": "Alpha",
+                "r_squared": "R-Squared",
+                "max_drawdown": "Max Drawdown",
+                "var_95": "VaR 95%",
+                "cvar_95": "CVaR 95%",
+                "points": "Sample Points",
+            }
+            risk_rows = []
+            for key, label in metric_labels.items():
+                if key in metrics:
+                    value = metrics.get(key)
+                    if key in ("mean_annual", "vol_annual", "alpha_annual", "max_drawdown", "var_95", "cvar_95"):
+                        risk_rows.append([label, _format_pct(value)])
+                    elif key == "r_squared":
+                        risk_rows.append([label, _format_number(value, 3)])
+                    elif key == "points":
+                        risk_rows.append([label, str(int(value or 0))])
+                    else:
+                        risk_rows.append([label, _format_number(value, 3)])
+            if risk_rows:
+                sections.append(ReportSection("Risk Metrics", risk_rows))
+            distribution = risk_payload.get("distribution", []) or []
+            if distribution:
+                dist_rows = []
+                for row in distribution[:10]:
+                    dist_rows.append([
+                        f"{row.get('bin_start', 0):.3f} to {row.get('bin_end', 0):.3f}",
+                        str(row.get("count", 0)),
+                    ])
+                sections.append(ReportSection("Return Distribution", dist_rows))
+
+            regime = dashboard.get("regime", {}) or {}
+            if not regime.get("error"):
+                regime_rows = [
+                    ["Current Regime", regime.get("current_regime", "N/A")],
+                    ["Confidence", _format_pct(regime.get("confidence"))],
+                    ["Expected Next", str((regime.get("expected_next") or {}).get("regime", "N/A"))],
+                    ["Stability", _format_pct(regime.get("stability"))],
+                    ["Samples", str(regime.get("samples", 0))],
+                ]
+                metrics = regime.get("metrics", {}) or {}
+                if metrics:
+                    regime_rows.extend(
+                        [
+                            ["Avg Return (annual)", _format_pct(metrics.get("avg_return"))],
+                            ["Volatility (annual)", _format_pct(metrics.get("volatility"))],
+                        ]
+                    )
+                sections.append(ReportSection("Regime Snapshot", regime_rows))
+
+            diagnostics = dashboard.get("diagnostics", {}) or {}
+            sector_rows = diagnostics.get("sectors", []) or []
+            if sector_rows:
+                rows = [
+                    [row.get("sector", "N/A"), _format_pct(row.get("pct"))]
+                    for row in sector_rows
+                ]
+                rows.append(["HHI", _format_number(diagnostics.get("hhi"), 3)])
+                sections.append(ReportSection("Sector Concentration", rows))
+            movers = []
+            for row in diagnostics.get("gainers", []) or []:
+                movers.append([f"Top Gainer {row.get('ticker', '-')}", _format_pct(row.get("pct"))])
+            for row in diagnostics.get("losers", []) or []:
+                movers.append([f"Top Loser {row.get('ticker', '-')}", _format_pct(row.get("pct"))])
+            if movers:
+                sections.append(ReportSection("Top Movers", movers))
+
+            if patterns and not patterns.get("error"):
+                pattern_rows = [
+                    ["Entropy", _format_number(patterns.get("entropy"), 4)],
+                    ["Perm Entropy", _format_number(patterns.get("perm_entropy"), 4)],
+                    ["Hurst", _format_number(patterns.get("hurst"), 4)],
+                    ["Change Points", str(len(patterns.get("change_points", []) or []))],
+                    ["Motifs", str(len(patterns.get("motifs", []) or []))],
+                ]
+                sections.append(ReportSection("Pattern Analysis", pattern_rows))
+                axis_rows = []
+                wave_axis = (patterns.get("wave_surface") or {}).get("axis") or {}
+                fft_axis = (patterns.get("fft_surface") or {}).get("axis") or {}
+                if wave_axis:
+                    axis_rows.append([
+                        "Wave Surface",
+                        f"X={wave_axis.get('x_label','X')} ({wave_axis.get('x_unit','')}) | "
+                        f"Y={wave_axis.get('y_label','Y')} ({wave_axis.get('y_unit','')}) | "
+                        f"Z={wave_axis.get('z_label','Z')} ({wave_axis.get('z_unit','')})"
+                    ])
+                if fft_axis:
+                    axis_rows.append([
+                        "FFT Surface",
+                        f"X={fft_axis.get('x_label','X')} ({fft_axis.get('x_unit','')}) | "
+                        f"Y={fft_axis.get('y_label','Y')} ({fft_axis.get('y_unit','')}) | "
+                        f"Z={fft_axis.get('z_label','Z')} ({fft_axis.get('z_unit','')})"
+                    ])
+                if axis_rows:
+                    sections.append(ReportSection("3D Axis Context", axis_rows))
+
+            if account_sections:
+                sections.extend(account_sections)
+
+        data_freshness = {
+            "portfolio": portfolio_meta.get("as_of", generated_at),
+            "interval": interval,
+        }
         methodology = [
             "Account cost basis uses weighted average of lots and aggregate entries.",
             "Market value uses offline prices unless a live price service is enabled.",
             "Manual holdings are included when explicit total values are provided.",
+            "Interval analytics match the report interval selection.",
         ]
         return ReportPayload(
             report_type="client_portfolio_detail" if detailed else "client_portfolio_export",
             client_id=client.client_id,
             client_name=client.name,
             generated_at=generated_at,
+            interval=interval,
             sections=sections,
             data={"citations": portfolio_meta.get("citations", [])},
             data_freshness=data_freshness,
@@ -516,8 +657,10 @@ class ReportEngine:
         self,
         client: Client,
         account,
+        interval: str = "1M",
     ) -> ReportPayload:
         generated_at = datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+        interval = str(interval or "1M").upper()
         holdings = _account_holdings(account)
         lot_map = _account_lots(account)
         prices = self.price_service.get_quotes(holdings.keys())
@@ -542,17 +685,42 @@ class ReportEngine:
             ReportSection("Account Totals", totals_rows),
             ReportSection("Holdings Detail", rows),
         ]
+        dashboard = account_dashboard(client, account, interval=interval)
+        patterns = account_patterns(client, account, interval=interval)
+        interval_rows = [
+            ["Interval", interval],
+            ["Total Value", _format_value(dashboard["totals"].get("total_value"))],
+            ["Market Value", _format_value(dashboard["totals"].get("market_value"))],
+            ["Manual Value", _format_value(dashboard["totals"].get("manual_value"))],
+        ]
+        sections.append(ReportSection("Interval Overview", interval_rows))
+        risk_payload = dashboard.get("risk", {}) or {}
+        metrics = risk_payload.get("metrics", {}) or {}
+        risk_rows = []
+        for key, value in metrics.items():
+            risk_rows.append([key.replace("_", " ").title(), _format_number(value, 3)])
+        if risk_rows:
+            sections.append(ReportSection("Risk Metrics", risk_rows))
+        if patterns and not patterns.get("error"):
+            pattern_rows = [
+                ["Entropy", _format_number(patterns.get("entropy"), 4)],
+                ["Perm Entropy", _format_number(patterns.get("perm_entropy"), 4)],
+                ["Hurst", _format_number(patterns.get("hurst"), 4)],
+            ]
+            sections.append(ReportSection("Pattern Analysis", pattern_rows))
         return ReportPayload(
             report_type="account_portfolio_export",
             client_id=client.client_id,
             client_name=client.name,
             generated_at=generated_at,
+            interval=interval,
             sections=sections,
             data={"citations": meta.get("citations", [])},
-            data_freshness={"portfolio": meta.get("as_of", generated_at)},
+            data_freshness={"portfolio": meta.get("as_of", generated_at), "interval": interval},
             methodology=[
                 "Account cost basis uses weighted average of lots and aggregate entries.",
                 "Market value uses offline prices unless a live price service is enabled.",
+                "Interval analytics match the report interval selection.",
             ],
         )
 
@@ -655,6 +823,18 @@ def _format_value(value: Optional[float]) -> str:
     if value is None:
         return "N/A"
     return f"${value:,.2f}"
+
+
+def _format_number(value: Optional[float], precision: int = 4) -> str:
+    if value is None:
+        return "N/A"
+    return f"{value:.{precision}f}"
+
+
+def _format_pct(value: Optional[float], precision: int = 2) -> str:
+    if value is None:
+        return "N/A"
+    return f"{value * 100:.{precision}f}%"
 
 
 def _portfolio_snapshot(

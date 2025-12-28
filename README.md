@@ -64,6 +64,9 @@ A portfolio management, analytics, and global tracking platform.
 ![Yahoo Finance](https://img.shields.io/badge/Yahoo%20Finance-6001D2?style=for-the-badge&logo=yahoo&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
 ![React](https://img.shields.io/badge/React-111827?style=for-the-badge&logo=react&logoColor=61DAFB)
+![React Markdown](https://img.shields.io/badge/React%20Markdown-111827?style=for-the-badge)
+![Remark GFM](https://img.shields.io/badge/Remark%20GFM-0F172A?style=for-the-badge)
+![Lucide](https://img.shields.io/badge/Lucide-111827?style=for-the-badge)
 ![TypeScript](https://img.shields.io/badge/TypeScript-0F172A?style=for-the-badge&logo=typescript&logoColor=3178C6)
 ![React Router](https://img.shields.io/badge/React%20Router-1F2937?style=for-the-badge&logo=reactrouter&logoColor=CA4245)
 ![Node.js](https://img.shields.io/badge/Node.js-111827?style=for-the-badge&logo=node.js&logoColor=5FA04E)
@@ -129,7 +132,7 @@ If npm is not found, install Node.js first (includes npm) and retry:
 ## Launcher Commands
 
 ```pwsh
-# Start API + web UI
+# Start API + web UI (foreground; Ctrl+C stops)
 python clearctl.py start
 
 # Start API only (no web UI)
@@ -140,6 +143,9 @@ python clearctl.py web
 
 # Start the CLI
 python clearctl.py cli
+
+# Run in background
+python clearctl.py start --detach
 
 # Stop background services
 python clearctl.py stop
@@ -156,8 +162,8 @@ python clearctl.py doctor
 
 Convenience wrappers:
 
-- Windows PowerShell: `.\clearctl.ps1 start`
-- macOS/Linux: `./clearctl.sh start`
+- Windows PowerShell: `.\clear.ps1 start`
+- macOS/Linux: `./clear.sh start`
 - Windows PowerShell: `.\clear.ps1 web` / `.\clear.ps1 cli`
 - Windows CMD: `clear web` / `clear cli`
 - macOS/Linux: `./clear web` / `./clear cli`

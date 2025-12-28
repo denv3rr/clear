@@ -13,6 +13,7 @@ router = APIRouter()
 def client_report(
     client_id: str,
     detail: bool = Query(False),
+    interval: str = Query("1M", pattern="^(1W|1M|3M|6M|1Y)$"),
     fmt: str = Query("md", pattern="^(md|json|terminal)$"),
     _auth: None = Depends(require_api_key),
 ):
@@ -20,7 +21,12 @@ def client_report(
     for client in clients:
         if client.client_id == client_id:
             engine = ReportEngine()
-            report = engine.generate_client_portfolio_report(client, output_format=fmt, detailed=detail)
+            report = engine.generate_client_portfolio_report(
+                client,
+                output_format=fmt,
+                interval=interval,
+                detailed=detail,
+            )
             return {"format": fmt, "content": report.content, "payload": report.payload.__dict__}
     raise HTTPException(status_code=404, detail="Client not found")
 
@@ -29,6 +35,7 @@ def client_report(
 def account_report(
     client_id: str,
     account_id: str,
+    interval: str = Query("1M", pattern="^(1W|1M|3M|6M|1Y)$"),
     fmt: str = Query("md", pattern="^(md|json|terminal)$"),
     _auth: None = Depends(require_api_key),
 ):
@@ -38,7 +45,12 @@ def account_report(
             for account in client.accounts:
                 if account.account_id == account_id:
                     engine = ReportEngine()
-                    report = engine.generate_account_portfolio_report(client, account, output_format=fmt)
+                    report = engine.generate_account_portfolio_report(
+                        client,
+                        account,
+                        output_format=fmt,
+                        interval=interval,
+                    )
                     return {"format": fmt, "content": report.content, "payload": report.payload.__dict__}
             raise HTTPException(status_code=404, detail="Account not found")
     raise HTTPException(status_code=404, detail="Client not found")

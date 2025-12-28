@@ -22,6 +22,7 @@ from utils.launcher import (
     process_alive,
     read_pid,
     safe_sleep,
+    wait_for_port,
     tail_lines,
     terminate_pid,
     write_pid,
@@ -271,9 +272,15 @@ def _start(args: argparse.Namespace) -> int:
 
     ui_env = os.environ.copy()
     ui_env.setdefault("VITE_API_BASE", f"http://127.0.0.1:{args.api_port}")
+    api_key = os.environ.get("CLEAR_WEB_API_KEY")
+    if api_key:
+        ui_env.setdefault("VITE_API_KEY", api_key)
     ui_cmd = [npm_path, "run", "dev", "--", "--host", "127.0.0.1", "--port", str(args.ui_port)]
     ui_proc = _spawn_process(ui_cmd, cwd=web_dir, env=ui_env, detach=not args.foreground, log_path=WEB_LOG)
     write_pid(WEB_PID, ui_proc.pid)
+    if not wait_for_port(args.ui_port, timeout=6.0):
+        print(f">> Web UI failed to start on port {args.ui_port}. Check logs: {WEB_LOG}")
+        return _stop(args)
 
     print(f">> Web UI: http://127.0.0.1:{args.ui_port}")
     print(f">> API: http://127.0.0.1:{args.api_port}")
@@ -371,7 +378,9 @@ def _add_start_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--ui-port", type=int, default=DEFAULT_UI_PORT)
     parser.add_argument("--no-web", action="store_true")
     parser.add_argument("--no-open", action="store_true")
-    parser.add_argument("--foreground", action="store_true")
+    parser.set_defaults(foreground=True)
+    parser.add_argument("--foreground", action="store_true", dest="foreground", help="Run in foreground (default).")
+    parser.add_argument("--detach", action="store_false", dest="foreground", help="Run API/UI in the background.")
     parser.add_argument("--reload", action="store_true", help="Reload the API on code changes.")
     parser.add_argument("--yes", action="store_true", help="Auto-install deps when missing.")
 

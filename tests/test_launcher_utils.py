@@ -67,3 +67,14 @@ def test_filter_matching_pids(monkeypatch) -> None:
 
     monkeypatch.setattr(launcher, "pid_cmdline", fake_cmdline)
     assert launcher.filter_matching_pids([1, 2, 3], ["uvicorn"]) == [1]
+
+
+def test_wait_for_port_succeeds_after_retry(monkeypatch) -> None:
+    calls = {"count": 0}
+
+    def fake_port_in_use(port: int, host: str = "127.0.0.1") -> bool:
+        calls["count"] += 1
+        return calls["count"] >= 2
+
+    monkeypatch.setattr(launcher, "port_in_use", fake_port_in_use)
+    assert launcher.wait_for_port(8000, timeout=0.2) is True

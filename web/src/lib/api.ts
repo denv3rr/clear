@@ -6,6 +6,7 @@ const runtimeHost =
     : "127.0.0.1";
 const API_BASE =
   import.meta.env.VITE_API_BASE || `http://${runtimeHost}:8000`;
+const ENV_API_KEY = import.meta.env.VITE_API_KEY;
 
 export function getApiBase(): string {
   return API_BASE;
@@ -36,7 +37,7 @@ export function getApiKey(): string | null {
   try {
     return localStorage.getItem("clear_api_key");
   } catch {
-    return null;
+    return ENV_API_KEY || null;
   }
 }
 
@@ -65,7 +66,7 @@ export async function apiGet<T>(path: string, ttl = 0, signal?: AbortSignal): Pr
     }
   }
   const headers: Record<string, string> = {};
-  const apiKey = getApiKey();
+  const apiKey = getApiKey() || ENV_API_KEY;
   if (apiKey) {
     headers["X-API-Key"] = apiKey;
   }

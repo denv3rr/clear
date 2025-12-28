@@ -15,7 +15,8 @@ import {
 } from "recharts";
 import L from "leaflet";
 import maplibregl from "../lib/maplibre";
-import { Card } from "../components/ui/Card";
+import { Collapsible } from "../components/ui/Collapsible";
+import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { KpiCard } from "../components/ui/KpiCard";
 import { Reveal } from "../components/ui/Reveal";
 import { SectionHeader } from "../components/ui/SectionHeader";
@@ -81,11 +82,25 @@ export default function Dashboard() {
   const styleRequested = useRef(false);
   const styleLoaded = useRef(false);
 
-  const { data: trackerStream } = useTrackerStream<TrackerSnapshot>({ interval: 5, mode: "combined" });
-  const { data: trackerSnapshot } = useApi<TrackerSnapshot>("/api/trackers/snapshot?mode=combined", {
+  const [riskOpen, setRiskOpen] = useState(true);
+  const [mapOpen, setMapOpen] = useState(true);
+  const [feedOpen, setFeedOpen] = useState(true);
+  const { data: trackerStream, connected: streamConnected } = useTrackerStream<TrackerSnapshot>({
+    interval: 5,
+    mode: "combined"
+  });
+  const {
+    data: trackerSnapshot,
+    error: trackerError,
+    refresh: refreshTrackers
+  } = useApi<TrackerSnapshot>("/api/trackers/snapshot?mode=combined", {
     interval: 20000
   });
-  const { data: intelSummary } = useApi<IntelSummary>("/api/intel/summary?region=Global", {
+  const {
+    data: intelSummary,
+    error: intelError,
+    refresh: refreshIntel
+  } = useApi<IntelSummary>("/api/intel/summary?region=Global", {
     interval: 30000
   });
   const activeSnapshot = trackerStream || trackerSnapshot;
@@ -269,6 +284,16 @@ export default function Dashboard() {
     source.setData({ type: "FeatureCollection", features });
   }, [activeSnapshot, mapReady]);
 
+  useEffect(() => {
+    if (!mapOpen) return;
+    if (mapInstance.current) {
+      mapInstance.current.resize();
+    }
+    if (leafletMap.current) {
+      leafletMap.current.invalidateSize();
+    }
+  }, [mapOpen, mapFallback]);
+
   const trackerRows = useMemo<TrackerRow[]>(() => {
     if (!activeSnapshot?.points) return [];
     return activeSnapshot.points.slice(0, 40).map((point) => ({
@@ -281,6 +306,8 @@ export default function Dashboard() {
       heat: Number((point.speed_heat || 0).toFixed(2))
     }));
   }, [activeSnapshot]);
+
+  const noPoints = Boolean(activeSnapshot && activeSnapshot.points.length === 0);
 
   const table = useReactTable({
     data: trackerRows,
@@ -328,6 +355,24 @@ export default function Dashboard() {
     }));
   }, [intelSummary]);
 
+  const authHint = "Check CLEAR_WEB_API_KEY + localStorage clear_api_key.";
+  const errorMessages = [
+    trackerError
+      ? `Tracker snapshot failed: ${trackerError}${
+          trackerError.includes("401") || trackerError.includes("403")
+            ? ` (${authHint})`
+            : ""
+        }`
+      : null,
+    intelError
+      ? `Intel summary failed: ${intelError}${
+          intelError.includes("401") || intelError.includes("403")
+            ? ` (${authHint})`
+            : ""
+        }`
+      : null
+  ].filter(Boolean) as string[];
+
   return (
     <>
       <Reveal>
@@ -348,32 +393,22 @@ export default function Dashboard() {
       </Reveal>
 
       <Reveal delay={0.15}>
-        <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Card className="rounded-2xl p-6 lg:col-span-2 min-h-[360px] relative overflow-hidden">
-            <SectionHeader label="MAPS" title="Flight + Maritime Layer" right="MapLibre GL" />
-            <div className="mt-6 h-[260px] rounded-2xl overflow-hidden border border-slate-800 relative">
-              <div ref={mapRef} className="absolute inset-0" />
-              {mapFallback ? (
-                <div ref={leafletRef} className="absolute inset-0" />
-              ) : null}
-              {!mapReady && !mapError && !mapFallback ? (
-                <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-400 bg-ink-950/40">
-                  Loading map...
-                </div>
-              ) : null}
-              {mapError && !mapFallback ? (
-                <div className="absolute inset-0 flex items-center justify-center text-xs text-amber-300 bg-ink-950/40">
-                  {mapError}
-                </div>
-              ) : null}
-              <div className="absolute bottom-3 right-3 rounded-lg border border-slate-800/60 bg-ink-950/80 px-3 py-2 text-[11px] text-slate-400">
-                {mapFallback ? leafletStatus : mapStatus}
-              </div>
-            </div>
-            <div className="absolute -bottom-16 -right-12 h-40 w-40 rounded-full bg-emerald-400/20 blur-3xl" />
-          </Card>
+        <div className="mt-6">
+          <ErrorBanner messages={errorMessages} onRetry={() => {
+            refreshTrackers();
+            refreshIntel();
+          }} />
+        </div>
+      </Reveal>
 
-          <Card className="rounded-2xl p-6 flex flex-col">
+      <Reveal delay={0.2}>
+        <section className="grid grid-cols-1 gap-6">
+          <Collapsible
+            title="Global Patterns"
+            meta={intelSummary?.risk_level || "Live"}
+            open={riskOpen}
+            onToggle={() => setRiskOpen((prev) => !prev)}
+          >
             <SectionHeader label="RISK SIGNALS" title="Global Patterns" />
             <div className="mt-4 h-52">
               <ResponsiveContainer width="100%" height="100%">
@@ -397,44 +432,86 @@ export default function Dashboard() {
                 </AreaChart>
               </ResponsiveContainer>
             </div>
-          </Card>
-        </section>
-      </Reveal>
+          </Collapsible>
 
-      <Reveal delay={0.2}>
-        <Card className="rounded-2xl p-6">
-          <SectionHeader
-            label="LIVE FEED"
-            title="Tracker Signals"
-            right={activeSnapshot ? `${activeSnapshot.count} signals` : "Loading"}
-          />
-          <div className="overflow-x-auto mt-6">
-            <table className="w-full text-sm">
-              <thead className="text-slate-400 border-b border-slate-800">
-                {table.getHeaderGroups().map((headerGroup) => (
-                  <tr key={headerGroup.id}>
-                    {headerGroup.headers.map((header) => (
-                      <th key={header.id} className="py-3 text-left font-medium">
-                        {flexRender(header.column.columnDef.header, header.getContext())}
-                      </th>
+          <Collapsible
+            title="Flight + Maritime Map"
+            meta={mapFallback ? "Leaflet" : "MapLibre GL"}
+            open={mapOpen}
+            onToggle={() => setMapOpen((prev) => !prev)}
+          >
+            <SectionHeader label="MAPS" title="Flight + Maritime Layer" right={mapFallback ? "Leaflet" : "MapLibre GL"} />
+            <div className="mt-4 h-[300px] rounded-2xl overflow-hidden border border-slate-800 relative">
+              <div ref={mapRef} className="absolute inset-0" />
+              {mapFallback ? (
+                <div ref={leafletRef} className="absolute inset-0" />
+              ) : null}
+              {!mapReady && !mapError && !mapFallback ? (
+                <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-400 bg-ink-950/40">
+                  Loading map...
+                </div>
+              ) : null}
+              {noPoints ? (
+                <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-400 bg-ink-950/40">
+                  No tracker points in snapshot.
+                </div>
+              ) : null}
+              {mapError && !mapFallback ? (
+                <div className="absolute inset-0 flex items-center justify-center text-xs text-amber-300 bg-ink-950/40">
+                  {mapError}
+                </div>
+              ) : null}
+              <div className="absolute bottom-3 right-3 rounded-lg border border-slate-800/60 bg-ink-950/80 px-3 py-2 text-[11px] text-slate-400">
+                {mapFallback ? leafletStatus : mapStatus}
+              </div>
+            </div>
+          </Collapsible>
+
+          <Collapsible
+            title="Live Feed"
+            meta={`${activeSnapshot ? activeSnapshot.count : 0} signals • ${
+              streamConnected ? "Streaming" : "Snapshot"
+            }`}
+            open={feedOpen}
+            onToggle={() => setFeedOpen((prev) => !prev)}
+          >
+            <SectionHeader
+              label="LIVE FEED"
+              title="Tracker Signals"
+              right={activeSnapshot ? `${activeSnapshot.count} signals` : "Loading"}
+            />
+            <div className="overflow-x-auto mt-6">
+              {trackerRows.length ? (
+                <table className="w-full text-sm">
+                  <thead className="text-slate-400 border-b border-slate-800">
+                    {table.getHeaderGroups().map((headerGroup) => (
+                      <tr key={headerGroup.id}>
+                        {headerGroup.headers.map((header) => (
+                          <th key={header.id} className="py-3 text-left font-medium">
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                          </th>
+                        ))}
+                      </tr>
                     ))}
-                  </tr>
-                ))}
-              </thead>
-              <tbody>
-                {table.getRowModel().rows.map((row) => (
-                  <tr key={row.id} className="border-b border-slate-900/60">
-                    {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id} className="py-3 pr-4 text-slate-200">
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
+                  </thead>
+                  <tbody>
+                    {table.getRowModel().rows.map((row) => (
+                      <tr key={row.id} className="border-b border-slate-900/60">
+                        {row.getVisibleCells().map((cell) => (
+                          <td key={cell.id} className="py-3 pr-4 text-slate-200">
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </td>
+                        ))}
+                      </tr>
                     ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+                  </tbody>
+                </table>
+              ) : (
+                <p className="text-xs text-slate-500">No live tracker data available.</p>
+              )}
+            </div>
+          </Collapsible>
+        </section>
       </Reveal>
     </>
   );

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
+const ENV_API_KEY = import.meta.env.VITE_API_KEY;
 
 type StreamOptions = {
   interval?: number;
@@ -23,8 +24,13 @@ export function useTrackerStream<T>(options: StreamOptions = {}) {
       const apiKey = localStorage.getItem("clear_api_key");
       if (apiKey) {
         params.set("api_key", apiKey);
+      } else if (ENV_API_KEY) {
+        params.set("api_key", ENV_API_KEY);
       }
     } catch {
+      if (ENV_API_KEY) {
+        params.set("api_key", ENV_API_KEY);
+      }
       // ignore
     }
     const wsUrl = API_BASE.replace("http", "ws") + `/ws/trackers?${params.toString()}`;

@@ -66,6 +66,14 @@ type SurfacePayload = {
   z: number[][];
   x?: number[];
   y?: number[];
+  axis?: {
+    x_label?: string;
+    y_label?: string;
+    z_label?: string;
+    x_unit?: string;
+    y_unit?: string;
+    z_unit?: string;
+  };
 };
 
 type PatternPayload = {
@@ -144,11 +152,19 @@ export default function Clients() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [interval, setInterval] = useState("1M");
-  const [selectedAccount, setSelectedAccount] = useState<string>("portfolio");
-  const [dashboard, setDashboard] = useState<DashboardPayload | null>(null);
-  const [dashboardError, setDashboardError] = useState<string | null>(null);
-  const [patterns, setPatterns] = useState<PatternPayload | null>(null);
-  const [patternsError, setPatternsError] = useState<string | null>(null);
+  const [selectedAccount, setSelectedAccount] = useState<string>("portfolio");  
+  const [dashboard, setDashboard] = useState<DashboardPayload | null>(null);    
+  const [dashboardError, setDashboardError] = useState<string | null>(null);    
+  const [patterns, setPatterns] = useState<PatternPayload | null>(null);        
+  const [patternsError, setPatternsError] = useState<string | null>(null);      
+  const [historyOpen, setHistoryOpen] = useState(true);
+  const [profileOpen, setProfileOpen] = useState(true);
+  const [riskOpen, setRiskOpen] = useState(true);
+  const [distributionOpen, setDistributionOpen] = useState(true);
+  const [patternOpen, setPatternOpen] = useState(true);
+  const [holdingsOpen, setHoldingsOpen] = useState(true);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(true);
+  const [manualOpen, setManualOpen] = useState(true);
 
   useEffect(() => {
     if (!selectedId && rows.length) {
@@ -230,6 +246,27 @@ export default function Clients() {
     return detail.accounts.map((account) => ({
       value: account.account_id,
       label: `${account.account_name} (${account.account_id.slice(0, 6)})`
+    }));
+  }, [detail]);
+
+  const profileRows = useMemo(() => {
+    const entries = Object.entries(detail?.tax_profile || {});
+    if (!entries.length) {
+      return [["Tax Profile", "No tax profile configured."]];
+    }
+    return entries.map(([key, value]) => [key, String(value)]);
+  }, [detail]);
+
+  const accountRows = useMemo(() => {
+    if (!detail?.accounts?.length) return [];
+    return detail.accounts.map((account) => ({
+      id: account.account_id,
+      name: account.account_name,
+      type: account.account_type || "N/A",
+      custodian: account.custodian || "N/A",
+      ownership: account.ownership_type || "N/A",
+      tags: account.tags?.length ? account.tags.join(", ") : "None",
+      taxKeys: Object.keys(account.tax_settings || {}).length
     }));
   }, [detail]);
 
@@ -323,7 +360,9 @@ export default function Clients() {
               </div>
             </div>
             <div className="rounded-xl border border-slate-800/60 p-4">
-              <p className="text-xs text-slate-400">Scope</p>
+              <label htmlFor="account-scope" className="text-xs text-slate-400">
+                Scope
+              </label>
               <select
                 id="account-scope"
                 name="account-scope"
@@ -382,7 +421,55 @@ export default function Clients() {
             </div>
           )}
 
-          <Collapsible title="Portfolio History" meta={dashboard?.interval || "Loading"} open onToggle={() => null}>
+          <Collapsible
+            title="Client Profile"
+            meta={detail?.name || "Loading"}
+            open={profileOpen}
+            onToggle={() => setProfileOpen((prev) => !prev)}
+          >
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs text-slate-300">
+              <div className="rounded-xl border border-slate-800/60 p-4">
+                <p className="text-xs text-slate-400 mb-2">Tax Profile</p>
+                <div className="space-y-2">
+                  {profileRows.map(([label, value]) => (
+                    <div key={label} className="flex items-center justify-between">
+                      <span className="text-slate-400">{label}</span>
+                      <span className="text-slate-200">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-xl border border-slate-800/60 p-4">
+                <p className="text-xs text-slate-400 mb-2">Accounts</p>
+                {accountRows.length ? (
+                  <div className="space-y-3">
+                    {accountRows.map((account) => (
+                      <div key={account.id} className="rounded-lg border border-slate-900/60 p-3">
+                        <p className="text-slate-100 font-medium">{account.name}</p>
+                        <p className="text-[11px] text-slate-500">{account.id}</p>
+                        <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-slate-300">
+                          <span>Type: {account.type}</span>
+                          <span>Custodian: {account.custodian}</span>
+                          <span>Ownership: {account.ownership}</span>
+                          <span>Tax Keys: {account.taxKeys}</span>
+                          <span className="col-span-2">Tags: {account.tags}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-slate-500">No accounts available.</p>
+                )}
+              </div>
+            </div>
+          </Collapsible>
+
+          <Collapsible
+            title="Portfolio History"
+            meta={dashboard?.interval || "Loading"}
+            open={historyOpen}
+            onToggle={() => setHistoryOpen((prev) => !prev)}
+          >
             {dashboard?.history?.length ? (
               <AreaSparkline data={dashboard.history} height={220} />
             ) : (
@@ -391,7 +478,12 @@ export default function Clients() {
           </Collapsible>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Collapsible title="Risk Metrics" meta={dashboard?.risk?.risk_profile || "Loading"} open onToggle={() => null}>
+            <Collapsible
+              title="Risk Metrics"
+              meta={dashboard?.risk?.risk_profile || "Loading"}
+              open={riskOpen}
+              onToggle={() => setRiskOpen((prev) => !prev)}
+            >
               {dashboard?.risk?.error ? (
                 <p className="text-xs text-amber-300">{dashboard.risk.error}</p>
               ) : (
@@ -405,7 +497,12 @@ export default function Clients() {
                 </div>
               )}
             </Collapsible>
-            <Collapsible title="Return Distribution" meta={dashboard?.risk?.meta || "Loading"} open onToggle={() => null}>
+            <Collapsible
+              title="Return Distribution"
+              meta={dashboard?.risk?.meta || "Loading"}
+              open={distributionOpen}
+              onToggle={() => setDistributionOpen((prev) => !prev)}
+            >
               {dashboard?.risk?.distribution?.length ? (
                 <DistributionBars data={dashboard.risk.distribution} height={200} />
               ) : (
@@ -436,7 +533,12 @@ export default function Clients() {
             </div>
           </div>
 
-          <Collapsible title="Pattern Analysis" meta={patterns?.error ? "Offline" : "Active"} open onToggle={() => null}>
+          <Collapsible
+            title="Pattern Analysis"
+            meta={patterns?.error ? "Offline" : "Active"}
+            open={patternOpen}
+            onToggle={() => setPatternOpen((prev) => !prev)}
+          >
             {patterns?.error ? (
               <p className="text-xs text-amber-300">{patterns.error}</p>
             ) : (
@@ -452,6 +554,7 @@ export default function Clients() {
                     z={patterns?.wave_surface?.z || []}
                     x={patterns?.wave_surface?.x}
                     y={patterns?.wave_surface?.y}
+                    axis={patterns?.wave_surface?.axis}
                     height={300}
                   />
                   <Surface3D
@@ -459,6 +562,7 @@ export default function Clients() {
                     z={patterns?.fft_surface?.z || []}
                     x={patterns?.fft_surface?.x}
                     y={patterns?.fft_surface?.y}
+                    axis={patterns?.fft_surface?.axis}
                     height={300}
                   />
                 </div>
@@ -489,7 +593,12 @@ export default function Clients() {
             )}
           </Collapsible>
 
-          <Collapsible title="Holdings Snapshot" meta={`${activeHoldings.length} positions`} open onToggle={() => null}>
+          <Collapsible
+            title="Holdings Snapshot"
+            meta={`${activeHoldings.length} positions`}
+            open={holdingsOpen}
+            onToggle={() => setHoldingsOpen((prev) => !prev)}
+          >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {activeHoldings.map((holding) => (
                 <div key={holding.ticker} className="rounded-xl border border-slate-800/60 p-4">
@@ -504,7 +613,12 @@ export default function Clients() {
             </div>
           </Collapsible>
 
-          <Collapsible title="Diagnostics" meta="Concentration + Movers" open onToggle={() => null}>
+          <Collapsible
+            title="Diagnostics"
+            meta="Concentration + Movers"
+            open={diagnosticsOpen}
+            onToggle={() => setDiagnosticsOpen((prev) => !prev)}
+          >
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs text-slate-300">
               <div className="rounded-xl border border-slate-800/60 p-4">
                 <p className="text-xs text-slate-400 mb-2">Sector Concentration</p>
@@ -546,7 +660,12 @@ export default function Clients() {
             </div>
           </Collapsible>
 
-          <Collapsible title="Manual Assets" meta={`${dashboard?.manual_holdings?.length || 0} entries`} open onToggle={() => null}>
+          <Collapsible
+            title="Manual Assets"
+            meta={`${dashboard?.manual_holdings?.length || 0} entries`}
+            open={manualOpen}
+            onToggle={() => setManualOpen((prev) => !prev)}
+          >
             {dashboard?.manual_holdings?.length ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {dashboard.manual_holdings.map((holding, idx) => (

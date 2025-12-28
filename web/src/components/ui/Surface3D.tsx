@@ -8,6 +8,14 @@ type Surface3DProps = {
   z: number[][];
   x?: number[];
   y?: number[];
+  axis?: {
+    x_label?: string;
+    y_label?: string;
+    z_label?: string;
+    x_unit?: string;
+    y_unit?: string;
+    z_unit?: string;
+  };
   height?: number;
   className?: string;
 };
@@ -17,6 +25,7 @@ export function Surface3D({
   z,
   x,
   y,
+  axis,
   height = 320,
   className = ""
 }: Surface3DProps) {
@@ -54,6 +63,14 @@ export function Surface3D({
         <p className="text-xs text-slate-400">{title}</p>
         <p className="text-[11px] text-emerald-300">{hasData ? "3D Surface" : "No data"}</p>
       </div>
+      {axis ? (
+        <p className="mt-1 text-[11px] text-slate-500">
+          X: {axis.x_label || "X"}
+          {axis.x_unit ? ` (${axis.x_unit})` : ""} | Y: {axis.y_label || "Y"}
+          {axis.y_unit ? ` (${axis.y_unit})` : ""} | Z: {axis.z_label || "Z"}
+          {axis.z_unit ? ` (${axis.z_unit})` : ""}
+        </p>
+      ) : null}
       <div className="mt-3">
         {hasData ? (
           <Plot

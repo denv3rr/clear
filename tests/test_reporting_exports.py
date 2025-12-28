@@ -26,6 +26,7 @@ def test_client_export_summary_sections():
     client = _build_client()
     report = engine.generate_client_portfolio_report(client, output_format="json", detailed=False)
     assert report.payload.report_type == "client_portfolio_export"
+    assert report.payload.interval == "1M"
     section_titles = [section.title for section in report.payload.sections]
     assert "Accounts Summary" in section_titles
     assert "Holdings Detail" in section_titles
@@ -35,6 +36,7 @@ def test_client_export_detailed_includes_account_sections():
     engine = ReportEngine(price_service=DummyPriceService())
     client = _build_client()
     report = engine.generate_client_portfolio_report(client, output_format="md", detailed=True)
+    assert report.payload.interval == "1M"
     section_titles = [section.title for section in report.payload.sections]
     assert any(title.startswith("Account Detail:") for title in section_titles)
 
@@ -44,3 +46,4 @@ def test_account_export():
     client = _build_client()
     report = engine.generate_account_portfolio_report(client, client.accounts[0], output_format="md")
     assert report.payload.report_type == "account_portfolio_export"
+    assert report.payload.interval == "1M"

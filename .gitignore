@@ -67,6 +67,8 @@ data/reports/
 data/logs/
 data/pids/
 data/runtime/
+data/runtime/*.lock
+data/runtime/*.sock
 exports/
 reports/
 
@@ -122,6 +124,7 @@ web/dist/
 web/.vite/
 web/test-results/
 web/playwright-report/
+web/.env*
 web/.cache/
 web/.parcel-cache/
 web/.turbo/
@@ -129,6 +132,10 @@ web/coverage/
 web/.eslintcache
 web/.stylelintcache
 web/.tsbuildinfo
+
+# Playwright (root runs)
+test-results/
+playwright-report/
 
 # Node package managers
 npm-debug.log*

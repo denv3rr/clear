@@ -33,18 +33,22 @@ type ReportPayload = {
   format: string;
 };
 
+const intervals = ["1W", "1M", "3M", "6M", "1Y"];
+
 export default function Reports() {
   const { data, error: indexError, refresh } = useApi<ClientIndex>("/api/clients", {
     interval: 60000
   });
   const clients = data?.clients ?? [];
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selectedAccount, setSelectedAccount] = useState<string>("portfolio");
+  const [selectedAccount, setSelectedAccount] = useState<string>("portfolio");  
   const [format, setFormat] = useState<"md" | "json">("md");
+  const [interval, setInterval] = useState("1M");
   const [detail, setDetail] = useState<boolean>(false);
   const [report, setReport] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [reportError, setReportError] = useState<string | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(true);
 
   const { data: clientDetail, error: detailError } = useApi<ClientDetail>(
     selectedId ? `/api/clients/${encodeURIComponent(selectedId)}` : "",
@@ -62,8 +66,8 @@ export default function Reports() {
     try {
       const path =
         selectedAccount === "portfolio"
-          ? `/api/reports/client/${selectedId}?detail=${detail}&fmt=${format}`
-          : `/api/reports/client/${selectedId}/accounts/${selectedAccount}?fmt=${format}`;
+          ? `/api/reports/client/${selectedId}?detail=${detail}&fmt=${format}&interval=${interval}`
+          : `/api/reports/client/${selectedId}/accounts/${selectedAccount}?fmt=${format}&interval=${interval}`;
       const payload = await apiGet<ReportPayload>(path, 0);
       setReport(payload.content || "");
       setReportError(null);
@@ -93,28 +97,37 @@ export default function Reports() {
       </div>
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="space-y-3 text-sm text-slate-300">
-          {clients.map((client) => (
-            <button
-              key={client.client_id}
-              onClick={() => {
-                setSelectedId(client.client_id);
-                setSelectedAccount("portfolio");
-                setReport("");
-              }}
-              className={`w-full rounded-xl border px-4 py-3 text-left ${
-                selectedId === client.client_id
-                  ? "border-emerald-400/60 text-slate-100"
-                  : "border-slate-800/60 text-slate-300"
-              }`}
-            >
-              <p className="font-medium">{client.name}</p>
-              <p className="text-xs text-slate-400">{client.accounts_count} accounts</p>
-            </button>
-          ))}
+          {clients.length ? (
+            clients.map((client) => (
+              <button
+                key={client.client_id}
+                onClick={() => {
+                  setSelectedId(client.client_id);
+                  setSelectedAccount("portfolio");
+                  setReport("");
+                }}
+                className={`w-full rounded-xl border px-4 py-3 text-left ${
+                  selectedId === client.client_id
+                    ? "border-emerald-400/60 text-slate-100"
+                    : "border-slate-800/60 text-slate-300"
+                }`}
+              >
+                <p className="font-medium">{client.name}</p>
+                <p className="text-xs text-slate-400">{client.accounts_count} accounts</p>
+              </button>
+            ))
+          ) : (
+            <p className="text-xs text-slate-500">No client profiles loaded.</p>
+          )}
         </div>
         <div className="lg:col-span-2 space-y-4">
-          <Collapsible title="Report Filters" meta={format.toUpperCase()} open onToggle={() => null}>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <Collapsible
+            title="Report Filters"
+            meta={format.toUpperCase()}
+            open={filtersOpen}
+            onToggle={() => setFiltersOpen((prev) => !prev)}
+          >
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
               <div>
                 <label htmlFor="report-format" className="text-xs text-slate-400">
                   Format
@@ -163,6 +176,25 @@ export default function Reports() {
                 >
                   {detail ? "On" : "Off"}
                 </button>
+              </div>
+              <div className="rounded-xl border border-slate-800/60 p-3">
+                <p className="text-xs text-slate-400">Interval</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {intervals.map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => setInterval(opt)}
+                      className={`rounded-full border px-3 py-1 text-[11px] ${
+                        interval === opt
+                          ? "border-emerald-400/70 text-emerald-200"
+                          : "border-slate-800/60 text-slate-400"
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </Collapsible>

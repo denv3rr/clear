@@ -27,6 +27,15 @@ def port_in_use(port: int, host: str = "127.0.0.1") -> bool:
         return sock.connect_ex((host, port)) == 0
 
 
+def wait_for_port(port: int, host: str = "127.0.0.1", timeout: float = 5.0) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if port_in_use(port, host=host):
+            return True
+        time.sleep(0.1)
+    return False
+
+
 def find_pids_by_port(port: int) -> list[int]:
     pids: list[int] = []
     try:
@@ -35,7 +44,7 @@ def find_pids_by_port(port: int) -> list[int]:
                 continue
             if conn.laddr.port != port:
                 continue
-            if conn.pid:
+            if conn.pid and conn.pid > 0:
                 pids.append(conn.pid)
     except Exception:
         pids = []
@@ -61,7 +70,9 @@ def find_pids_by_port(port: int) -> list[int]:
             continue
         pid = parts[-1]
         if pid.isdigit():
-            pids.append(int(pid))
+            pid_value = int(pid)
+            if pid_value > 0:
+                pids.append(pid_value)
     return sorted(set(pids))
 
 

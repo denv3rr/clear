@@ -696,6 +696,7 @@ class ClientManager:
                 report = engine.generate_client_portfolio_report(
                     client,
                     output_format=fmt_val,
+                    interval=client.active_interval,
                     detailed=False,
                 )
                 self._write_report_file(
@@ -708,6 +709,7 @@ class ClientManager:
                 report = engine.generate_client_portfolio_report(
                     client,
                     output_format=fmt_val,
+                    interval=client.active_interval,
                     detailed=True,
                 )
                 self._write_report_file(
@@ -740,6 +742,7 @@ class ClientManager:
                     client,
                     account,
                     output_format=fmt_val,
+                    interval=account.active_interval,
                 )
                 self._write_report_file(
                     report.content,

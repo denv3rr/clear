@@ -158,7 +158,10 @@ test.describe("Clear Web smoke", () => {
     await page.getByPlaceholder("Paste API key").fill("test-key");
     await page.getByRole("button", { name: "Save Key" }).click();
     await page.goto("/clients");
-    await expect(page.getByRole("button", { name: /Test Client/i })).toBeVisible();
+    const clientButton = page
+      .getByRole("button", { name: /Test Client/i })
+      .first();
+    await expect(clientButton).toBeVisible();
   });
 
   test("news page uses stored api key for feeds", async ({ page }) => {
@@ -202,6 +205,53 @@ test.describe("Clear Web smoke", () => {
     await expect(page.getByText("Market Signal Alpha")).toBeVisible();
   });
 
+  test("news page renders empty-state messaging", async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem("clear_api_key", "test-key");
+    });
+    await page.route("**/api/intel/meta**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          regions: [{ name: "Global", industries: ["all"] }],
+          industries: ["all"],
+          categories: [],
+          sources: []
+        })
+      });
+    });
+    await page.route("**/api/intel/news**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          items: [],
+          cached: false,
+          stale: false,
+          skipped: []
+        })
+      });
+    });
+    await page.goto("/news");
+    await expect(page.getByText("No news items available.")).toBeVisible();
+  });
+
+  test("clients page renders empty-state messaging", async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem("clear_api_key", "test-key");
+    });
+    await page.route("**/api/clients**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ clients: [] })
+      });
+    });
+    await page.goto("/clients");
+    await expect(page.getByText("No client profiles loaded.")).toBeVisible();
+  });
+
   test("trackers page uses stored api key for snapshot", async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem("clear_api_key", "test-key");
@@ -240,5 +290,131 @@ test.describe("Clear Web smoke", () => {
     });
     await page.goto("/trackers");
     await expect(page.getByText("TEST123")).toBeVisible();
+  });
+
+  test("dashboard renders risk, map, and live feed with snapshot data", async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem("clear_api_key", "test-key");
+    });
+    await page.route("**/api/intel/summary**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ risk_level: "Moderate", risk_score: 4.2 })
+      });
+    });
+    await page.route("**/api/trackers/snapshot**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          count: 1,
+          warnings: [],
+          points: [
+            {
+              id: "t1",
+              kind: "flight",
+              label: "TEST123",
+              category: "military",
+              lat: 40.0,
+              lon: -70.0
+            }
+          ]
+        })
+      });
+    });
+    await page.route("**/ws/trackers**", async (route) => {
+      await route.abort();
+    });
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Global Patterns" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Flight + Maritime Layer" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Tracker Signals" })).toBeVisible();
+    await expect(page.getByText("TEST123")).toBeVisible();
+  });
+
+  test("dashboard surfaces empty tracker snapshots", async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem("clear_api_key", "test-key");
+    });
+    await page.route("**/api/intel/summary**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ risk_level: "Moderate", risk_score: 4.2 })
+      });
+    });
+    await page.route("**/api/trackers/snapshot**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          count: 0,
+          warnings: ["No live flight data returned from the flight feed."],
+          points: []
+        })
+      });
+    });
+    await page.route("**/ws/trackers**", async (route) => {
+      await route.abort();
+    });
+    await page.goto("/");
+    await expect(page.getByText("No tracker points in snapshot.")).toBeVisible();
+    await expect(page.getByText("No live tracker data available.")).toBeVisible();
+  });
+
+  test("reports page renders markdown output", async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem("clear_api_key", "test-key");
+    });
+    await page.route("**/api/clients**", async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === "/api/clients") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            clients: [
+              {
+                client_id: "c1",
+                name: "Test Client",
+                accounts_count: 0,
+                holdings_count: 0
+              }
+            ]
+          })
+        });
+        return;
+      }
+      if (url.pathname === "/api/clients/c1") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            client_id: "c1",
+            name: "Test Client",
+            accounts_count: 0,
+            holdings_count: 0,
+            accounts: []
+          })
+        });
+        return;
+      }
+      await route.fallback();
+    });
+    await page.route("**/api/reports/client/c1**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          content: "# Executive Summary\n\n- Alpha\n- Beta\n",
+          format: "md"
+        })
+      });
+    });
+    await page.goto("/reports");
+    await page.getByRole("button", { name: /Test Client/i }).click();
+    await page.getByRole("button", { name: "Generate Report" }).click();
+    await expect(page.getByRole("heading", { name: "Executive Summary" })).toBeVisible();
   });
 });

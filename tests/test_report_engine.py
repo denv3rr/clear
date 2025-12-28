@@ -1,6 +1,7 @@
 import json
 import time
 import unittest
+from unittest import mock
 
 from modules.client_mgr.client_model import Account, Client
 from modules.reporting.engine import (
@@ -51,6 +52,7 @@ class TestReportEngine(unittest.TestCase):
             client_id="c1",
             client_name="Client",
             generated_at="2025-01-01T00:00:00Z",
+            interval="1M",
             sections=[ReportSection("Section", [["Key", "Value"]])],
             data={},
             data_freshness={},
@@ -65,6 +67,7 @@ class TestReportEngine(unittest.TestCase):
             client_id="c1",
             client_name="Client",
             generated_at="2025-01-01T00:00:00Z",
+            interval="1M",
             sections=[],
             data={},
             data_freshness={},
@@ -88,15 +91,15 @@ class TestReportEngine(unittest.TestCase):
 
     def test_select_model_runner_auto_prefers_ollama(self):
         settings = {"enabled": True, "provider": "auto", "model_id": "llama3", "endpoint": "http://127.0.0.1:8080"}
-        with unittest.mock.patch("modules.reporting.engine.shutil.which") as which:
+        with mock.patch("modules.reporting.engine.shutil.which") as which:
             which.return_value = "ollama"
             runner = select_model_runner(settings=settings)
             self.assertIsInstance(runner, OllamaRunner)
 
     def test_select_model_runner_auto_falls_back_local_http(self):
         settings = {"enabled": True, "provider": "auto", "model_id": "llama3", "endpoint": "http://127.0.0.1:8080"}
-        with unittest.mock.patch("modules.reporting.engine.shutil.which") as which, \
-            unittest.mock.patch("requests.get") as http_get:
+        with mock.patch("modules.reporting.engine.shutil.which") as which, \
+            mock.patch("requests.get") as http_get:
             which.return_value = None
             http_get.return_value.status_code = 200
             runner = select_model_runner(settings=settings)
@@ -104,7 +107,7 @@ class TestReportEngine(unittest.TestCase):
 
     def test_local_http_runner_generate_parses_content(self):
         runner = LocalHttpRunner(model_id="llama3", endpoint="http://127.0.0.1:8080")
-        with unittest.mock.patch("requests.post") as post:
+        with mock.patch("requests.post") as post:
             post.return_value.status_code = 200
             post.return_value.json.return_value = {
                 "choices": [{"message": {"content": "{\"summary\": [], \"sections\": [], \"citations\": [], \"risks\": []}"}}]
@@ -117,8 +120,8 @@ class TestReportEngine(unittest.TestCase):
             "ai": {"provider": "local_http", "model_id": "base"},
             "reporting": {"ai": {"provider": "ollama", "model_id": "llama3", "news_freshness_hours": 2}},
         }
-        with unittest.mock.patch("builtins.open", unittest.mock.mock_open(read_data=json.dumps(payload))), \
-            unittest.mock.patch("os.path.exists") as exists:
+        with mock.patch("builtins.open", mock.mock_open(read_data=json.dumps(payload))), \
+            mock.patch("os.path.exists") as exists:
             exists.return_value = True
             settings = _load_reporting_ai_settings()
             self.assertEqual(settings.get("provider"), "ollama")
@@ -130,8 +133,8 @@ class TestReportEngine(unittest.TestCase):
             "ai": {"provider": "local_http", "model_id": "base", "news_freshness_hours": 3},
             "reporting": {},
         }
-        with unittest.mock.patch("builtins.open", unittest.mock.mock_open(read_data=json.dumps(payload))), \
-            unittest.mock.patch("os.path.exists") as exists:
+        with mock.patch("builtins.open", mock.mock_open(read_data=json.dumps(payload))), \
+            mock.patch("os.path.exists") as exists:
             exists.return_value = True
             settings = _load_reporting_ai_settings()
             self.assertEqual(settings.get("provider"), "local_http")
@@ -148,8 +151,8 @@ class TestReportEngine(unittest.TestCase):
             {"title": "Fresh AAPL update", "source": "Test", "published_ts": now - 60},
             {"title": "Old AAPL update", "source": "Test", "published_ts": now - 3600 * 24},
         ]
-        with unittest.mock.patch("modules.reporting.engine._load_cached_news") as load_news, \
-            unittest.mock.patch("modules.reporting.engine._load_reporting_ai_settings") as ai_settings:
+        with mock.patch("modules.reporting.engine._load_cached_news") as load_news, \
+            mock.patch("modules.reporting.engine._load_reporting_ai_settings") as ai_settings:
             load_news.return_value = items
             ai_settings.return_value = {"news_freshness_hours": 1}
             engine = ReportEngine(model_runner=NoModelRunner())

@@ -16,6 +16,7 @@ from utils.launcher import (
     process_alive,
     read_pid,
     terminate_pid,
+    wait_for_port,
     write_pid,
 )
 
@@ -233,8 +234,19 @@ def _launch_processes(
         return 1
     ui_env = os.environ.copy()
     ui_env.setdefault("VITE_API_BASE", "http://127.0.0.1:8000")
+    api_key = os.environ.get("CLEAR_WEB_API_KEY")
+    if api_key:
+        ui_env.setdefault("VITE_API_KEY", api_key)
     ui_proc = _spawn_process(ui_cmd, cwd=web_dir, env=ui_env, detach=detach)
     write_pid(WEB_PID, ui_proc.pid)
+    if not wait_for_port(5173, timeout=6.0):
+        print(">> Web UI failed to start on http://127.0.0.1:5173. Check output.")
+        terminate_pid(api_proc.pid)
+        terminate_pid(ui_proc.pid)
+        for pid_path in (API_PID, WEB_PID):
+            if pid_path.exists():
+                pid_path.unlink(missing_ok=True)
+        return 1
     print(">> Web UI: http://127.0.0.1:5173  |  API: http://127.0.0.1:8000")
     if auto_open:
         webbrowser.open("http://127.0.0.1:5173/")
