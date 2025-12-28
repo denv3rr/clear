@@ -84,6 +84,7 @@ config/*.private.yaml
 build/
 dist/
 *.egg-info/
+*.tsbuildinfo
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -114,3 +115,14 @@ web/playwright-report/
 web/.cache/
 web/.parcel-cache/
 web/.turbo/
+web/coverage/
+web/.eslintcache
+web/.stylelintcache
+web/.tsbuildinfo
+
+# Node package managers
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-debug.log*

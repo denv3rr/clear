@@ -51,6 +51,9 @@ A portfolio management, analytics, and global tracking platform.
 ![Yahoo Finance](https://img.shields.io/badge/Yahoo%20Finance-6001D2?style=for-the-badge&logo=yahoo&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
 ![React](https://img.shields.io/badge/React-111827?style=for-the-badge&logo=react&logoColor=61DAFB)
+![TypeScript](https://img.shields.io/badge/TypeScript-0F172A?style=for-the-badge&logo=typescript&logoColor=3178C6)
+![React Router](https://img.shields.io/badge/React%20Router-1F2937?style=for-the-badge&logo=reactrouter&logoColor=CA4245)
+![Node.js](https://img.shields.io/badge/Node.js-111827?style=for-the-badge&logo=node.js&logoColor=5FA04E)
 ![Vite](https://img.shields.io/badge/Vite-1A1B3A?style=for-the-badge&logo=vite&logoColor=646CFF)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-0F172A?style=for-the-badge&logo=tailwindcss&logoColor=38BDF8)
 ![MapLibre](https://img.shields.io/badge/MapLibre-0F172A?style=for-the-badge&logo=maplibre&logoColor=white)
@@ -59,6 +62,7 @@ A portfolio management, analytics, and global tracking platform.
 ![Recharts](https://img.shields.io/badge/Recharts-1F2937?style=for-the-badge&logo=chartdotjs&logoColor=white)
 ![Plotly](https://img.shields.io/badge/Plotly-111827?style=for-the-badge&logo=plotly&logoColor=white)
 ![Leaflet](https://img.shields.io/badge/Leaflet-0B3D2E?style=for-the-badge&logo=leaflet&logoColor=white)
+![Playwright](https://img.shields.io/badge/Playwright-0B0E13?style=for-the-badge&logo=playwright&logoColor=45BA4B)
 
 ## Features
 
