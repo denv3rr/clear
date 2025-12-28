@@ -8,9 +8,20 @@ import sys
 import time
 import webbrowser
 
-from utils.launcher import filter_matching_pids, find_pids_by_port, terminate_pid
+from utils.launcher import (
+    RUNTIME_DIR,
+    ensure_runtime_dirs,
+    filter_matching_pids,
+    find_pids_by_port,
+    process_alive,
+    read_pid,
+    terminate_pid,
+    write_pid,
+)
 
 REQUIRED_PYTHON = ("fastapi", "uvicorn")
+API_PID = RUNTIME_DIR / "api.pid"
+WEB_PID = RUNTIME_DIR / "web.pid"
 
 
 def _health_check() -> bool:
@@ -171,6 +182,16 @@ def _terminate_port_processes(
     return True
 
 
+def _cleanup_existing_processes() -> None:
+    for label, pid_path in (("API", API_PID), ("Web", WEB_PID)):
+        pid = read_pid(pid_path)
+        if pid and process_alive(pid):
+            terminate_pid(pid)
+            print(f">> Stopped {label} (pid {pid}).")
+        if pid_path.exists():
+            pid_path.unlink(missing_ok=True)
+
+
 def _launch_processes(
     npm_path: str,
     detach: bool,
@@ -178,6 +199,8 @@ def _launch_processes(
     reload_api: bool,
     auto_yes: bool,
 ) -> int:
+    ensure_runtime_dirs()
+    _cleanup_existing_processes()
     web_dir = os.path.join(os.getcwd(), "web")
     if not _terminate_port_processes(
         8000, "API", ["uvicorn", "web_api.app:app"], auto_yes
@@ -192,20 +215,26 @@ def _launch_processes(
     ui_cmd = [npm_path, "run", "dev", "--", "--host", "127.0.0.1", "--port", "5173"]
 
     api_proc = _spawn_process(api_cmd, detach=detach)
+    write_pid(API_PID, api_proc.pid)
     try:
         if not _wait_for_api():
             print(">> API failed to start on http://127.0.0.1:8000. Check logs/output.")
             if api_proc.poll() is None:
-                api_proc.terminate()
+                terminate_pid(api_proc.pid)
+            if API_PID.exists():
+                API_PID.unlink(missing_ok=True)
             return 1
     except KeyboardInterrupt:
         print("\n>> Startup interrupted before API was ready.")
         if api_proc.poll() is None:
-            api_proc.terminate()
+            terminate_pid(api_proc.pid)
+        if API_PID.exists():
+            API_PID.unlink(missing_ok=True)
         return 1
     ui_env = os.environ.copy()
     ui_env.setdefault("VITE_API_BASE", "http://127.0.0.1:8000")
     ui_proc = _spawn_process(ui_cmd, cwd=web_dir, env=ui_env, detach=detach)
+    write_pid(WEB_PID, ui_proc.pid)
     print(">> Web UI: http://127.0.0.1:5173  |  API: http://127.0.0.1:8000")
     if auto_open:
         webbrowser.open("http://127.0.0.1:5173/")
@@ -226,12 +255,10 @@ def _launch_processes(
     finally:
         for proc in (api_proc, ui_proc):
             if proc.poll() is None:
-                proc.terminate()
-        for proc in (api_proc, ui_proc):
-            try:
-                proc.wait(timeout=5)
-            except Exception:
-                proc.kill()
+                terminate_pid(proc.pid)
+        for pid_path in (API_PID, WEB_PID):
+            if pid_path.exists():
+                pid_path.unlink(missing_ok=True)
     return 0
 
 
