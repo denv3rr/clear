@@ -3,8 +3,10 @@ from unittest import mock
 from fastapi.testclient import TestClient
 
 from web_api import app as web_app
+from web_api.routes import clients as clients_routes
 from web_api.routes import intel as intel_routes
 from web_api.routes import trackers as tracker_routes
+from modules.client_mgr.client_model import Client, Account
 
 
 def test_health_endpoint():
@@ -82,3 +84,76 @@ def test_tracker_detail_endpoint_stubbed():
         resp = client.get("/api/trackers/detail/abc123")
     assert resp.status_code == 200
     assert resp.json()["point"]["label"] == "AAL762"
+
+
+def test_client_dashboard_endpoint_stubbed():
+    client = TestClient(web_app.app)
+    fake_client = Client(client_id="c1", name="Test Client", accounts=[])
+    with mock.patch.object(clients_routes.DataHandler, "load_clients") as mocked_load, mock.patch.object(
+        clients_routes, "portfolio_dashboard"
+    ) as mocked_dash:
+        mocked_load.return_value = [fake_client]
+        mocked_dash.return_value = {
+            "client": {"client_id": "c1"},
+            "totals": {},
+            "holdings": [],
+            "manual_holdings": [],
+            "history": [],
+            "risk": {},
+            "regime": {},
+            "warnings": [],
+        }
+        resp = client.get("/api/clients/c1/dashboard?interval=1M")
+    assert resp.status_code == 200
+    assert resp.json()["client"]["client_id"] == "c1"
+
+
+def test_account_dashboard_endpoint_stubbed():
+    client = TestClient(web_app.app)
+    account = Account(account_id="a1", account_name="Alpha")
+    fake_client = Client(client_id="c1", name="Test Client", accounts=[account])
+    with mock.patch.object(clients_routes.DataHandler, "load_clients") as mocked_load, mock.patch.object(
+        clients_routes, "account_dashboard"
+    ) as mocked_dash:
+        mocked_load.return_value = [fake_client]
+        mocked_dash.return_value = {
+            "client": {"client_id": "c1"},
+            "account": {"account_id": "a1"},
+            "totals": {},
+            "holdings": [],
+            "manual_holdings": [],
+            "history": [],
+            "risk": {},
+            "regime": {},
+            "warnings": [],
+        }
+        resp = client.get("/api/clients/c1/accounts/a1/dashboard?interval=1M")
+    assert resp.status_code == 200
+    assert resp.json()["account"]["account_id"] == "a1"
+
+
+def test_client_patterns_endpoint_stubbed():
+    client = TestClient(web_app.app)
+    fake_client = Client(client_id="c1", name="Test Client", accounts=[])
+    with mock.patch.object(clients_routes.DataHandler, "load_clients") as mocked_load, mock.patch.object(
+        clients_routes, "client_patterns"
+    ) as mocked_patterns:
+        mocked_load.return_value = [fake_client]
+        mocked_patterns.return_value = {"entropy": 0.1, "wave_surface": {"z": []}}
+        resp = client.get("/api/clients/c1/patterns?interval=1M")
+    assert resp.status_code == 200
+    assert "entropy" in resp.json()
+
+
+def test_account_patterns_endpoint_stubbed():
+    client = TestClient(web_app.app)
+    account = Account(account_id="a1", account_name="Alpha")
+    fake_client = Client(client_id="c1", name="Test Client", accounts=[account])
+    with mock.patch.object(clients_routes.DataHandler, "load_clients") as mocked_load, mock.patch.object(
+        clients_routes, "account_patterns"
+    ) as mocked_patterns:
+        mocked_load.return_value = [fake_client]
+        mocked_patterns.return_value = {"entropy": 0.1, "wave_surface": {"z": []}}
+        resp = client.get("/api/clients/c1/accounts/a1/patterns?interval=1M")
+    assert resp.status_code == 200
+    assert "entropy" in resp.json()

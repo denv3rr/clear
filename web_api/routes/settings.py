@@ -35,10 +35,30 @@ def _redact_settings(settings: Dict[str, object]) -> Dict[str, object]:
     return cleaned
 
 
+def _feed_status() -> Dict[str, object]:
+    flight_urls = [item.strip() for item in os.getenv("FLIGHT_DATA_URL", "").split(",") if item.strip()]
+    flight_paths = [item.strip() for item in os.getenv("FLIGHT_DATA_PATH", "").split(",") if item.strip()]
+    shipping_url = os.getenv("SHIPPING_DATA_URL")
+    return {
+        "flights": {
+            "url_sources": len(flight_urls),
+            "path_sources": len(flight_paths),
+            "configured": bool(flight_urls or flight_paths),
+        },
+        "shipping": {
+            "configured": bool(shipping_url),
+        },
+        "opensky": {
+            "credentials_set": bool(os.getenv("OPENSKY_USERNAME") and os.getenv("OPENSKY_PASSWORD")),
+        },
+    }
+
+
 @router.get("/api/settings")
 def settings_view(_auth: None = Depends(require_api_key)):
     payload = _load_settings_payload()
     return {
         "settings": _redact_settings(payload.get("settings", {})),
         "error": payload.get("error"),
+        "feeds": _feed_status(),
     }

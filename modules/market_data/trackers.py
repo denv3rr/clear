@@ -4,7 +4,7 @@ import time
 import math
 from collections import deque
 from dataclasses import dataclass
-from typing import Any, Deque, Dict, List, Optional, Tuple
+from typing import Any, Deque, Dict, Iterable, List, Optional, Tuple
 
 import requests
 from rich.console import Console, Group
@@ -40,6 +40,43 @@ class TrackerPoint:
 
 
 class TrackerProviders:
+    _LAT_KEYS = ("lat", "latitude", "latitude_deg", "lat_deg")
+    _LON_KEYS = ("lon", "lng", "longitude", "longitude_deg", "lon_deg")
+    _CALLSIGN_KEYS = ("callsign", "flight", "flight_iata", "flight_icao", "label")
+    _ICAO_KEYS = ("icao24", "hex", "icao")
+    _OPERATOR_KEYS = ("operator", "airline_iata", "airline_icao", "airline")
+    _FLIGHT_NUM_KEYS = ("flight_number", "flight_iata", "flight_icao", "flight")
+    _TAIL_KEYS = ("tail_number", "registration", "reg")
+    _ALT_KEYS = ("altitude_ft", "alt_ft", "altitude", "alt")
+    _SPEED_KEYS = ("speed_kts", "speed", "velocity")
+    _HEADING_KEYS = ("heading_deg", "heading", "track", "bearing")
+    _COUNTRY_KEYS = ("country", "origin")
+    _CATEGORY_KEYS = ("category", "type", "flight_type")
+    _OPENSKY_URL = "https://opensky-network.org/api/states/all"
+
+    @staticmethod
+    def _parse_sources(env_value: Optional[str]) -> List[str]:
+        if not env_value:
+            return []
+        return [item.strip() for item in env_value.split(",") if item.strip()]
+
+    @staticmethod
+    def _first_value(row: Dict[str, Any], keys: Iterable[str]) -> Optional[Any]:
+        for key in keys:
+            if key in row and row.get(key) not in (None, ""):
+                return row.get(key)
+        return None
+
+    @staticmethod
+    def _extract_rows(payload: Any) -> List[Dict[str, Any]]:
+        if isinstance(payload, list):
+            return [row for row in payload if isinstance(row, dict)]
+        if isinstance(payload, dict):
+            for key in ("data", "flights", "aircraft", "states", "items"):
+                value = payload.get(key)
+                if isinstance(value, list):
+                    return [row for row in value if isinstance(row, dict)]
+        return []
 
     @staticmethod
     def _safe_float(value: Any) -> Optional[float]:
@@ -91,90 +128,168 @@ class TrackerProviders:
         warnings: List[str] = []
         include_commercial = os.getenv("CLEAR_INCLUDE_COMMERCIAL", "0") == "1"
         include_private = os.getenv("CLEAR_INCLUDE_PRIVATE", "0") == "1"
-        url = os.getenv("FLIGHT_DATA_URL")
-        data_path = os.getenv("FLIGHT_DATA_PATH")
-        rows = None
-        if not url and not data_path:
-            warnings.append("No flight feed configured.")
-            return [], warnings
+        urls = TrackerProviders._parse_sources(os.getenv("FLIGHT_DATA_URL"))
+        data_paths = TrackerProviders._parse_sources(os.getenv("FLIGHT_DATA_PATH"))
+        rows_by_source: List[Tuple[List[Dict[str, Any]], str]] = []
+        use_opensky = False
+        if not urls and not data_paths:
+            use_opensky = True
 
-        try:
-            if data_path:
+        for data_path in data_paths:
+            try:
                 with open(data_path, "r", encoding="utf-8") as handle:
                     payload = json.load(handle)
-                    rows = payload if isinstance(payload, list) else payload.get("data", [])
-            else:
+                rows = TrackerProviders._extract_rows(payload)
+                if not rows:
+                    warnings.append(f"Flight feed empty: {data_path}")
+                rows_by_source.append((rows, data_path))
+            except Exception as exc:
+                warnings.append(f"Flight feed file failed: {data_path}: {exc}")
+        for url in urls:
+            try:
                 resp = requests.get(url, timeout=8)
                 if resp.status_code != 200:
-                    warnings.append(f"Flight feed HTTP {resp.status_code}")
-                    return [], warnings
+                    warnings.append(f"Flight feed HTTP {resp.status_code} ({url})")
+                    continue
                 payload = resp.json()
-                rows = payload if isinstance(payload, list) else payload.get("data", [])
-        except Exception as exc:
-            warnings.append(f"Flight feed fetch failed: {exc}")
-            return [], warnings
+                rows = TrackerProviders._extract_rows(payload)
+                if not rows:
+                    warnings.append(f"Flight feed empty: {url}")
+                rows_by_source.append((rows, url))
+            except Exception as exc:
+                warnings.append(f"Flight feed fetch failed: {url}: {exc}")
+
+        if use_opensky:
+            opensky_rows, opensky_warnings = TrackerProviders._fetch_opensky_rows()
+            warnings.extend(opensky_warnings)
+            if opensky_rows:
+                rows_by_source.append((opensky_rows, "opensky"))
 
         points: List[TrackerPoint] = []
-        for row in rows or []:
-            if not isinstance(row, dict):
-                continue
-            lat = TrackerProviders._safe_float(row.get("lat"))
-            lon = TrackerProviders._safe_float(row.get("lon"))
-            if lat is None or lon is None:
-                continue
-            callsign = str(row.get("callsign") or row.get("label") or "").strip()
-            label = callsign or str(row.get("label") or row.get("icao24") or "UNKNOWN")
-            icao24 = str(row.get("icao24") or "").strip().upper() or None
-            altitude_ft = TrackerProviders._safe_float(row.get("altitude_ft") or row.get("alt_ft"))
-            speed_kts = TrackerProviders._safe_float(row.get("speed_kts"))
-            heading = TrackerProviders._safe_float(row.get("heading_deg") or row.get("heading"))
-            updated = row.get("updated_ts") or row.get("timestamp")
-            try:
-                updated_ts = int(updated) if updated is not None else None
-            except Exception:
-                updated_ts = None
-            category = str(row.get("category") or TrackerProviders._callsign_category(callsign)).lower()
-            operator = row.get("operator")
-            flight_number = row.get("flight_number")
-            tail_number = row.get("tail_number")
-            if operator is None or flight_number is None or tail_number is None:
-                op_guess, flight_guess, tail_guess = TrackerProviders._parse_flight_identity(callsign)
-                operator = operator or op_guess
-                flight_number = flight_number or flight_guess
-                tail_number = tail_number or tail_guess
-            if category == "commercial" and not include_commercial:
-                high_speed = speed_kts is not None and speed_kts >= 520
-                high_alt = altitude_ft is not None and altitude_ft >= 38000
-                if not (high_speed or high_alt):
+        for rows, source in rows_by_source:
+            for row in rows or []:
+                if not isinstance(row, dict):
                     continue
-            if category == "private" and not include_private:
-                high_speed = speed_kts is not None and speed_kts >= 520
-                high_alt = altitude_ft is not None and altitude_ft >= 38000
-                if not (high_speed or high_alt):
+                lat = TrackerProviders._safe_float(
+                    TrackerProviders._first_value(row, TrackerProviders._LAT_KEYS)
+                )
+                lon = TrackerProviders._safe_float(
+                    TrackerProviders._first_value(row, TrackerProviders._LON_KEYS)
+                )
+                if lat is None or lon is None:
                     continue
-            points.append(TrackerPoint(
-                lat=lat,
-                lon=lon,
-                label=label,
-                category=category or "unknown",
-                kind="flight",
-                icao24=icao24,
-                callsign=callsign or None,
-                operator=operator,
-                flight_number=flight_number,
-                tail_number=tail_number,
-                altitude_ft=altitude_ft,
-                speed_kts=speed_kts,
-                heading_deg=heading,
-                country=str(row.get("country") or row.get("origin") or "") or None,
-                updated_ts=updated_ts,
-            ))
+                callsign_raw = TrackerProviders._first_value(row, TrackerProviders._CALLSIGN_KEYS)
+                icao_raw = TrackerProviders._first_value(row, TrackerProviders._ICAO_KEYS)
+                callsign = str(callsign_raw or "").strip()
+                label = callsign or str(row.get("label") or icao_raw or "UNKNOWN")
+                icao24 = str(icao_raw or "").strip().upper() or None
+                altitude_ft = TrackerProviders._safe_float(
+                    TrackerProviders._first_value(row, TrackerProviders._ALT_KEYS)
+                )
+                speed_kts = TrackerProviders._safe_float(
+                    TrackerProviders._first_value(row, TrackerProviders._SPEED_KEYS)
+                )
+                heading = TrackerProviders._safe_float(
+                    TrackerProviders._first_value(row, TrackerProviders._HEADING_KEYS)
+                )
+                updated = row.get("updated_ts") or row.get("timestamp")
+                try:
+                    updated_ts = int(updated) if updated is not None else None
+                except Exception:
+                    updated_ts = None
+                category_value = TrackerProviders._first_value(row, TrackerProviders._CATEGORY_KEYS)
+                category = str(category_value or TrackerProviders._callsign_category(callsign)).lower()
+                operator = TrackerProviders._first_value(row, TrackerProviders._OPERATOR_KEYS)
+                flight_number = TrackerProviders._first_value(row, TrackerProviders._FLIGHT_NUM_KEYS)
+                tail_number = TrackerProviders._first_value(row, TrackerProviders._TAIL_KEYS)
+                if operator is None or flight_number is None or tail_number is None:
+                    op_guess, flight_guess, tail_guess = TrackerProviders._parse_flight_identity(callsign)
+                    operator = operator or op_guess
+                    flight_number = flight_number or flight_guess
+                    tail_number = tail_number or tail_guess
+                if category == "commercial" and not include_commercial:
+                    high_speed = speed_kts is not None and speed_kts >= 520
+                    high_alt = altitude_ft is not None and altitude_ft >= 38000
+                    if (speed_kts is not None or altitude_ft is not None) and not (high_speed or high_alt):
+                        continue
+                if category == "private" and not include_private:
+                    high_speed = speed_kts is not None and speed_kts >= 520
+                    high_alt = altitude_ft is not None and altitude_ft >= 38000
+                    if (speed_kts is not None or altitude_ft is not None) and not (high_speed or high_alt):
+                        continue
+                points.append(TrackerPoint(
+                    lat=lat,
+                    lon=lon,
+                    label=label,
+                    category=category or "unknown",
+                    kind="flight",
+                    icao24=icao24,
+                    callsign=callsign or None,
+                    operator=str(operator).strip() if operator is not None else None,
+                    flight_number=str(flight_number).strip() if flight_number is not None else None,
+                    tail_number=str(tail_number).strip() if tail_number is not None else None,
+                    altitude_ft=altitude_ft,
+                    speed_kts=speed_kts,
+                    heading_deg=heading,
+                    country=str(TrackerProviders._first_value(row, TrackerProviders._COUNTRY_KEYS) or "").strip() or None,
+                    updated_ts=updated_ts,
+                ))
+                if len(points) >= limit:
+                    break
             if len(points) >= limit:
                 break
 
         if not points:
-            warnings.append("No live flight data returned from the flight feed.")
+            if use_opensky:
+                warnings.append("No live flight data returned from OpenSky.")
+            else:
+                warnings.append("No live flight data returned from the flight feed.")
         return points, warnings
+
+    @staticmethod
+    def _fetch_opensky_rows() -> Tuple[List[Dict[str, Any]], List[str]]:
+        warnings: List[str] = []
+        username = os.getenv("OPENSKY_USERNAME")
+        password = os.getenv("OPENSKY_PASSWORD")
+        auth = (username, password) if username and password else None
+        try:
+            resp = requests.get(TrackerProviders._OPENSKY_URL, timeout=8, auth=auth)
+            if resp.status_code != 200:
+                warnings.append(f"OpenSky HTTP {resp.status_code}")
+                return [], warnings
+            payload = resp.json()
+        except Exception as exc:
+            warnings.append(f"OpenSky fetch failed: {exc}")
+            return [], warnings
+        states = payload.get("states") if isinstance(payload, dict) else None
+        if not states:
+            warnings.append("OpenSky returned empty data.")
+            return [], warnings
+        rows = []
+        for state in states:
+            if not isinstance(state, list) or len(state) < 7:
+                continue
+            lon = state[5]
+            lat = state[6]
+            if lat is None or lon is None:
+                continue
+            callsign = (state[1] or "").strip()
+            velocity = state[9]
+            heading = state[10]
+            geo_alt = state[13]
+            updated = state[4] or state[3]
+            rows.append({
+                "lat": lat,
+                "lon": lon,
+                "callsign": callsign,
+                "icao24": state[0],
+                "country": state[2],
+                "speed_kts": (float(velocity) * 1.94384) if velocity is not None else None,
+                "heading_deg": float(heading) if heading is not None else None,
+                "altitude_ft": (float(geo_alt) * 3.28084) if geo_alt is not None else None,
+                "updated_ts": int(updated) if updated is not None else None,
+            })
+        return rows, warnings
 
     @staticmethod
     def fetch_shipping(limit: int = 200) -> Tuple[List[TrackerPoint], List[str]]:
@@ -437,6 +552,13 @@ class GlobalTrackers:
             return False
         return query in value.lower()
 
+    @staticmethod
+    def _string_or_unknown(value: Optional[str]) -> str:
+        if value is None:
+            return "unknown"
+        cleaned = str(value).strip()
+        return cleaned if cleaned else "unknown"
+
     def refresh(self, force: bool = False) -> Dict[str, Any]:
         self._last_refresh = float(self._state.get("last_refresh", 0.0) or 0.0)
         self._cached = self._state.get("cached", self._cached)
@@ -497,21 +619,21 @@ class GlobalTrackers:
                 "kind": pt.kind,
                 "category": pt.category,
                 "label": pt.label,
-                "icao24": pt.icao24,
-                "callsign": pt.callsign,
-                "operator": pt.operator,
+                "icao24": self._string_or_unknown(pt.icao24),
+                "callsign": self._string_or_unknown(pt.callsign),
+                "operator": self._string_or_unknown(pt.operator),
                 "operator_name": operator_info.get("name"),
                 "operator_country": operator_info.get("country"),
-                "flight_number": pt.flight_number,
-                "tail_number": pt.tail_number,
+                "flight_number": self._string_or_unknown(pt.flight_number),
+                "tail_number": self._string_or_unknown(pt.tail_number),
                 "lat": pt.lat,
                 "lon": pt.lon,
                 "altitude_ft": pt.altitude_ft,
                 "speed_kts": pt.speed_kts,
                 "heading_deg": pt.heading_deg,
-                "country": pt.country,
+                "country": self._string_or_unknown(pt.country),
                 "updated_ts": pt.updated_ts,
-                "industry": pt.industry,
+                "industry": self._string_or_unknown(pt.industry),
                 "speed_heat": metrics.get("speed_heat"),
                 "speed_vol_kts": metrics.get("speed_vol_kts"),
                 "vol_heat": metrics.get("vol_heat"),

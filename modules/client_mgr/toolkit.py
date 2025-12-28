@@ -1619,6 +1619,218 @@ class FinancialToolkit:
             return "Moderate"
         return "Aggressive"
 
+    @staticmethod
+    def _series_from_returns(returns: pd.Series, limit: int = 180) -> List[Dict[str, Any]]:
+        if returns is None or returns.empty:
+            return []
+        tail = returns.tail(limit)
+        series = []
+        for idx, value in tail.items():
+            if hasattr(idx, "timestamp"):
+                ts = int(idx.timestamp())
+            else:
+                try:
+                    ts = int(idx)
+                except Exception:
+                    ts = 0
+            try:
+                val = float(value)
+            except Exception:
+                val = 0.0
+            series.append({"ts": ts, "value": val})
+        return series
+
+    @staticmethod
+    def _distribution_from_returns(returns: pd.Series, bins: int = 12) -> List[Dict[str, Any]]:
+        if returns is None or returns.empty:
+            return []
+        vals = np.array([float(v) for v in returns.values if v is not None], dtype=float)
+        if vals.size == 0:
+            return []
+        counts, edges = np.histogram(vals, bins=bins)
+        distribution = []
+        for idx, count in enumerate(counts):
+            distribution.append({
+                "bin_start": float(edges[idx]),
+                "bin_end": float(edges[idx + 1]),
+                "count": int(count),
+            })
+        return distribution
+
+    def build_risk_dashboard_payload(
+        self,
+        holdings: Dict[str, float],
+        interval: str,
+        label: str,
+        scope: str = "Portfolio",
+        benchmark_ticker: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        interval = str(interval or self._selected_interval or "1M").upper()
+        period = TOOLKIT_PERIOD.get(interval, "1y")
+        benchmark = benchmark_ticker or self.benchmark_ticker
+        returns, benchmark_returns, meta = self._get_portfolio_and_benchmark_returns(
+            holdings,
+            benchmark_ticker=benchmark,
+            period=period,
+            interval=TOOLKIT_INTERVAL.get(interval, "1d"),
+        )
+        if returns is None or returns.empty:
+            return {
+                "error": "Insufficient market data",
+                "meta": meta,
+                "interval": interval,
+                "scope": scope,
+                "label": label,
+            }
+        metrics = self._compute_risk_metrics(
+            returns,
+            benchmark_returns=benchmark_returns,
+            risk_free_annual=0.04,
+        )
+        metrics["points"] = int(len(returns))
+        profile = self.assess_risk_profile(metrics)
+        return {
+            "label": label,
+            "scope": scope,
+            "interval": interval,
+            "benchmark": benchmark,
+            "meta": meta,
+            "metrics": metrics,
+            "risk_profile": profile,
+            "returns": self._series_from_returns(returns),
+            "benchmark_returns": self._series_from_returns(benchmark_returns) if benchmark_returns is not None else [],
+            "distribution": self._distribution_from_returns(returns),
+        }
+
+    def build_regime_snapshot_payload(
+        self,
+        holdings: Dict[str, float],
+        lot_map: Dict[str, List[Dict[str, Any]]],
+        interval: str,
+        label: str,
+        scope: str = "Portfolio",
+    ) -> Dict[str, Any]:
+        interval = str(interval or self._selected_interval or "1M").upper()
+        period = TOOLKIT_PERIOD.get(interval, "1y")
+        _, enriched = self.valuation.calculate_portfolio_value(
+            holdings,
+            history_period=period,
+            history_interval=TOOLKIT_INTERVAL.get(interval, "1d"),
+        )
+        _, history = self.valuation.generate_portfolio_history_series(
+            enriched_data=enriched,
+            holdings=holdings,
+            interval=interval,
+            lot_map=lot_map,
+        )
+        if not history:
+            return {
+                "error": "Insufficient history for regime analysis",
+                "scope_label": scope,
+                "interval": interval,
+                "label": label,
+            }
+        snap = RegimeModels.snapshot_from_value_series(history, interval=interval, label=label)
+        snap["scope_label"] = scope
+        snap["interval"] = interval
+        return snap
+
+    @staticmethod
+    def _wave_surface(values: List[float], width: int = 32) -> Dict[str, Any]:
+        if not values:
+            return {"z": [], "x": [], "y": []}
+        cleaned = [float(v) for v in values if v is not None]
+        if not cleaned:
+            return {"z": [], "x": [], "y": []}
+        length = len(cleaned)
+        width = max(8, int(width))
+        rows = int(math.ceil(length / width))
+        padded = cleaned + [cleaned[-1]] * (rows * width - length)
+        grid = []
+        for r in range(rows):
+            start = r * width
+            grid.append(padded[start:start + width])
+        return {
+            "z": grid,
+            "x": list(range(width)),
+            "y": list(range(rows)),
+        }
+
+    @staticmethod
+    def _fft_surface(values: List[float], window: int = 48, step: int = 8, bins: int = 24) -> Dict[str, Any]:
+        if not values or len(values) < window:
+            return {"z": [], "x": [], "y": []}
+        series = np.array(values, dtype=float)
+        series = series - series.mean()
+        window = max(16, int(window))
+        step = max(4, int(step))
+        bins = max(8, int(bins))
+        rows = []
+        positions = []
+        freqs = None
+        for start in range(0, len(series) - window + 1, step):
+            segment = series[start:start + window]
+            spec = np.fft.rfft(segment)
+            power = np.abs(spec) ** 2
+            if freqs is None:
+                freqs = np.fft.rfftfreq(len(segment), d=1.0)
+            zrow = np.log1p(power[:bins]).tolist()
+            rows.append(zrow)
+            positions.append(start)
+        return {
+            "z": rows,
+            "x": list(freqs[:bins]) if freqs is not None else [],
+            "y": positions,
+        }
+
+    def build_pattern_payload(
+        self,
+        holdings: Dict[str, float],
+        interval: str,
+        label: str,
+        scope: str = "Portfolio",
+    ) -> Dict[str, Any]:
+        interval = str(interval or self._selected_interval or "1M").upper()
+        period = TOOLKIT_PERIOD.get(interval, "1y")
+        returns, _, meta = self._get_portfolio_and_benchmark_returns(
+            holdings,
+            benchmark_ticker=self.benchmark_ticker,
+            period=period,
+            interval=TOOLKIT_INTERVAL.get(interval, "1d"),
+        )
+        if returns is None or returns.empty:
+            return {
+                "error": "Insufficient market data",
+                "meta": meta,
+                "interval": interval,
+                "scope": scope,
+                "label": label,
+            }
+        payload = self._get_pattern_payload(returns, interval, meta)
+        values = payload.get("values", []) or []
+        spectrum = payload.get("spectrum", []) or []
+        formatted_spectrum = [
+            {"freq": float(freq), "power": float(power)}
+            for freq, power in spectrum
+        ]
+        return {
+            "label": label,
+            "scope": scope,
+            "interval": interval,
+            "meta": meta,
+            "entropy": payload.get("entropy"),
+            "perm_entropy": payload.get("perm_entropy"),
+            "perm_entropy_order": payload.get("perm_entropy_order"),
+            "perm_entropy_delay": payload.get("perm_entropy_delay"),
+            "hurst": payload.get("hurst"),
+            "change_points": payload.get("change_points", []) or [],
+            "motifs": payload.get("motifs", []) or [],
+            "vol_forecast": payload.get("vol_forecast", []) or [],
+            "spectrum": formatted_spectrum,
+            "wave_surface": self._wave_surface(values),
+            "fft_surface": self._fft_surface(values),
+        }
+
     def _select_interval(self) -> Optional[str]:
         options = list(TOOLKIT_PERIOD.keys())
         options_map = {opt: opt for opt in options}

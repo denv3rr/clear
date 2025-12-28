@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
 
-from modules.market_data.intel import MarketIntel, rank_news_items
+from modules.market_data.intel import MarketIntel, get_intel_meta, rank_news_items
 from web_api.auth import require_api_key
 
 router = APIRouter()
@@ -35,6 +35,11 @@ def intel_summary(
         categories=category_list,
     )
     return report
+
+
+@router.get("/api/intel/meta")
+def intel_meta(_auth: None = Depends(require_api_key)):
+    return get_intel_meta()
 
 
 @router.get("/api/intel/weather")
@@ -71,16 +76,18 @@ def intel_news(
     region: str = Query("Global"),
     industry: str = Query("all"),
     tickers: Optional[str] = Query(None),
+    sources: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=100),
     force: bool = Query(False),
     _auth: None = Depends(require_api_key),
 ):
     intel = MarketIntel()
-    payload = intel.fetch_news_signals(force=force)
+    enabled_sources = _split_list(sources)
+    payload = intel.fetch_news_signals(force=force, enabled_sources=enabled_sources)
     items = payload.get("items", []) if payload else []
     ticker_list = _split_list(tickers)
     if items:
-        items = rank_news_items(items, tickers=ticker_list, region=region, industry=industry)
+        items = intel.filter_news_items(items, region, industry, tickers=ticker_list)
         items = items[:limit]
     return {
         "items": items,

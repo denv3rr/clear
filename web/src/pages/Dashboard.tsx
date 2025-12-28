@@ -13,9 +13,10 @@ import {
   XAxis,
   YAxis
 } from "recharts";
-import maplibregl from "maplibre-gl";
+import maplibregl from "../lib/maplibre";
 import { Card } from "../components/ui/Card";
 import { KpiCard } from "../components/ui/KpiCard";
+import { Reveal } from "../components/ui/Reveal";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { useApi } from "../lib/api";
 import { useTrackerStream } from "../lib/stream";
@@ -67,9 +68,12 @@ const columns: ColumnDef<TrackerRow>[] = [
 export default function Dashboard() {
   const mapRef = useRef<HTMLDivElement | null>(null);
   const mapInstance = useRef<maplibregl.Map | null>(null);
-  const markersRef = useRef<maplibregl.Marker[]>([]);
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [mapStatus, setMapStatus] = useState("Initializing map...");
+  const styleFallbackUsed = useRef(false);
+  const styleRequested = useRef(false);
+  const styleLoaded = useRef(false);
 
   const { data: trackerStream } = useTrackerStream<TrackerSnapshot>({ interval: 5, mode: "combined" });
   const { data: trackerSnapshot } = useApi<TrackerSnapshot>("/api/trackers/snapshot?mode=combined", {
@@ -82,38 +86,137 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!mapRef.current || mapInstance.current) return;
-    const map = new maplibregl.Map({
-      container: mapRef.current,
-      style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
-      center: [0, 15],
-      zoom: 1.5,
-      attributionControl: false
-    });
+    const canvas = document.createElement("canvas");
+    const hasWebgl =
+      !!window.WebGLRenderingContext &&
+      (canvas.getContext("webgl") || canvas.getContext("experimental-webgl"));
+    if (!hasWebgl) {
+      setMapError("WebGL not supported in this browser.");
+      setMapStatus("WebGL not supported.");
+      return;
+    }
+    setMapStatus("Booting map engine...");
+    let map: maplibregl.Map;
+    try {
+      map = new maplibregl.Map({
+        container: mapRef.current,
+        style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+        center: [0, 15],
+        zoom: 1.5,
+        attributionControl: false,
+        transformRequest: (url, resourceType) => {
+          if (resourceType === "Style" && !styleRequested.current) {
+            styleRequested.current = true;
+            setMapStatus("Requesting style...");
+          }
+          return { url };
+        }
+      });
+    } catch (err) {
+      setMapError(err instanceof Error ? err.message : "Map initialization failed.");
+      setMapStatus("Map init failed.");
+      return;
+    }
+    setMapStatus("Map instance created.");
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+    map.on("styledata", () => {
+      setMapStatus("Loading style and tiles...");
+    });
+    map.on("style.load", () => {
+      styleLoaded.current = true;
+      setMapStatus("Style loaded.");
+    });
+    map.on("render", () => {
+      if (mapReady) {
+        setMapStatus("Rendering map.");
+      }
+    });
     map.on("load", () => {
       setMapReady(true);
       setMapError(null);
+      setMapStatus("Map ready.");
       map.resize();
+      map.addSource("tracker-points", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] }
+      });
+      map.addLayer({
+        id: "tracker-points-glow",
+        type: "circle",
+        source: "tracker-points",
+        paint: {
+          "circle-radius": 6,
+          "circle-color": "#48f1a6",
+          "circle-opacity": 0.12
+        }
+      });
+      map.addLayer({
+        id: "tracker-points-layer",
+        type: "circle",
+        source: "tracker-points",
+        paint: {
+          "circle-radius": 3,
+          "circle-color": [
+            "match",
+            ["get", "kind"],
+            "ship",
+            "#8892a0",
+            "#48f1a6"
+          ],
+          "circle-opacity": 0.8
+        }
+      });
     });
-    map.on("error", () => {
-      setMapError("Map data unavailable.");
+    map.on("error", (event) => {
+      const message = event?.error?.message;
+      if (!styleFallbackUsed.current) {
+        styleFallbackUsed.current = true;
+        setMapStatus("Primary style blocked. Switching to fallback.");
+        map.setStyle("https://demotiles.maplibre.org/style.json");
+        return;
+      }
+      setMapError(message || "Map data unavailable.");
+      setMapStatus("Map error.");
     });
     mapInstance.current = map;
-    return () => map.remove();
+    const timeout = window.setTimeout(() => {
+      if (!mapReady && !mapError) {
+        if (!styleRequested.current) {
+          setMapStatus("Style request blocked before fetch.");
+        } else if (!styleLoaded.current) {
+          setMapStatus("Style requested but never loaded.");
+        } else {
+          setMapStatus("Map load timeout. Check CSP/worker settings.");
+        }
+      }
+    }, 6000);
+    return () => {
+      window.clearTimeout(timeout);
+      map.remove();
+    };
   }, []);
 
   useEffect(() => {
-    if (!mapInstance.current || !activeSnapshot?.points) return;
-    markersRef.current.forEach((marker) => marker.remove());
-    markersRef.current = activeSnapshot.points.slice(0, 80).map((point) => {
-      const el = document.createElement("div");
-      el.className =
-        "h-2 w-2 rounded-full " + (point.kind === "ship" ? "bg-sky-400" : "bg-emerald-400");
-      return new maplibregl.Marker({ element: el })
-        .setLngLat([point.lon, point.lat])
-        .addTo(mapInstance.current as maplibregl.Map);
-    });
-  }, [activeSnapshot]);
+    if (!mapInstance.current || !mapReady || !activeSnapshot?.points) return;
+    const map = mapInstance.current;
+    const source = map.getSource("tracker-points") as maplibregl.GeoJSONSource | undefined;
+    if (!source) return;
+    const features = activeSnapshot.points
+      .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lon))
+      .slice(0, 120)
+      .map((point) => ({
+        type: "Feature",
+        geometry: {
+          type: "Point",
+          coordinates: [point.lon, point.lat]
+        },
+        properties: {
+          kind: point.kind,
+          label: point.label
+        }
+      }));
+    source.setData({ type: "FeatureCollection", features });
+  }, [activeSnapshot, mapReady]);
 
   const trackerRows = useMemo<TrackerRow[]>(() => {
     if (!activeSnapshot?.points) return [];
@@ -176,101 +279,109 @@ export default function Dashboard() {
 
   return (
     <>
-      <header className="flex items-center justify-between">
-        <div>
-          <p className="tag text-xs text-slate-400">GLOBAL RISK OVERVIEW</p>
-          <h2 className="text-3xl font-semibold">Global Tracker Dashboard</h2>
-        </div>
-        <button className="px-5 py-3 rounded-xl bg-emerald-400/20 border border-emerald-400/40 text-emerald-300 hover:bg-emerald-400/30 transition">
-          Open Live View
-        </button>
-      </header>
-
-      <section className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {kpis.map((kpi) => (
-          <KpiCard key={kpi.label} label={kpi.label} value={kpi.value} tone={kpi.tone} />
-        ))}
-      </section>
-
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="rounded-2xl p-6 lg:col-span-2 min-h-[360px] relative overflow-hidden">
-          <SectionHeader label="GLOBAL MAP" title="Flight + Maritime Layer" right="MapLibre GL" />
-          <div className="mt-6 h-[260px] rounded-2xl overflow-hidden border border-slate-800 relative">
-            <div ref={mapRef} className="absolute inset-0" />
-            {!mapReady && !mapError ? (
-              <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-400 bg-ink-950/40">
-                Loading map...
-              </div>
-            ) : null}
-            {mapError ? (
-              <div className="absolute inset-0 flex items-center justify-center text-xs text-amber-300 bg-ink-950/40">
-                {mapError}
-              </div>
-            ) : null}
+      <Reveal>
+        <header className="flex items-center justify-between">
+          <div>
+            <p className="tag text-xs text-slate-400">GLOBAL RISK</p>
+            <h2 className="text-3xl font-semibold">Trackers</h2>
           </div>
-          <div className="absolute -bottom-16 -right-12 h-40 w-40 rounded-full bg-emerald-400/20 blur-3xl" />
-        </Card>
+        </header>
+      </Reveal>
 
-        <Card className="rounded-2xl p-6 flex flex-col">
-          <SectionHeader label="RISK SIGNALS" title="Global Patterns" />
-          <div className="flex-1 mt-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={riskSeries}>
-                <defs>
-                  <linearGradient id="riskGlow" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#48f1a6" stopOpacity={0.7} />
-                    <stop offset="100%" stopColor="#48f1a6" stopOpacity={0.11} />
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="day" stroke="#334155" tick={{ fill: "#94a3b8", fontSize: 12 }} />
-                <YAxis stroke="#334155" tick={{ fill: "#94a3b8", fontSize: 12 }} />
-                <Tooltip
-                  contentStyle={{
-                    background: "#0b0e13",
-                    border: "1px solid #1f2937",
-                    color: "#e2e8f0"
-                  }}
-                />
-                <Area type="monotone" dataKey="value" stroke="#48f1a6" fill="url(#riskGlow)" />
-              </AreaChart>
-            </ResponsiveContainer>
+      <Reveal delay={0.1}>
+        <section className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {kpis.map((kpi) => (
+            <KpiCard key={kpi.label} label={kpi.label} value={kpi.value} tone={kpi.tone} />
+          ))}
+        </section>
+      </Reveal>
+
+      <Reveal delay={0.15}>
+        <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Card className="rounded-2xl p-6 lg:col-span-2 min-h-[360px] relative overflow-hidden">
+            <SectionHeader label="MAPS" title="Flight + Maritime Layer" right="MapLibre GL" />
+            <div className="mt-6 h-[260px] rounded-2xl overflow-hidden border border-slate-800 relative">
+              <div ref={mapRef} className="absolute inset-0" />
+              {!mapReady && !mapError ? (
+                <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-400 bg-ink-950/40">
+                  Loading map...
+                </div>
+              ) : null}
+              {mapError ? (
+                <div className="absolute inset-0 flex items-center justify-center text-xs text-amber-300 bg-ink-950/40">
+                  {mapError}
+                </div>
+              ) : null}
+              <div className="absolute bottom-3 right-3 rounded-lg border border-slate-800/60 bg-ink-950/80 px-3 py-2 text-[11px] text-slate-400">
+                {mapStatus}
+              </div>
+            </div>
+            <div className="absolute -bottom-16 -right-12 h-40 w-40 rounded-full bg-emerald-400/20 blur-3xl" />
+          </Card>
+
+          <Card className="rounded-2xl p-6 flex flex-col">
+            <SectionHeader label="RISK SIGNALS" title="Global Patterns" />
+            <div className="mt-4 h-52">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={riskSeries}>
+                  <defs>
+                    <linearGradient id="riskGlow" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#48f1a6" stopOpacity={0.7} />
+                      <stop offset="100%" stopColor="#48f1a6" stopOpacity={0.11} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="day" stroke="#334155" tick={{ fill: "#94a3b8", fontSize: 12 }} />
+                  <YAxis stroke="#334155" tick={{ fill: "#94a3b8", fontSize: 12 }} />
+                  <Tooltip
+                    contentStyle={{
+                      background: "#0b0e13",
+                      border: "1px solid #1f2937",
+                      color: "#e2e8f0"
+                    }}
+                  />
+                  <Area type="monotone" dataKey="value" stroke="#48f1a6" fill="url(#riskGlow)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        </section>
+      </Reveal>
+
+      <Reveal delay={0.2}>
+        <Card className="rounded-2xl p-6">
+          <SectionHeader
+            label="LIVE FEED"
+            title="Tracker Signals"
+            right={activeSnapshot ? `${activeSnapshot.count} signals` : "Loading"}
+          />
+          <div className="overflow-x-auto mt-6">
+            <table className="w-full text-sm">
+              <thead className="text-slate-400 border-b border-slate-800">
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <tr key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => (
+                      <th key={header.id} className="py-3 text-left font-medium">
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                      </th>
+                    ))}
+                  </tr>
+                ))}
+              </thead>
+              <tbody>
+                {table.getRowModel().rows.map((row) => (
+                  <tr key={row.id} className="border-b border-slate-900/60">
+                    {row.getVisibleCells().map((cell) => (
+                      <td key={cell.id} className="py-3 pr-4 text-slate-200">
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </Card>
-      </section>
-
-      <Card className="rounded-2xl p-6">
-        <SectionHeader
-          label="LIVE FEED"
-          title="Tracker Intelligence"
-          right={activeSnapshot ? `${activeSnapshot.count} signals` : "Loading"}
-        />
-        <div className="overflow-x-auto mt-6">
-          <table className="w-full text-sm">
-            <thead className="text-slate-400 border-b border-slate-800">
-              {table.getHeaderGroups().map((headerGroup) => (
-                <tr key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => (
-                    <th key={header.id} className="py-3 text-left font-medium">
-                      {flexRender(header.column.columnDef.header, header.getContext())}
-                    </th>
-                  ))}
-                </tr>
-              ))}
-            </thead>
-            <tbody>
-              {table.getRowModel().rows.map((row) => (
-                <tr key={row.id} className="border-b border-slate-900/60">
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="py-3 pr-4 text-slate-200">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+      </Reveal>
     </>
   );
 }

@@ -12,6 +12,7 @@ from modules.market_data.collectors import (
     load_cached_news,
     store_cached_news,
     CONFLICT_CATEGORIES,
+    DEFAULT_SOURCES,
 )
 
 
@@ -32,6 +33,18 @@ REGIONS: List[RegionSpec] = [
     RegionSpec("Latin America", -15.0, -60.0, ["agriculture", "mining", "energy"]),
     RegionSpec("Africa", 1.0, 20.0, ["mining", "energy", "agriculture"]),
 ]
+
+
+def get_intel_meta() -> Dict[str, object]:
+    regions = [{"name": region.name, "industries": list(region.industries)} for region in REGIONS]
+    industries = sorted({industry for region in REGIONS for industry in region.industries})
+    sources = [collector.name for collector in DEFAULT_SOURCES]
+    return {
+        "regions": regions,
+        "industries": industries,
+        "categories": list(CONFLICT_CATEGORIES),
+        "sources": sources,
+    }
 
 
 def _region_by_name(name: str) -> RegionSpec:
@@ -639,6 +652,15 @@ class MarketIntel:
                 filtered.append(item)
         return rank_news_items(filtered, tickers=tickers, region=region_name, industry=industry_filter)
 
+    def filter_news_items(
+        self,
+        items: List[Dict[str, object]],
+        region_name: str,
+        industry_filter: str,
+        tickers: Optional[List[str]] = None,
+    ) -> List[Dict[str, object]]:
+        return self._filter_news(items, region_name, industry_filter, tickers=tickers)
+
     def _filter_impacts(self, impacts: List[str], industry_filter: str) -> List[str]:
         if not impacts or industry_filter == "all":
             return impacts
@@ -937,7 +959,7 @@ class MarketIntel:
         fusion_signals = list(dict.fromkeys((weather.get("signals") or []) + (conflict.get("signals") or [])))
         fusion_impacts = list(dict.fromkeys((weather.get("impacts") or []) + (conflict.get("impacts") or [])))
         sections.append({
-            "title": "Fusion Overview",
+            "title": "Combined Overview",
             "rows": [
                 ["Combined Risk", f"{combined_risk}" + (f" ({combined_score}/10)" if combined_score is not None else "")],
                 ["Confidence", confidence],

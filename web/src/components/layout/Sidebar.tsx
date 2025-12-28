@@ -15,8 +15,10 @@ export function Sidebar({ items }: SidebarProps) {
   return (
     <aside className="w-64 border-r border-slate-800/70 p-6 space-y-10 bg-ink-950/80">
       <div>
-        <p className="tag text-xs text-emerald-300">CLEAR PLATFORM</p>
-        <h1 className="text-2xl font-semibold tracking-tight">Clear Analytics</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">[ CLEAR ]</h1>
+        <p className="tag text-xs text-emerald-300">Copyright © 2025</p>
+        <p className="tag text-xs text-emerald-300">Seperet LLC</p>
+        <p className="tag text-xs text-emerald-300">https://seperet.com</p>
         <p className="text-sm text-slate-400 mt-2">
           Markets • Risk • Global Tracking
         </p>
@@ -41,8 +43,8 @@ export function Sidebar({ items }: SidebarProps) {
       </nav>
       <div className="glass-panel rounded-2xl p-4 scanline">
         <p className="tag text-xs text-emerald-300">SYSTEM STATUS</p>
-        <h3 className="text-lg font-semibold mt-2">Online</h3>
-        <p className="text-sm text-slate-400 mt-1">Feeds monitored. Integrity checks active.</p>
+        <h3 className="text-lg font-semibold mt-2">--</h3>
+        <p className="text-sm text-slate-400 mt-1">--</p>
       </div>
     </aside>
   );

@@ -73,7 +73,24 @@ def _npm_available() -> str | None:
 
 def _ensure_node_modules(web_dir: str, npm_path: str) -> bool:
     if os.path.isdir(os.path.join(web_dir, "node_modules")):
-        return True
+        required = ["react-markdown", "remark-gfm"]
+        missing = [
+            pkg for pkg in required if not os.path.isdir(os.path.join(web_dir, "node_modules", pkg))
+        ]
+        if not missing:
+            return True
+        print(">> Web dependencies missing:", ", ".join(missing))
+        if _prompt_yes_no("Run npm install in ./web to update dependencies?"):
+            try:
+                subprocess.check_call([npm_path, "install"], cwd=web_dir)
+                return True
+            except FileNotFoundError:
+                print(">> npm not found. Install Node.js (includes npm) and retry.")
+            except subprocess.CalledProcessError:
+                print(">> npm install failed. Fix npm/node setup and retry.")
+            return False
+        print(">> Aborted. Run npm install and retry.")
+        return False
     print(">> Web dependencies not installed (node_modules missing).")
     if _prompt_yes_no("Run npm install in ./web?"):
         try:

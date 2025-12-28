@@ -34,7 +34,7 @@ DEFAULT_UI_PORT = 5173
 
 
 def _print_header() -> None:
-    print(">> Clear Control")
+    print(">> Clear")
     print(">> Seperet LLC | https://seperet.com/")
 
 

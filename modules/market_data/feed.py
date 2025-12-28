@@ -451,7 +451,7 @@ class MarketFeed:
             return report
         if not auto_fetch and not force:
             return {
-                "title": "Market Intelligence",
+                "title": "Market Data",
                 "summary": [
                     "Auto-fetch disabled in Settings.",
                     "Use Refresh to fetch a new report.",
@@ -622,7 +622,7 @@ class MarketFeed:
                     table.add_row(str(row), " ")
             detail_layout.add_row(Panel(table, border_style="dim", title=title))
 
-        title = report.get("title", "Market Intelligence")
+        title = report.get("title", "Market Data")
         return Panel(detail_layout, border_style="blue", title=f"[bold]{title}[/bold]")
 
     def run_news_feed(self):
@@ -802,7 +802,7 @@ class MarketFeed:
                 _json.dump(report, f, indent=2)
             return path
         lines = []
-        title = report.get("title", "Market Intelligence")
+        title = report.get("title", "Market Data")
         lines.append(f"# {title}")
         lines.append("")
         summary = report.get("summary", []) or []
