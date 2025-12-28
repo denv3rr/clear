@@ -2,8 +2,9 @@ import socket
 import getpass
 import platform
 import os
-import requests
+import shutil
 from datetime import datetime
+from typing import Dict, Optional
 
 # Attempt to import psutil, which is needed for hardware info
 try:
@@ -91,3 +92,42 @@ class SystemHost:
             "python_version": python_version,
             "psutil_available": PSUTIL_AVAILABLE
         }
+
+    @staticmethod
+    def get_metrics(path: Optional[str] = None) -> Dict[str, Optional[float]]:
+        metrics: Dict[str, Optional[float]] = {
+            "cpu_percent": None,
+            "mem_percent": None,
+            "mem_used_gb": None,
+            "mem_total_gb": None,
+            "swap_percent": None,
+            "disk_used_gb": None,
+            "disk_total_gb": None,
+            "disk_free_gb": None,
+            "disk_percent": None,
+        }
+
+        if PSUTIL_AVAILABLE:
+            try:
+                metrics["cpu_percent"] = round(float(psutil.cpu_percent(interval=None)), 1)
+                mem_info = psutil.virtual_memory()
+                metrics["mem_percent"] = round(float(mem_info.percent), 1)
+                metrics["mem_total_gb"] = round(mem_info.total / (1024.0 ** 3), 2)
+                metrics["mem_used_gb"] = round((mem_info.total - mem_info.available) / (1024.0 ** 3), 2)
+                swap_info = psutil.swap_memory()
+                metrics["swap_percent"] = round(float(swap_info.percent), 1)
+            except Exception:
+                metrics["cpu_percent"] = None
+
+        disk_path = path or os.getcwd()
+        try:
+            disk = shutil.disk_usage(disk_path)
+            metrics["disk_total_gb"] = round(disk.total / (1024.0 ** 3), 2)
+            metrics["disk_used_gb"] = round(disk.used / (1024.0 ** 3), 2)
+            metrics["disk_free_gb"] = round(disk.free / (1024.0 ** 3), 2)
+            if disk.total:
+                metrics["disk_percent"] = round((disk.used / disk.total) * 100.0, 1)
+        except Exception:
+            metrics["disk_total_gb"] = None
+
+        return metrics

@@ -23,6 +23,8 @@ def test_settings_endpoint():
     payload = resp.json()
     assert "settings" in payload
     assert "credentials" in payload["settings"]
+    assert "system" in payload
+    assert "system_metrics" in payload
 
 
 def test_diagnostics_endpoint():
@@ -31,7 +33,8 @@ def test_diagnostics_endpoint():
     assert resp.status_code == 200
     payload = resp.json()
     assert "system" in payload
-    assert "disk" in payload
+    assert "metrics" in payload
+    assert "feeds" in payload
 
 
 def test_intel_summary_endpoint_stubbed():

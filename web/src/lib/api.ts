@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
+const runtimeHost =
+  typeof window !== "undefined" && window.location.hostname
+    ? window.location.hostname
+    : "127.0.0.1";
+const API_BASE =
+  import.meta.env.VITE_API_BASE || `http://${runtimeHost}:8000`;
+
+export function getApiBase(): string {
+  return API_BASE;
+}
 
 type CacheEntry<T> = {
   ts: number;
@@ -23,11 +32,27 @@ async function parseJson<T>(response: Response): Promise<T> {
   }
 }
 
-function getApiKey(): string | null {
+export function getApiKey(): string | null {
   try {
     return localStorage.getItem("clear_api_key");
   } catch {
     return null;
+  }
+}
+
+export function setApiKey(value: string): void {
+  try {
+    localStorage.setItem("clear_api_key", value);
+  } catch {
+    return;
+  }
+}
+
+export function clearApiKey(): void {
+  try {
+    localStorage.removeItem("clear_api_key");
+  } catch {
+    return;
   }
 }
 
@@ -44,7 +69,16 @@ export async function apiGet<T>(path: string, ttl = 0, signal?: AbortSignal): Pr
   if (apiKey) {
     headers["X-API-Key"] = apiKey;
   }
-  const response = await fetch(`${API_BASE}${path}`, { headers, signal });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, { headers, signal });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "Network error";
+    const cspHint = /failed to fetch|networkerror/i.test(detail)
+      ? " Check CSP connect-src allows the API base."
+      : "";
+    throw new Error(`API unreachable at ${API_BASE}. ${detail}${cspHint}`);
+  }
   if (!response.ok) {
     throw new Error(`API ${response.status}`);
   }

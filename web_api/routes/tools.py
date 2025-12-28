@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-import os
-import shutil
-
 from fastapi import APIRouter, Depends
 
-from utils.system import SystemHost
+from web_api.diagnostics import (
+    client_counts,
+    feed_status,
+    news_cache_info,
+    report_cache_info,
+    system_snapshot,
+    tracker_status,
+)
 from web_api.auth import require_api_key
 
 router = APIRouter()
@@ -13,13 +17,15 @@ router = APIRouter()
 
 @router.get("/api/tools/diagnostics")
 def diagnostics(_auth: None = Depends(require_api_key)):
-    info = SystemHost.get_info()
-    disk = shutil.disk_usage(os.getcwd())
+    system = system_snapshot()
     return {
-        "system": info,
-        "disk": {
-            "total_gb": round(disk.total / (1024**3), 2),
-            "used_gb": round(disk.used / (1024**3), 2),
-            "free_gb": round(disk.free / (1024**3), 2),
+        "system": system.get("system"),
+        "metrics": system.get("metrics"),
+        "feeds": feed_status(),
+        "trackers": tracker_status(),
+        "intel": {
+            "news_cache": news_cache_info(),
         },
+        "clients": client_counts(),
+        "reports": report_cache_info(),
     }

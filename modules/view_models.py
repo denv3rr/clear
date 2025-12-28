@@ -9,7 +9,14 @@ from modules.client_mgr.holdings import normalize_ticker
 
 
 def _holdings_count(holdings: Dict[str, float]) -> int:
-    return len([t for t, qty in (holdings or {}).items() if float(qty or 0.0) != 0.0])
+    count = 0
+    for _, qty in (holdings or {}).items():
+        try:
+            if float(qty or 0.0) != 0.0:
+                count += 1
+        except Exception:
+            continue
+    return count
 
 
 def _manual_value(manual_holdings: List[Dict[str, Any]]) -> float:
@@ -34,10 +41,12 @@ def account_summary(account: Account) -> Dict[str, Any]:
 
 
 def account_detail(account: Account) -> Dict[str, Any]:
-    holdings = {
-        normalize_ticker(ticker): float(qty or 0.0)
-        for ticker, qty in (account.holdings or {}).items()
-    }
+    holdings: Dict[str, float] = {}
+    for ticker, qty in (account.holdings or {}).items():
+        try:
+            holdings[normalize_ticker(ticker)] = float(qty or 0.0)
+        except Exception:
+            continue
     return {
         **account_summary(account),
         "holdings": holdings,

@@ -13,6 +13,7 @@ import {
   XAxis,
   YAxis
 } from "recharts";
+import L from "leaflet";
 import maplibregl from "../lib/maplibre";
 import { Card } from "../components/ui/Card";
 import { KpiCard } from "../components/ui/KpiCard";
@@ -71,6 +72,11 @@ export default function Dashboard() {
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapStatus, setMapStatus] = useState("Initializing map...");
+  const [mapFallback, setMapFallback] = useState(false);
+  const leafletRef = useRef<HTMLDivElement | null>(null);
+  const leafletMap = useRef<L.Map | null>(null);
+  const leafletLayer = useRef<L.LayerGroup | null>(null);
+  const [leafletStatus, setLeafletStatus] = useState("Initializing map...");
   const styleFallbackUsed = useRef(false);
   const styleRequested = useRef(false);
   const styleLoaded = useRef(false);
@@ -177,6 +183,7 @@ export default function Dashboard() {
       }
       setMapError(message || "Map data unavailable.");
       setMapStatus("Map error.");
+      setMapFallback(true);
     });
     mapInstance.current = map;
     const timeout = window.setTimeout(() => {
@@ -188,6 +195,7 @@ export default function Dashboard() {
         } else {
           setMapStatus("Map load timeout. Check CSP/worker settings.");
         }
+        setMapFallback(true);
       }
     }, 6000);
     return () => {
@@ -195,6 +203,49 @@ export default function Dashboard() {
       map.remove();
     };
   }, []);
+
+  useEffect(() => {
+    if (!mapFallback || !leafletRef.current || leafletMap.current) return;
+    setLeafletStatus("Booting fallback map...");
+    const map = L.map(leafletRef.current, { center: [15, 0], zoom: 2 });
+    const tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors"
+    });
+    tiles.on("tileerror", () => {
+      setLeafletStatus("Tile load error. Check CSP or network.");
+    });
+    tiles.addTo(map);
+    const layer = L.layerGroup().addTo(map);
+    leafletMap.current = map;
+    leafletLayer.current = layer;
+    setLeafletStatus("Fallback map ready.");
+  }, [mapFallback]);
+
+  useEffect(() => {
+    if (!leafletLayer.current || !leafletMap.current || !activeSnapshot?.points)
+      return;
+    const layer = leafletLayer.current;
+    layer.clearLayers();
+    const points = activeSnapshot.points.filter(
+      (point) => Number.isFinite(point.lat) && Number.isFinite(point.lon)
+    );
+    points.slice(0, 200).forEach((point) => {
+      const color = point.kind === "ship" ? "#8892a0" : "#48f1a6";
+      L.circleMarker([point.lat, point.lon], {
+        radius: 4,
+        color,
+        weight: 1,
+        opacity: 0.9,
+        fillColor: color,
+        fillOpacity: 0.6
+      }).addTo(layer);
+    });
+    if (points.length) {
+      const bounds = L.latLngBounds(points.map((point) => [point.lat, point.lon]));
+      leafletMap.current.fitBounds(bounds, { padding: [30, 30], maxZoom: 5 });
+    }
+  }, [activeSnapshot, mapFallback]);
 
   useEffect(() => {
     if (!mapInstance.current || !mapReady || !activeSnapshot?.points) return;
@@ -302,18 +353,21 @@ export default function Dashboard() {
             <SectionHeader label="MAPS" title="Flight + Maritime Layer" right="MapLibre GL" />
             <div className="mt-6 h-[260px] rounded-2xl overflow-hidden border border-slate-800 relative">
               <div ref={mapRef} className="absolute inset-0" />
-              {!mapReady && !mapError ? (
+              {mapFallback ? (
+                <div ref={leafletRef} className="absolute inset-0" />
+              ) : null}
+              {!mapReady && !mapError && !mapFallback ? (
                 <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-400 bg-ink-950/40">
                   Loading map...
                 </div>
               ) : null}
-              {mapError ? (
+              {mapError && !mapFallback ? (
                 <div className="absolute inset-0 flex items-center justify-center text-xs text-amber-300 bg-ink-950/40">
                   {mapError}
                 </div>
               ) : null}
               <div className="absolute bottom-3 right-3 rounded-lg border border-slate-800/60 bg-ink-950/80 px-3 py-2 text-[11px] text-slate-400">
-                {mapStatus}
+                {mapFallback ? leafletStatus : mapStatus}
               </div>
             </div>
             <div className="absolute -bottom-16 -right-12 h-40 w-40 rounded-full bg-emerald-400/20 blur-3xl" />

@@ -23,6 +23,7 @@ env/
 
 # Local databases or logs
 *.log
+*.pid
 *.sqlite3
 *.db
 *.db3
@@ -45,6 +46,14 @@ data/*.pdf
 data/*.html
 data/*.xlsx
 data/*.xls
+data/*.png
+data/*.jpg
+data/*.jpeg
+data/*.gif
+data/*.parquet
+data/*.feather
+data/*.npy
+data/*.npz
 data/*.json
 data/*.yaml
 data/*.yml
@@ -56,6 +65,7 @@ data/cache/
 data/exports/
 data/reports/
 data/logs/
+data/pids/
 data/runtime/
 exports/
 reports/

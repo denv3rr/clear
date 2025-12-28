@@ -47,6 +47,16 @@ A portfolio management, analytics, and global tracking platform.
 
 ![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=white)
 ![Rich](https://img.shields.io/badge/Rich-121212?style=for-the-badge&logo=python&logoColor=white)
+![Pandas](https://img.shields.io/badge/Pandas-0F172A?style=for-the-badge&logo=pandas&logoColor=white)
+![NumPy](https://img.shields.io/badge/NumPy-111827?style=for-the-badge&logo=numpy&logoColor=white)
+![PyTest](https://img.shields.io/badge/PyTest-0F172A?style=for-the-badge&logo=pytest&logoColor=white)
+![PySide6](https://img.shields.io/badge/PySide6-111827?style=for-the-badge&logo=qt&logoColor=white)
+![Uvicorn](https://img.shields.io/badge/Uvicorn-111827?style=for-the-badge)
+![HTTPX](https://img.shields.io/badge/HTTPX-0F172A?style=for-the-badge)
+![python-dotenv](https://img.shields.io/badge/python--dotenv-111827?style=for-the-badge)
+![Requests](https://img.shields.io/badge/Requests-0F172A?style=for-the-badge)
+![psutil](https://img.shields.io/badge/psutil-111827?style=for-the-badge)
+![Cryptography](https://img.shields.io/badge/Cryptography-0F172A?style=for-the-badge)
 ![Finnhub](https://img.shields.io/badge/Finnhub-00C805?style=for-the-badge&logoColor=white)
 ![Yahoo Finance](https://img.shields.io/badge/Yahoo%20Finance-6001D2?style=for-the-badge&logo=yahoo&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
@@ -122,6 +132,12 @@ python clearctl.py start
 # Start API only (no web UI)
 python clearctl.py start --no-web
 
+# Start the web stack (API + UI)
+python clearctl.py web
+
+# Start the CLI
+python clearctl.py cli
+
 # Stop background services
 python clearctl.py stop
 
@@ -139,6 +155,9 @@ Convenience wrappers:
 
 - Windows PowerShell: `.\clearctl.ps1 start`
 - macOS/Linux: `./clearctl.sh start`
+- Windows PowerShell: `.\clear.ps1 web` / `.\clear.ps1 cli`
+- Windows CMD: `clear web` / `clear cli`
+- macOS/Linux: `./clear web` / `./clear cli`
 
 Service templates for always-on usage: `docs/platform_services.md`
 

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import re
 import socket
+import subprocess
 import time
 from pathlib import Path
 from typing import Iterable, Optional
@@ -18,9 +20,73 @@ def ensure_runtime_dirs() -> None:
 
 
 def port_in_use(port: int, host: str = "127.0.0.1") -> bool:
+    if find_pids_by_port(port):
+        return True
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(0.3)
         return sock.connect_ex((host, port)) == 0
+
+
+def find_pids_by_port(port: int) -> list[int]:
+    pids: list[int] = []
+    try:
+        for conn in psutil.net_connections(kind="inet"):
+            if not conn.laddr:
+                continue
+            if conn.laddr.port != port:
+                continue
+            if conn.pid:
+                pids.append(conn.pid)
+    except Exception:
+        pids = []
+    if pids:
+        return sorted(set(pids))
+    if os.name != "nt":
+        return []
+    try:
+        output = subprocess.check_output(
+            ["netstat", "-ano", "-p", "tcp"],
+            text=True,
+            errors="ignore",
+        )
+    except Exception:
+        return []
+    pattern = re.compile(rf":{port}$")
+    for line in output.splitlines():
+        parts = line.split()
+        if len(parts) < 5:
+            continue
+        local_addr = parts[1]
+        if not (local_addr.endswith(f":{port}") or pattern.search(local_addr)):
+            continue
+        pid = parts[-1]
+        if pid.isdigit():
+            pids.append(int(pid))
+    return sorted(set(pids))
+
+
+def pid_cmdline(pid: int) -> list[str]:
+    try:
+        proc = psutil.Process(pid)
+        return [part.lower() for part in (proc.cmdline() or [])]
+    except Exception:
+        return []
+
+
+def pid_matches(pid: int, tokens: Iterable[str]) -> bool:
+    cmdline = pid_cmdline(pid)
+    if not cmdline:
+        return False
+    cmd_text = " ".join(cmdline)
+    return all(token.lower() in cmd_text for token in tokens)
+
+
+def filter_matching_pids(pids: Iterable[int], tokens: Iterable[str]) -> list[int]:
+    matched = []
+    for pid in pids:
+        if pid_matches(pid, tokens):
+            matched.append(pid)
+    return matched
 
 
 def read_pid(path: Path) -> Optional[int]:

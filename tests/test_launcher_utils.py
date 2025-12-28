@@ -45,3 +45,25 @@ def test_terminate_pid_stops_process() -> None:
     finally:
         if proc.poll() is None:
             proc.kill()
+
+
+def test_pid_matches_tokens(monkeypatch) -> None:
+    monkeypatch.setattr(
+        launcher,
+        "pid_cmdline",
+        lambda pid: ["python", "-m", "uvicorn", "web_api.app:app"],
+    )
+    assert launcher.pid_matches(123, ["uvicorn", "web_api.app:app"]) is True
+    assert launcher.pid_matches(123, ["vite"]) is False
+
+
+def test_filter_matching_pids(monkeypatch) -> None:
+    def fake_cmdline(pid: int) -> list[str]:
+        if pid == 1:
+            return ["python", "-m", "uvicorn", "web_api.app:app"]
+        if pid == 2:
+            return ["node", "vite"]
+        return ["other"]
+
+    monkeypatch.setattr(launcher, "pid_cmdline", fake_cmdline)
+    assert launcher.filter_matching_pids([1, 2, 3], ["uvicorn"]) == [1]

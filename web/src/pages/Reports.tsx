@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Card } from "../components/ui/Card";
 import { Collapsible } from "../components/ui/Collapsible";
+import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { apiGet, useApi } from "../lib/api";
 
@@ -33,7 +34,9 @@ type ReportPayload = {
 };
 
 export default function Reports() {
-  const { data } = useApi<ClientIndex>("/api/clients", { interval: 60000 });
+  const { data, error: indexError, refresh } = useApi<ClientIndex>("/api/clients", {
+    interval: 60000
+  });
   const clients = data?.clients ?? [];
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedAccount, setSelectedAccount] = useState<string>("portfolio");
@@ -41,8 +44,9 @@ export default function Reports() {
   const [detail, setDetail] = useState<boolean>(false);
   const [report, setReport] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
+  const [reportError, setReportError] = useState<string | null>(null);
 
-  const { data: clientDetail } = useApi<ClientDetail>(
+  const { data: clientDetail, error: detailError } = useApi<ClientDetail>(
     selectedId ? `/api/clients/${encodeURIComponent(selectedId)}` : "",
     { enabled: !!selectedId }
   );
@@ -62,14 +66,31 @@ export default function Reports() {
           : `/api/reports/client/${selectedId}/accounts/${selectedAccount}?fmt=${format}`;
       const payload = await apiGet<ReportPayload>(path, 0);
       setReport(payload.content || "");
+      setReportError(null);
+    } catch (err) {
+      setReport("");
+      setReportError(err instanceof Error ? err.message : "Report generation failed.");
     } finally {
       setLoading(false);
     }
   };
+  const authHint = "Check CLEAR_WEB_API_KEY + localStorage clear_api_key.";
+  const errorMessages = [
+    indexError
+      ? `Client index failed: ${indexError}${
+          indexError.includes("401") || indexError.includes("403") ? ` (${authHint})` : ""
+        }`
+      : null,
+    detailError ? `Client detail failed: ${detailError}` : null,
+    reportError ? `Report failed: ${reportError}` : null
+  ].filter(Boolean) as string[];
 
   return (
     <Card className="rounded-2xl p-6">
       <SectionHeader label="REPORTS" title="Client Reporting" right={clientLabel} />
+      <div className="mt-4">
+        <ErrorBanner messages={errorMessages} onRetry={refresh} />
+      </div>
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="space-y-3 text-sm text-slate-300">
           {clients.map((client) => (

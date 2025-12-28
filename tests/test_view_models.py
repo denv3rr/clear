@@ -22,3 +22,11 @@ def test_account_detail_manual_holdings():
     acc.manual_holdings = [{"total_value": 1234.5}]
     detail = account_detail(acc)
     assert detail["manual_holdings"][0]["total_value"] == 1234.5
+
+
+def test_account_detail_ignores_invalid_holdings():
+    acc = Account(account_name="Alt")
+    acc.holdings = {"AAPL": 2, "BROKEN": {"qty": 5}}
+    detail = account_detail(acc)
+    assert detail["holdings"]["AAPL"] == 2.0
+    assert "BROKEN" not in detail["holdings"]

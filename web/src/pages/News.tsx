@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Card } from "../components/ui/Card";
 import { Collapsible } from "../components/ui/Collapsible";
+import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { useApi } from "../lib/api";
 
@@ -27,7 +28,9 @@ type NewsPayload = {
 };
 
 export default function News() {
-  const { data: meta } = useApi<IntelMeta>("/api/intel/meta", { interval: 600000 });
+  const { data: meta, error: metaError } = useApi<IntelMeta>("/api/intel/meta", {
+    interval: 600000
+  });
   const [region, setRegion] = useState("Global");
   const [industry, setIndustry] = useState("all");
   const [tickers, setTickers] = useState("");
@@ -54,11 +57,22 @@ export default function News() {
     return `/api/intel/news?${params.toString()}`;
   }, [limit, region, industry, tickers, sources, forceToken]);
 
-  const { data } = useApi<NewsPayload>(query, { interval: 660000 });
+  const { data, error: newsError, refresh } = useApi<NewsPayload>(query, {
+    interval: 660000
+  });
   const items = data?.items ?? [];
   const regionOptions = meta?.regions?.map((entry) => entry.name) || ["Global"];
   const industryOptions = meta?.industries || ["all"];
   const sourceOptions = meta?.sources || [];
+  const authHint = "Check CLEAR_WEB_API_KEY + localStorage clear_api_key.";
+  const errorMessages = [
+    metaError ? `Intel metadata failed: ${metaError}` : null,
+    newsError
+      ? `News feed failed: ${newsError}${
+          newsError.includes("401") || newsError.includes("403") ? ` (${authHint})` : ""
+        }`
+      : null
+  ].filter(Boolean) as string[];
 
   const toggleSource = (value: string) => {
     setSources((prev) => (prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value]));
@@ -67,6 +81,9 @@ export default function News() {
   return (
     <Card className="rounded-2xl p-6">
       <SectionHeader label="NEWS" title="Market Signals" right={data?.stale ? "Stale" : "Live"} />
+      <div className="mt-4">
+        <ErrorBanner messages={errorMessages} onRetry={refresh} />
+      </div>
       <div className="mt-6 space-y-4 text-sm text-slate-300">
         <Collapsible
           title="Filters"

@@ -3,6 +3,7 @@ import L from "leaflet";
 import maplibregl from "../lib/maplibre";
 import { Card } from "../components/ui/Card";
 import { Collapsible } from "../components/ui/Collapsible";
+import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { KpiCard } from "../components/ui/KpiCard";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { apiGet, useApi } from "../lib/api";
@@ -96,7 +97,11 @@ export default function Trackers() {
     interval: 5,
     mode
   });
-  const { data: pollData } = useApi<TrackerSnapshot>(`/api/trackers/snapshot?mode=${mode}`, { interval: 20000 });
+  const {
+    data: pollData,
+    error: pollError,
+    refresh: refreshPoll
+  } = useApi<TrackerSnapshot>(`/api/trackers/snapshot?mode=${mode}`, { interval: 20000 });
   const data = streamData || pollData;
   const points = data?.points || [];
   const [query, setQuery] = useState("");
@@ -123,7 +128,7 @@ export default function Trackers() {
     const kindParam = mode === "combined" ? "" : `&kind=${mode === "ships" ? "ship" : "flight"}`;
     return `/api/trackers/search?q=${encodeURIComponent(query)}&limit=12&mode=${mode}${kindParam}`;
   }, [query, mode]);
-  const { data: searchResults } = useApi<SearchResult>(searchPath, {
+  const { data: searchResults, error: searchError } = useApi<SearchResult>(searchPath, {
     enabled: query.trim().length > 1
   });
   const filteredSearchResults = useMemo(() => {
@@ -140,6 +145,15 @@ export default function Trackers() {
     }
     return { ...searchResults, points: next, count: next.length };
   }, [searchResults, includeCommercial, includePrivate, categoryFilter]);
+  const authHint = "Check CLEAR_WEB_API_KEY + localStorage clear_api_key.";
+  const errorMessages = [
+    pollError
+      ? `Tracker snapshot failed: ${pollError}${
+          pollError.includes("401") || pollError.includes("403") ? ` (${authHint})` : ""
+        }`
+      : null,
+    searchError ? `Search failed: ${searchError}` : null
+  ].filter(Boolean) as string[];
   const filteredPoints = useMemo(() => {
     let next = points;
     if (mode !== "combined") {
@@ -505,6 +519,9 @@ export default function Trackers() {
         title="Live Trackers"
         right={data ? `${data.count} signals` : "Loading"}
       />
+      <div className="mt-4">
+        <ErrorBanner messages={errorMessages} onRetry={refreshPoll} />
+      </div>
       <div className="mt-6 space-y-4 text-sm text-slate-300">
         <Collapsible
           title="Global Risk Signals"

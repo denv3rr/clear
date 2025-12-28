@@ -3,12 +3,35 @@ import importlib.util
 import os
 import shutil
 import subprocess
+import httpx
 import sys
 import time
 import webbrowser
 
+from utils.launcher import filter_matching_pids, find_pids_by_port, terminate_pid
 
 REQUIRED_PYTHON = ("fastapi", "uvicorn")
+
+
+def _health_check() -> bool:
+    try:
+        response = httpx.get(
+            "http://127.0.0.1:8000/api/health",
+            timeout=2.0,
+            trust_env=False,
+        )
+        return response.status_code == 200
+    except Exception:
+        return False
+
+
+def _wait_for_api(timeout: float = 8.0) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if _health_check():
+            return True
+        time.sleep(0.4)
+    return False
 
 
 def _print_header() -> None:
@@ -119,12 +142,67 @@ def _spawn_process(cmd: list[str], cwd: str | None = None, env: dict | None = No
     return subprocess.Popen(cmd, **kwargs)
 
 
-def _launch_processes(npm_path: str, detach: bool, auto_open: bool) -> int:
+def _terminate_port_processes(
+    port: int,
+    label: str,
+    tokens: list[str],
+    auto_yes: bool,
+) -> bool:
+    pids = find_pids_by_port(port)
+    if not pids:
+        return True
+    safe_pids = filter_matching_pids(pids, tokens)
+    remaining = [pid for pid in pids if pid not in safe_pids]
+    if safe_pids:
+        pid_list = ", ".join(str(pid) for pid in safe_pids)
+        print(f">> {label} port {port} in use by Clear process(es) {pid_list}. Terminating.")
+        for pid in safe_pids:
+            terminate_pid(pid)
+    if remaining:
+        pid_list = ", ".join(str(pid) for pid in remaining)
+        if auto_yes or _prompt_yes_no(
+            f"{label} port {port} in use by pid(s) {pid_list}. Terminate them?"
+        ):
+            for pid in remaining:
+                terminate_pid(pid)
+            return True
+        print(f">> {label} port {port} in use by non-Clear process(es) {pid_list}.")
+        return False
+    return True
+
+
+def _launch_processes(
+    npm_path: str,
+    detach: bool,
+    auto_open: bool,
+    reload_api: bool,
+    auto_yes: bool,
+) -> int:
     web_dir = os.path.join(os.getcwd(), "web")
-    api_cmd = [sys.executable, "-m", "uvicorn", "web_api.app:app", "--reload", "--port", "8000"]
+    if not _terminate_port_processes(
+        8000, "API", ["uvicorn", "web_api.app:app"], auto_yes
+    ):
+        return 1
+    if not _terminate_port_processes(5173, "UI", ["vite"], auto_yes):
+        return 1
+    api_cmd = [sys.executable, "-m", "uvicorn", "web_api.app:app"]
+    if reload_api:
+        api_cmd.append("--reload")
+    api_cmd.extend(["--port", "8000"])
     ui_cmd = [npm_path, "run", "dev", "--", "--host", "127.0.0.1", "--port", "5173"]
 
     api_proc = _spawn_process(api_cmd, detach=detach)
+    try:
+        if not _wait_for_api():
+            print(">> API failed to start on http://127.0.0.1:8000. Check logs/output.")
+            if api_proc.poll() is None:
+                api_proc.terminate()
+            return 1
+    except KeyboardInterrupt:
+        print("\n>> Startup interrupted before API was ready.")
+        if api_proc.poll() is None:
+            api_proc.terminate()
+        return 1
     ui_env = os.environ.copy()
     ui_env.setdefault("VITE_API_BASE", "http://127.0.0.1:8000")
     ui_proc = _spawn_process(ui_cmd, cwd=web_dir, env=ui_env, detach=detach)
@@ -161,6 +239,8 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Launch the CLEAR web stack.")
     parser.add_argument("--no-open", action="store_true", help="Do not open the browser.")
     parser.add_argument("--detach", action="store_true", help="Run API/UI in background and exit.")
+    parser.add_argument("--reload", action="store_true", help="Reload the API on code changes.")
+    parser.add_argument("--yes", action="store_true", help="Auto-terminate processes on required ports.")
     return parser.parse_args()
 
 
@@ -183,7 +263,13 @@ def main() -> None:
         return
     if not _ensure_node_modules(web_dir, npm_path):
         return
-    exit_code = _launch_processes(npm_path, args.detach, not args.no_open)
+    exit_code = _launch_processes(
+        npm_path,
+        args.detach,
+        not args.no_open,
+        args.reload,
+        args.yes,
+    )
     if exit_code:
         sys.exit(exit_code)
 

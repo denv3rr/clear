@@ -21,7 +21,6 @@ from modules.market_data.finnhub_client import FinnhubWrapper
 from modules.market_data.yfinance_client import YahooWrapper
 from modules.market_data.trackers import GlobalTrackers
 from modules.market_data.intel import MarketIntel, REGIONS, news_cache_status, rank_news_items
-from utils.clear_access import ClearAccessManager
 from utils.charts import ChartRenderer
 from interfaces.shell import ShellRenderer, MainMenuRequested
 from interfaces.menu_layout import build_sidebar, compact_for_width, build_status_header
@@ -48,7 +47,6 @@ class MarketFeed:
         self.yahoo = YahooWrapper()
         self.trackers = GlobalTrackers()
         self.intel = MarketIntel()
-        self.clear_access = ClearAccessManager()
         
         # Default View State
         self.current_period = "1d"
@@ -1019,7 +1017,6 @@ class MarketFeed:
                     show_exit=True,
                     compact=compact,
                 ) if not compact_height else None
-                access_label = "Active" if self.clear_access.has_access() else "Inactive"
                 status_panel = build_status_header(
                     "Tracker Status",
                     [
@@ -1027,7 +1024,6 @@ class MarketFeed:
                         ("Auto Refresh", "On" if auto_refresh else "Off"),
                         ("Commercial", "On" if include_commercial else "Off"),
                         ("Private", "On" if include_private else "Off"),
-                        ("Access", access_label),
                     ],
                     compact=compact,
                 ) if not compact_height else None
@@ -1138,7 +1134,6 @@ class MarketFeed:
             "2": "Shipping",
             "3": "Combined",
             "4": "Refresh",
-            "5": "Clear Access",
             "C": "Cadence",
             "F": "Category Filter",
             "A": "Filter: All",
@@ -1170,12 +1165,10 @@ class MarketFeed:
                     style="yellow",
                 )
                 panel = Panel(Group(warn, panel), border_style="yellow", title="Tracker Notice")
-            access_label = "Active" if self.clear_access.has_access() else "Inactive"
-            options["5"] = f"Clear Access ({access_label})"
             compact = compact_for_width(self.console.width)
             compact_height = self.console.height < 32
             sidebar = build_sidebar(
-                [("Trackers", {k: v for k, v in options.items() if k in ("1", "2", "3", "4", "5", "C", "F", "A", "SPC", "0")})],
+                [("Trackers", {k: v for k, v in options.items() if k in ("1", "2", "3", "4", "C", "F", "A", "SPC", "0")})],
                 show_main=True,
                 show_back=True,
                 show_exit=True,
@@ -1188,10 +1181,10 @@ class MarketFeed:
             footer = Text.assemble(
                 ("[>]", "dim"),
                 (" ", "dim"),
-                (status, "bold green" if status == "LIVE" else "bold yellow"),  
+                (status, "bold green" if status == "LIVE" else "bold yellow"),
                 (" | Cadence: ", "dim"),
                 (f"{cadence}s", "bold cyan"),
-                (" | Arrows scroll PgUp/PgDn page | 1/2/3 mode 4 refresh 5 access C cadence F filter A all S search Space pause 0 back M main X exit", "dim"),
+                (" | Arrows scroll PgUp/PgDn page | 1/2/3 mode 4 refresh C cadence F filter A all S search Space pause 0 back M main X exit", "dim"),
             )
             mode_hint = Text.assemble(
                 ("Mode: ", "dim"),
@@ -1217,7 +1210,6 @@ class MarketFeed:
                     ("Auto Refresh", auto_refresh_label),
                     ("Commercial", commercial_label),
                     ("Private", private_label),
-                    ("Access", access_label),
                 ],
                 compact=compact,
             ) if not compact_height else None
@@ -1321,9 +1313,6 @@ class MarketFeed:
                             last_refresh = time.time()
                             scroll_offset = 0
                             dirty = True
-                        elif key == "5":
-                            self._clear_access_flow()
-                            dirty = True
                         elif key == "c":
                             cadence_idx = (cadence_idx + 1) % len(cadence_options)
                             dirty = True
@@ -1349,48 +1338,6 @@ class MarketFeed:
                     live.update(build_layout(), refresh=True)
                     dirty = False
                 time.sleep(0.1)
-
-    def _clear_access_flow(self):
-        from rich.panel import Panel
-        from rich.text import Text
-        from rich import box
-        import webbrowser
-
-        status = "Active" if self.clear_access.has_access() else "Inactive"
-        info = Text()
-        info.append("Clear Access\n", style="bold")
-        info.append(f"Status: {status}\n\n", style="dim")
-        info.append("Purchase Link:\n", style="bold cyan")
-        info.append(f"{self.clear_access.PRODUCT_URL}\n\n", style="white")
-        info.append("After purchase, paste your access code below.\n", style="dim")
-
-        panel = Panel(info, title="Clear Access", box=box.ROUNDED, border_style="cyan")
-        options = {"1": "Open Purchase Link", "2": "Enter Access Code", "3": "Clear Code", "0": "Back"}
-        choice = ShellRenderer.render_and_prompt(
-            Group(panel),
-            context_actions=options,
-            valid_choices=list(options.keys()) + ["m", "x"],
-            prompt_label=">",
-            show_main=True,
-            show_back=True,
-            show_exit=True,
-            show_header=False,
-        )
-        if choice in ("0", "m"):
-            return
-        if choice == "x":
-            Navigator.exit_app()
-        if choice == "1":
-            try:
-                webbrowser.open(self.clear_access.PRODUCT_URL)
-            except Exception:
-                return
-        elif choice == "2":
-            code = InputSafe.get_string("Enter Clear Access code:")
-            if code:
-                self.clear_access.set_code(code)
-        elif choice == "3":
-            self.clear_access.clear_code()
 
     def _run_tracker_gui(self):
         if not launch_tracker_gui and not launch_gui_in_venv:

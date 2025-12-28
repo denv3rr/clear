@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Card } from "../components/ui/Card";
 import { Collapsible } from "../components/ui/Collapsible";
+import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { KpiCard } from "../components/ui/KpiCard";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { useApi } from "../lib/api";
@@ -22,7 +23,9 @@ type IntelMeta = {
 };
 
 export default function Intel() {
-  const { data: meta } = useApi<IntelMeta>("/api/intel/meta", { interval: 600000 });
+  const { data: meta, error: metaError } = useApi<IntelMeta>("/api/intel/meta", {
+    interval: 600000
+  });
   const [region, setRegion] = useState("Global");
   const [industry, setIndustry] = useState("all");
   const [categories, setCategories] = useState<string[]>([]);
@@ -48,9 +51,24 @@ export default function Intel() {
       `/api/intel/conflict?region=${encodeURIComponent(region)}&industry=${encodeURIComponent(industry)}${categoriesParam}${sourcesParam}`,
     [region, industry, categoriesParam, sourcesParam]
   );
-  const { data } = useApi<IntelReport>(intelQuery, { interval: 60000 });
-  const { data: weather } = useApi<IntelReport>(weatherQuery, { interval: 120000 });
-  const { data: conflict } = useApi<IntelReport>(conflictQuery, { interval: 120000 });
+  const { data, error: summaryError, refresh } = useApi<IntelReport>(intelQuery, {
+    interval: 60000
+  });
+  const { data: weather, error: weatherError } = useApi<IntelReport>(weatherQuery, {
+    interval: 120000
+  });
+  const { data: conflict, error: conflictError } = useApi<IntelReport>(conflictQuery, {
+    interval: 120000
+  });
+  const authHint = "Check CLEAR_WEB_API_KEY + localStorage clear_api_key.";
+  const errorMessages = [
+    metaError ? `Intel metadata failed: ${metaError}` : null,
+    summaryError
+      ? `Summary failed: ${summaryError}${summaryError.includes("401") || summaryError.includes("403") ? ` (${authHint})` : ""}`
+      : null,
+    weatherError ? `Weather failed: ${weatherError}` : null,
+    conflictError ? `Conflict failed: ${conflictError}` : null
+  ].filter(Boolean) as string[];
 
   const regionOptions = meta?.regions?.map((entry) => entry.name) || ["Global"];
   const industryOptions = meta?.industries || ["all"];
@@ -91,6 +109,9 @@ export default function Intel() {
   return (
     <Card className="rounded-2xl p-6">
       <SectionHeader label="INTEL" title="Global Impact Summary" right={data?.risk_level ?? "Loading"} />
+      <div className="mt-4">
+        <ErrorBanner messages={errorMessages} onRetry={refresh} />
+      </div>
       <div className="mt-6 space-y-4 text-sm text-slate-300">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <KpiCard label="Risk Level" value={data?.risk_level || "Loading"} tone="text-emerald-300" />

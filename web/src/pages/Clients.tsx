@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AreaSparkline, DistributionBars } from "../components/ui/Charts";
 import { Card } from "../components/ui/Card";
 import { Collapsible } from "../components/ui/Collapsible";
+import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { KpiCard } from "../components/ui/KpiCard";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { Surface3D } from "../components/ui/Surface3D";
@@ -131,15 +132,23 @@ const metricLabels: Record<string, string> = {
 };
 
 export default function Clients() {
-  const { data: index } = useApi<ClientIndex>("/api/clients", { interval: 60000 });
+  const {
+    data: index,
+    error: indexError,
+    loading: indexLoading,
+    refresh: refreshIndex
+  } = useApi<ClientIndex>("/api/clients", { interval: 60000 });
   const rows = index?.clients ?? [];
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<ClientDetail | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [interval, setInterval] = useState("1M");
   const [selectedAccount, setSelectedAccount] = useState<string>("portfolio");
   const [dashboard, setDashboard] = useState<DashboardPayload | null>(null);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [patterns, setPatterns] = useState<PatternPayload | null>(null);
+  const [patternsError, setPatternsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!selectedId && rows.length) {
@@ -150,16 +159,21 @@ export default function Clients() {
   useEffect(() => {
     if (!selectedId) {
       setDetail(null);
+      setDetailError(null);
       return;
     }
     apiGet<ClientDetail>(`/api/clients/${encodeURIComponent(selectedId)}`, 0)
       .then((payload) => {
         setDetail(payload);
+        setDetailError(null);
         if (payload.accounts?.length && selectedAccount === "portfolio") {
           setSelectedAccount("portfolio");
         }
       })
-      .catch(() => setDetail(null));
+      .catch((err) => {
+        setDetail(null);
+        setDetailError(err instanceof Error ? err.message : "Client detail failed.");
+      });
   }, [selectedId, selectedAccount]);
 
   useEffect(() => {
@@ -171,8 +185,14 @@ export default function Clients() {
             selectedAccount
           )}/dashboard?interval=${encodeURIComponent(interval)}`;
     apiGet<DashboardPayload>(path, 0)
-      .then(setDashboard)
-      .catch(() => setDashboard(null));
+      .then((payload) => {
+        setDashboard(payload);
+        setDashboardError(null);
+      })
+      .catch((err) => {
+        setDashboard(null);
+        setDashboardError(err instanceof Error ? err.message : "Dashboard failed.");
+      });
   }, [selectedId, selectedAccount, interval]);
 
   useEffect(() => {
@@ -184,8 +204,14 @@ export default function Clients() {
             selectedAccount
           )}/patterns?interval=${encodeURIComponent(interval)}`;
     apiGet<PatternPayload>(path, 0)
-      .then(setPatterns)
-      .catch(() => setPatterns(null));
+      .then((payload) => {
+        setPatterns(payload);
+        setPatternsError(null);
+      })
+      .catch((err) => {
+        setPatterns(null);
+        setPatternsError(err instanceof Error ? err.message : "Pattern analysis failed.");
+      });
   }, [selectedId, selectedAccount, interval]);
 
   const filtered = useMemo(() => {
@@ -217,6 +243,17 @@ export default function Clients() {
       label: metricLabels[key],
       value: Number(riskMetrics[key])
     }));
+  const authHint = "Check CLEAR_WEB_API_KEY + localStorage clear_api_key.";
+  const errorMessages = [
+    indexError
+      ? `Client index failed: ${indexError}${
+          indexError.includes("401") || indexError.includes("403") ? ` (${authHint})` : ""
+        }`
+      : null,
+    detailError ? `Client detail failed: ${detailError}` : null,
+    dashboardError ? `Dashboard failed: ${dashboardError}` : null,
+    patternsError ? `Patterns failed: ${patternsError}` : null
+  ].filter(Boolean) as string[];
 
   return (
     <Card className="rounded-2xl p-6">
@@ -225,6 +262,7 @@ export default function Clients() {
         title="Portfolio Command Center"
         right={dashboard?.client ? `${dashboard.client.name}` : `${rows.length} clients`}
       />
+      <ErrorBanner messages={errorMessages} onRetry={refreshIndex} />
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
         <div className="space-y-3 text-sm text-slate-300">
           <label htmlFor="client-search" className="text-xs text-slate-400">
@@ -239,7 +277,7 @@ export default function Clients() {
             placeholder="Name, ID, risk profile..."
           />
           {filtered.length === 0 ? (
-            <p>No client profiles loaded.</p>
+            <p>{indexLoading ? "Loading client profiles..." : "No client profiles loaded."}</p>
           ) : (
             filtered.map((client) => (
               <button

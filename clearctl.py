@@ -5,6 +5,7 @@ import importlib.util
 import os
 import shutil
 import subprocess
+import time
 import sys
 from pathlib import Path
 
@@ -14,6 +15,8 @@ from utils.launcher import (
     LOG_DIR,
     RUNTIME_DIR,
     ensure_runtime_dirs,
+    filter_matching_pids,
+    find_pids_by_port,
     filter_existing,
     port_in_use,
     process_alive,
@@ -173,17 +176,62 @@ def _health_check(api_port: int) -> bool:
     if api_key:
         headers["X-API-Key"] = api_key
     try:
-        response = httpx.get(url, headers=headers, timeout=2.0)
+        response = httpx.get(url, headers=headers, timeout=2.0, trust_env=False)
         return response.status_code == 200
     except Exception:
         return False
 
 
+def _wait_for_api(api_port: int, timeout: float = 20.0) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if _health_check(api_port):
+            return True
+        safe_sleep(0.4)
+    return False
+
+
+def _cleanup_existing_processes() -> None:
+    for label, pid_path in (("API", API_PID), ("Web", WEB_PID)):
+        pid = read_pid(pid_path)
+        if pid and process_alive(pid):
+            terminate_pid(pid)
+            print(f">> Stopped existing {label} process (pid {pid}).")
+        if pid_path.exists():
+            pid_path.unlink(missing_ok=True)
+
+
+def _terminate_port_processes(port: int, label: str, auto_yes: bool) -> bool:
+    if not port_in_use(port):
+        return True
+    pids = find_pids_by_port(port)
+    if not pids:
+        print(f">> {label} port {port} in use but owning process not found.")
+        return False
+    tokens = ["uvicorn", "web_api.app:app"] if label == "API" else ["vite"]
+    safe_pids = filter_matching_pids(pids, tokens) if tokens else []
+    remaining = [pid for pid in pids if pid not in safe_pids]
+    for pid in safe_pids:
+        terminate_pid(pid)
+        print(f">> Terminated {label} port process (pid {pid}).")
+    if remaining:
+        pid_list = ", ".join(str(pid) for pid in remaining)
+        if not auto_yes and not _prompt_yes_no(
+            f"{label} port {port} in use by pid(s) {pid_list}. Terminate them?"
+        ):
+            return False
+        for pid in remaining:
+            terminate_pid(pid)
+            print(f">> Terminated {label} port process (pid {pid}).")
+    return True
+
+
 def _start(args: argparse.Namespace) -> int:
     ensure_runtime_dirs()
+    _cleanup_existing_processes()
     if not _python_deps_ready(args.yes):
         return 1
-    if port_in_use(args.api_port):
+    if not _terminate_port_processes(args.api_port, "API", args.yes):
         print(f">> API port {args.api_port} already in use.")
         return 1
     api_cmd = [
@@ -191,12 +239,20 @@ def _start(args: argparse.Namespace) -> int:
         "-m",
         "uvicorn",
         "web_api.app:app",
-        "--reload",
-        "--port",
-        str(args.api_port),
     ]
+    if args.reload:
+        api_cmd.append("--reload")
+    api_cmd.extend(["--port", str(args.api_port)])
     api_proc = _spawn_process(api_cmd, detach=not args.foreground, log_path=API_LOG)
     write_pid(API_PID, api_proc.pid)
+
+    try:
+        if not _wait_for_api(args.api_port):
+            print(f">> API failed to start on port {args.api_port}. Check logs: {API_LOG}")
+            return _stop(args)
+    except KeyboardInterrupt:
+        print("\n>> Startup interrupted before API was ready.")
+        return _stop(args)
 
     web_dir = Path("web")
     if args.no_web or not web_dir.exists():
@@ -207,7 +263,7 @@ def _start(args: argparse.Namespace) -> int:
     if not npm_path:
         print(">> npm not found. Install Node.js (includes npm) and retry.")
         return 1
-    if port_in_use(args.ui_port):
+    if not _terminate_port_processes(args.ui_port, "UI", args.yes):
         print(f">> UI port {args.ui_port} already in use.")
         return 1
     if not _ensure_node_modules(web_dir, npm_path, args.yes):
@@ -234,7 +290,7 @@ def _start(args: argparse.Namespace) -> int:
     return 0
 
 
-def _stop(_: argparse.Namespace) -> int:
+def _stop(args: argparse.Namespace) -> int:
     ensure_runtime_dirs()
     stopped = False
     for label, pid_path in (("API", API_PID), ("Web", WEB_PID)):
@@ -245,9 +301,15 @@ def _stop(_: argparse.Namespace) -> int:
             print(f">> Stopped {label} (pid {pid}).")
         if pid_path.exists():
             pid_path.unlink(missing_ok=True)
+    _terminate_port_processes(DEFAULT_API_PORT, "API", args.yes)
+    _terminate_port_processes(DEFAULT_UI_PORT, "UI", args.yes)
     if not stopped:
         print(">> No running services detected.")
     return 0
+
+
+def _run_cli(_: argparse.Namespace) -> int:
+    return subprocess.call([sys.executable, "run_cli.py"])
 
 
 def _status(_: argparse.Namespace) -> int:
@@ -304,20 +366,30 @@ def _doctor(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
+def _add_start_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--api-port", type=int, default=DEFAULT_API_PORT)
+    parser.add_argument("--ui-port", type=int, default=DEFAULT_UI_PORT)
+    parser.add_argument("--no-web", action="store_true")
+    parser.add_argument("--no-open", action="store_true")
+    parser.add_argument("--foreground", action="store_true")
+    parser.add_argument("--reload", action="store_true", help="Reload the API on code changes.")
+    parser.add_argument("--yes", action="store_true", help="Auto-install deps when missing.")
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Clear multi-platform launcher.")
     sub = parser.add_subparsers(dest="command", required=True)
 
     start = sub.add_parser("start", help="Start API and web UI.")
-    start.add_argument("--api-port", type=int, default=DEFAULT_API_PORT)
-    start.add_argument("--ui-port", type=int, default=DEFAULT_UI_PORT)
-    start.add_argument("--no-web", action="store_true")
-    start.add_argument("--no-open", action="store_true")
-    start.add_argument("--foreground", action="store_true")
-    start.add_argument("--yes", action="store_true", help="Auto-install deps when missing.")
+    _add_start_args(start)
+
+    web = sub.add_parser("web", help="Start the web stack (API + UI).")
+    _add_start_args(web)
 
     stop = sub.add_parser("stop", help="Stop API and web UI.")
     stop.add_argument("--yes", action="store_true")
+
+    cli = sub.add_parser("cli", help="Launch the CLI.")
 
     status = sub.add_parser("status", help="Show service status.")
     status.add_argument("--yes", action="store_true")
@@ -342,8 +414,12 @@ def main() -> int:
     args = _parse_args()
     if args.command == "start":
         return _start(args)
+    if args.command == "web":
+        return _start(args)
     if args.command == "stop":
         return _stop(args)
+    if args.command == "cli":
+        return _run_cli(args)
     if args.command == "status":
         return _status(args)
     if args.command == "logs":
