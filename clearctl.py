@@ -23,6 +23,7 @@ from utils.launcher import (
     read_pid,
     safe_sleep,
     wait_for_port,
+    wait_for_exit,
     tail_lines,
     terminate_pid,
     write_pid,
@@ -300,19 +301,27 @@ def _start(args: argparse.Namespace) -> int:
 def _stop(args: argparse.Namespace) -> int:
     ensure_runtime_dirs()
     stopped = False
+    failed = False
     for label, pid_path in (("API", API_PID), ("Web", WEB_PID)):
         pid = read_pid(pid_path)
         if pid and process_alive(pid):
             terminate_pid(pid)
             stopped = True
-            print(f">> Stopped {label} (pid {pid}).")
+            if wait_for_exit(pid, timeout=5.0):
+                print(f">> Stopped {label} (pid {pid}).")
+            else:
+                failed = True
+                print(f">> {label} process (pid {pid}) did not exit cleanly.")
         if pid_path.exists():
             pid_path.unlink(missing_ok=True)
     _terminate_port_processes(DEFAULT_API_PORT, "API", args.yes)
     _terminate_port_processes(DEFAULT_UI_PORT, "UI", args.yes)
+    if port_in_use(DEFAULT_API_PORT) or port_in_use(DEFAULT_UI_PORT):
+        failed = True
+        print(">> One or more service ports are still in use. Check running processes.")
     if not stopped:
         print(">> No running services detected.")
-    return 0
+    return 1 if failed else 0
 
 
 def _run_cli(_: argparse.Namespace) -> int:

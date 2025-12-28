@@ -125,6 +125,15 @@ def process_alive(pid: int) -> bool:
         return False
 
 
+def wait_for_exit(pid: int, timeout: float = 5.0) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if not process_alive(pid):
+            return True
+        time.sleep(0.1)
+    return not process_alive(pid)
+
+
 def terminate_pid(pid: int, timeout: float = 5.0) -> bool:
     if pid <= 0:
         return True

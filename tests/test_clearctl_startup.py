@@ -145,3 +145,22 @@ def test_start_stops_when_ui_fails(monkeypatch, tmp_path: Path) -> None:
 
     assert clearctl._start(args) == 1
     assert stop_called["value"] is True
+
+
+def test_stop_returns_failure_when_pid_lingers(monkeypatch, tmp_path: Path) -> None:
+    api_pid = tmp_path / "api.pid"
+    web_pid = tmp_path / "web.pid"
+    api_pid.write_text("111", encoding="ascii")
+    web_pid.write_text("222", encoding="ascii")
+
+    monkeypatch.setattr(clearctl, "API_PID", api_pid)
+    monkeypatch.setattr(clearctl, "WEB_PID", web_pid)
+    monkeypatch.setattr(clearctl, "ensure_runtime_dirs", lambda: None)
+    monkeypatch.setattr(clearctl, "process_alive", lambda pid: True)
+    monkeypatch.setattr(clearctl, "terminate_pid", lambda pid: True)
+    monkeypatch.setattr(clearctl, "wait_for_exit", lambda pid, timeout=5.0: False)
+    monkeypatch.setattr(clearctl, "port_in_use", lambda port: True)
+    monkeypatch.setattr(clearctl, "_terminate_port_processes", lambda *_args, **_kwargs: True)
+
+    args = type("Args", (), dict(yes=True))()
+    assert clearctl._stop(args) == 1
