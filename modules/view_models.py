@@ -160,6 +160,26 @@ def portfolio_dashboard(client: Client, interval: str = "1M") -> Dict[str, Any]:
     )
     holdings_list = holdings_list[:25]
 
+    sector_totals: Dict[str, float] = {}
+    for entry in enriched.values():
+        sector = str(entry.get("sector", "N/A") or "N/A")
+        value = float(entry.get("market_value", 0.0) or 0.0)
+        sector_totals[sector] = sector_totals.get(sector, 0.0) + value
+    sector_rows = sorted(sector_totals.items(), key=lambda item: item[1], reverse=True)
+    hhi = 0.0
+    for _, value in sector_rows:
+        if total_value > 0:
+            pct = value / total_value
+            hhi += pct * pct
+
+    movers = sorted(
+        enriched.values(),
+        key=lambda entry: float(entry.get("pct", 0.0) or 0.0),
+        reverse=True,
+    )
+    gainers = movers[:5]
+    losers = list(reversed(movers[-5:])) if len(movers) > 5 else []
+
     return {
         "client": client_summary(client),
         "interval": interval,
@@ -175,6 +195,33 @@ def portfolio_dashboard(client: Client, interval: str = "1M") -> Dict[str, Any]:
         "history": _history_payload(history_dates, history_values),
         "risk": risk_payload,
         "regime": regime_payload,
+        "diagnostics": {
+            "sectors": [
+                {
+                    "sector": sector,
+                    "value": float(value),
+                    "pct": float(value / total_value) if total_value > 0 else 0.0,
+                }
+                for sector, value in sector_rows[:8]
+            ],
+            "hhi": float(hhi),
+            "gainers": [
+                {
+                    "ticker": row.get("ticker"),
+                    "pct": float(row.get("pct", 0.0) or 0.0),
+                    "change": float(row.get("change", 0.0) or 0.0),
+                }
+                for row in gainers
+            ],
+            "losers": [
+                {
+                    "ticker": row.get("ticker"),
+                    "pct": float(row.get("pct", 0.0) or 0.0),
+                    "change": float(row.get("change", 0.0) or 0.0),
+                }
+                for row in losers
+            ],
+        },
         "warnings": warnings,
     }
 
@@ -225,6 +272,26 @@ def account_dashboard(client: Client, account: Account, interval: str = "1M") ->
     )
     holdings_list = holdings_list[:20]
 
+    sector_totals: Dict[str, float] = {}
+    for entry in enriched.values():
+        sector = str(entry.get("sector", "N/A") or "N/A")
+        value = float(entry.get("market_value", 0.0) or 0.0)
+        sector_totals[sector] = sector_totals.get(sector, 0.0) + value
+    sector_rows = sorted(sector_totals.items(), key=lambda item: item[1], reverse=True)
+    hhi = 0.0
+    for _, value in sector_rows:
+        if total_value > 0:
+            pct = value / total_value
+            hhi += pct * pct
+
+    movers = sorted(
+        enriched.values(),
+        key=lambda entry: float(entry.get("pct", 0.0) or 0.0),
+        reverse=True,
+    )
+    gainers = movers[:5]
+    losers = list(reversed(movers[-5:])) if len(movers) > 5 else []
+
     return {
         "client": client_summary(client),
         "account": account_detail(account),
@@ -241,6 +308,33 @@ def account_dashboard(client: Client, account: Account, interval: str = "1M") ->
         "history": _history_payload(history_dates, history_values),
         "risk": risk_payload,
         "regime": regime_payload,
+        "diagnostics": {
+            "sectors": [
+                {
+                    "sector": sector,
+                    "value": float(value),
+                    "pct": float(value / total_value) if total_value > 0 else 0.0,
+                }
+                for sector, value in sector_rows[:8]
+            ],
+            "hhi": float(hhi),
+            "gainers": [
+                {
+                    "ticker": row.get("ticker"),
+                    "pct": float(row.get("pct", 0.0) or 0.0),
+                    "change": float(row.get("change", 0.0) or 0.0),
+                }
+                for row in gainers
+            ],
+            "losers": [
+                {
+                    "ticker": row.get("ticker"),
+                    "pct": float(row.get("pct", 0.0) or 0.0),
+                    "change": float(row.get("change", 0.0) or 0.0),
+                }
+                for row in losers
+            ],
+        },
         "warnings": warnings,
     }
 

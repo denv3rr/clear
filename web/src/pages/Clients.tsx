@@ -106,6 +106,12 @@ type DashboardPayload = {
   history: HistoryPoint[];
   risk: RiskPayload;
   regime: RegimePayload;
+  diagnostics?: {
+    sectors: { sector: string; value: number; pct: number }[];
+    hhi: number;
+    gainers: { ticker: string; pct: number; change: number }[];
+    losers: { ticker: string; pct: number; change: number }[];
+  };
   warnings: string[];
 };
 
@@ -457,6 +463,48 @@ export default function Clients() {
                   </div>
                 </div>
               ))}
+            </div>
+          </Collapsible>
+
+          <Collapsible title="Diagnostics" meta="Concentration + Movers" open onToggle={() => null}>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs text-slate-300">
+              <div className="rounded-xl border border-slate-800/60 p-4">
+                <p className="text-xs text-slate-400 mb-2">Sector Concentration</p>
+                {dashboard?.diagnostics?.sectors?.length ? (
+                  <div className="space-y-2">
+                    {dashboard.diagnostics.sectors.map((row) => (
+                      <div key={row.sector} className="flex items-center justify-between">
+                        <span className="text-slate-400">{row.sector}</span>
+                        <span className="text-emerald-300">{(row.pct * 100).toFixed(1)}%</span>
+                      </div>
+                    ))}
+                    <div className="pt-2 text-slate-400">HHI {dashboard.diagnostics.hhi.toFixed(3)}</div>
+                  </div>
+                ) : (
+                  <p className="text-slate-500">No sector data available.</p>
+                )}
+              </div>
+              <div className="rounded-xl border border-slate-800/60 p-4">
+                <p className="text-xs text-slate-400 mb-2">Top Movers (1D)</p>
+                {dashboard?.diagnostics ? (
+                  <div className="space-y-2">
+                    {(dashboard.diagnostics.gainers || []).map((row) => (
+                      <div key={`gain-${row.ticker}`} className="flex items-center justify-between">
+                        <span className="text-slate-200">{row.ticker}</span>
+                        <span className="text-emerald-300">{(row.pct * 100).toFixed(2)}%</span>
+                      </div>
+                    ))}
+                    {(dashboard.diagnostics.losers || []).map((row) => (
+                      <div key={`loss-${row.ticker}`} className="flex items-center justify-between">
+                        <span className="text-slate-200">{row.ticker}</span>
+                        <span className="text-amber-300">{(row.pct * 100).toFixed(2)}%</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-slate-500">No mover data available.</p>
+                )}
+              </div>
             </div>
           </Collapsible>
 
