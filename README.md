@@ -92,18 +92,22 @@ A portfolio management, analytics, and global tracking platform.
 
 <details>
 <summary><strong>More Details</strong></summary>
-
+<br>
+  
+**Some features still under development**
+  
 - Lot-aware holdings and position-level analysis
 - Regime transition matrices, CAPM, and derived analytics
 - Multi-interval views with paging and cached snapshots
 - Tracker heat/volatility metrics and relevance tagging
-- Weather + conflict intel with caching and exports
+- Weather and conflict reporting with caching and exports
 - Health-aware sources with retry/backoff handling
 
 </details>
 
 ## Screenshots
 
+<br>
 <!--
 <img src="assets/welcome_screen_1.png" alt="Welcome Screen" width="70%" />
 -->
@@ -195,9 +199,12 @@ python -m modules.reporting.cli --client-id <CLIENT_ID> --format md --output dat
   - `run.py` warns if `data/clients.json` fails schema checks (client_id/name, account list shape, holdings/lot types).
   - Legacy lot timestamps are normalized to ISO-8601 on startup (and can be forced via Settings -> Diagnostics -> Normalize Lot Timestamps).
 
-### Local Model Setup (Optional)
+### Local Model Setup
 
-If you want model-enhanced reports, install Ollama (recommended) or run a local HTTP server (llama.cpp, vLLM) and run with `--use-model`:
+> [!NOTE]
+> Incomplete
+
+For model-enhanced reports, install Ollama (recommended) or run a local HTTP server (llama.cpp, vLLM) and run with `--use-model`:
 
 ```pwsh
 python -m modules.reporting.cli --client-id <CLIENT_ID> --format md --use-model --model-id llama3
@@ -269,7 +276,10 @@ FINNHUB_API_KEY=your_api_key_here
 
 Flight operator metadata can be extended by copying `config/flight_operators.example.json` to `config/flight_operators.json`.
 
-### AI Synthesis (Optional)
+### AI Synthesis
+
+> [!NOTE]
+> Incomplete
 
 AI synthesis is configured in `config/settings.json` under the `ai` key:
 
