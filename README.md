@@ -26,10 +26,9 @@
 <div align="center">
 
 [Overview](#overview) •
-[Screenshots](#screenshots) •
 [Quick Start](#quick-start) •
 [Configuration](#configuration) •
-[Modules](#modules) •
+[Stack](#stack) •
 [Data Sources](#data-sources) •
 [Financial Methods](#financial-methods) •
 [Sources Index](#sources-index) •
@@ -71,10 +70,11 @@ A portfolio management, analytics, and global tracking platform.
 
 </details>
 
+<!--
 ## Screenshots
 
 <br>
-<!--
+
 <img src="assets/welcome_screen_1.png" alt="Welcome Screen" width="70%" />
 -->
 
