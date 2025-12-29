@@ -1724,8 +1724,21 @@ class FinancialToolkit:
             lot_map=lot_map,
         )
         if not history:
+            has_holdings = any(float(qty or 0.0) > 0 for qty in (holdings or {}).values())
+            has_price_history = any(
+                info.get("history")
+                for info in (enriched or {}).values()
+                if isinstance(info, dict)
+            )
+            if not has_holdings:
+                detail = "No holdings available to compute a regime series."
+            elif not has_price_history:
+                detail = "No historical price series available for holdings (manual lots or missing price history)."
+            else:
+                detail = "Not enough historical points to compute a regime series."
             return {
                 "error": "Insufficient history for regime analysis",
+                "error_detail": detail,
                 "scope_label": scope,
                 "interval": interval,
                 "label": label,

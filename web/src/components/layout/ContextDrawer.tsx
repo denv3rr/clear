@@ -1,5 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { useApi } from "../../lib/api";
+import { useTrackerPause } from "../../lib/trackerPause";
+import { MeterBar } from "../ui/Charts";
 
 type ContextDrawerProps = {
   variant?: "inline" | "overlay";
@@ -12,6 +14,12 @@ type DiagnosticsPayload = {
     opensky?: { credentials_set?: boolean };
   };
   trackers?: { count?: number; warning_count?: number; warnings?: string[] };
+  metrics?: {
+    cpu_percent?: number | null;
+    mem_percent?: number | null;
+    disk_percent?: number | null;
+    swap_percent?: number | null;
+  };
   system?: { hostname?: string; platform?: string };
 };
 
@@ -22,6 +30,7 @@ export function ContextDrawer({ variant = "inline", onClose }: ContextDrawerProp
   const { data: health } = useApi<{ status?: string }>("/api/health", {
     interval: 30000
   });
+  const { paused } = useTrackerPause();
 
   const trackerWarnings = diagnostics?.trackers?.warnings || [];
   const trackerCount = diagnostics?.trackers?.count ?? 0;
@@ -29,6 +38,7 @@ export function ContextDrawer({ variant = "inline", onClose }: ContextDrawerProp
   const status = health?.status === "ok" ? "Online" : "Degraded";
   const feedConfigured = diagnostics?.feeds?.flights?.configured;
   const openskyConfigured = diagnostics?.feeds?.opensky?.credentials_set;
+  const metrics = diagnostics?.metrics;
 
   const panelClass =
     variant === "overlay"
@@ -48,11 +58,26 @@ export function ContextDrawer({ variant = "inline", onClose }: ContextDrawerProp
           </button>
         ) : null}
       </div>
+      {status ? (
+        <span
+          className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.2em] ${
+            status === "Online"
+              ? "border-emerald-500/50 text-emerald-200"
+              : "border-rose-500/60 text-rose-300"
+          }`}
+        >
+          API {status}
+        </span>
+      ) : null}
       <div>
-        <h3 className="text-lg font-semibold">{status}</h3>
         <p className="text-sm text-slate-400 mt-1">
           Trackers: {trackerCount} • Warnings: {warningCount}
         </p>
+        {paused ? (
+          <p className="text-[11px] text-amber-300 mt-1">
+            Tracker updates paused.
+          </p>
+        ) : null}
         <p className="text-[11px] text-slate-500 mt-2">
           {feedConfigured
             ? "Flight feed configured"
@@ -68,6 +93,24 @@ export function ContextDrawer({ variant = "inline", onClose }: ContextDrawerProp
       </div>
       <div className="rounded-xl border border-slate-900/70 px-3 py-2 text-[11px] text-slate-400">
         {warningCount > 0 ? "Recent tracker warnings detected." : "All systems nominal."}
+      </div>
+      <div className="grid grid-cols-2 gap-3 text-[11px] text-slate-400">
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">CPU</p>
+          <MeterBar value={metrics?.cpu_percent ?? 0} height={40} />
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Memory</p>
+          <MeterBar value={metrics?.mem_percent ?? 0} height={40} color="#36c9f8" />
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Disk</p>
+          <MeterBar value={metrics?.disk_percent ?? 0} height={40} color="#f5b94c" />
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Swap</p>
+          <MeterBar value={metrics?.swap_percent ?? 0} height={40} color="#a3e635" />
+        </div>
       </div>
       {trackerWarnings.length ? (
         <div className="rounded-xl border border-slate-800/70 px-3 py-2 text-[11px] text-slate-400">

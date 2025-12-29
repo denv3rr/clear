@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { DEMO_MODE, getMockTrackerSnapshot } from "./mockData";
+import { useTrackerPause } from "./trackerPause";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
 const ENV_API_KEY = import.meta.env.VITE_API_KEY;
@@ -15,9 +16,13 @@ export function useTrackerStream<T>(options: StreamOptions = {}) {
   const [data, setData] = useState<T | null>(null);
   const [connected, setConnected] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
+  const { paused } = useTrackerPause();
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || paused) {
+      setConnected(false);
+      return;
+    }
     if (DEMO_MODE) {
       setConnected(true);
       setData(getMockTrackerSnapshot(mode) as T);
@@ -62,7 +67,7 @@ export function useTrackerStream<T>(options: StreamOptions = {}) {
     return () => {
       ws.close();
     };
-  }, [enabled, interval, mode]);
+  }, [enabled, interval, mode, paused]);
 
   return { data, connected };
 }

@@ -11,7 +11,7 @@
   --accent-sky: #2bdc98;
   --accent-ember: #1f8f67;
   --panel-border: rgba(148, 163, 184, 0.06);
-  --panel-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
+  --panel-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
   --gridline: rgba(72, 241, 166, 0.03);
 }
 
@@ -185,7 +185,7 @@ body {
   position: absolute;
   inset: 10px;
   border-radius: 18px;
-  box-shadow: 0 0 10px rgba(72, 241, 166, 0.06);
+  box-shadow: 0 0 6px rgba(72, 241, 166, 0.05);
   opacity: 0;
   transition: opacity 0.35s ease;
   pointer-events: none;
@@ -193,7 +193,7 @@ body {
 
 .surface-3d:hover {
   transform: translateY(-2px) scale(1.005);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
 }
 
 .surface-3d:hover::after {
@@ -218,5 +218,5 @@ body {
 
 .chart-panel:hover {
   transform: translateY(-2px) scale(1.005);
-  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.55));
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
 }

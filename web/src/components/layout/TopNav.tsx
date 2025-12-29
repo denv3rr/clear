@@ -1,4 +1,6 @@
 import { NavLink } from "react-router-dom";
+import { Pause, Play } from "lucide-react";
+import { useTrackerPause } from "../../lib/trackerPause";
 
 type NavItem = {
   label: string;
@@ -15,10 +17,11 @@ export function TopNav({ items, onToggleContext }: TopNavProps) {
   const utilityPaths = new Set(["/tools", "/settings"]);
   const primaryItems = items.filter((item) => !utilityPaths.has(item.path));
   const utilityItems = items.filter((item) => utilityPaths.has(item.path));
+  const { paused, toggle } = useTrackerPause();
 
   return (
     <header className="border-b border-slate-900/80 bg-ink-950/95 backdrop-blur">
-      <div className="flex items-center gap-6 px-6 py-4 md:px-10 lg:px-12">
+      <div className="flex items-center gap-6 py-4 pl-[44px] pr-6 md:pl-[60px] md:pr-10 lg:pl-[68px] lg:pr-12">
         <div className="flex items-center gap-3">
           <span className="text-lg font-semibold tracking-tight">[ CLEAR ]</span>
           <span className="hidden text-xs text-slate-500 sm:inline">
@@ -66,6 +69,20 @@ export function TopNav({ items, onToggleContext }: TopNavProps) {
               </NavLink>
             ))}
           </div>
+          <button
+            className={`rounded-full border px-3 py-2 text-xs transition ${
+              paused
+                ? "border-amber-400/70 text-amber-200 hover:border-amber-300"
+                : "border-slate-800/80 text-slate-300 hover:border-slate-700 hover:text-white"
+            }`}
+            type="button"
+            onClick={toggle}
+          >
+            <span className="flex items-center gap-2">
+              {paused ? <Play size={14} /> : <Pause size={14} />}
+              {paused ? "Resume Trackers" : "Pause Trackers"}
+            </span>
+          </button>
           <button
             className="rounded-full border border-slate-800/80 px-4 py-2 text-xs text-slate-300 hover:border-slate-700 hover:text-white"
             type="button"

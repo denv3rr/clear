@@ -21,6 +21,7 @@ import { KpiCard } from "../components/ui/KpiCard";
 import { Reveal } from "../components/ui/Reveal";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { useApi } from "../lib/api";
+import { useTrackerPause } from "../lib/trackerPause";
 import { useTrackerStream } from "../lib/stream";
 
 type TrackerRow = {
@@ -85,6 +86,7 @@ export default function Dashboard() {
   const [riskOpen, setRiskOpen] = useState(true);
   const [mapOpen, setMapOpen] = useState(true);
   const [feedOpen, setFeedOpen] = useState(true);
+  const { paused } = useTrackerPause();
   const { data: trackerStream, connected: streamConnected } = useTrackerStream<TrackerSnapshot>({
     interval: 5,
     mode: "combined"
@@ -357,6 +359,7 @@ export default function Dashboard() {
 
   const authHint = "Check CLEAR_WEB_API_KEY + localStorage clear_api_key.";
   const errorMessages = [
+    paused ? "Tracker updates paused." : null,
     trackerError
       ? `Tracker snapshot failed: ${trackerError}${
           trackerError.includes("401") || trackerError.includes("403")
@@ -378,14 +381,14 @@ export default function Dashboard() {
       <Reveal>
         <header className="flex items-center justify-between">
           <div>
-            <p className="tag text-xs text-slate-400">GLOBAL RISK</p>
-            <h2 className="text-3xl font-semibold">Trackers</h2>
+            <p className="tag text-xs text-slate-400">GLOBAL OVERVIEW</p>
+            <h2 className="text-3xl font-semibold">Overview</h2>
           </div>
         </header>
       </Reveal>
 
       <Reveal delay={0.1}>
-        <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+        <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
           {kpis.map((kpi) => (
             <KpiCard key={kpi.label} label={kpi.label} value={kpi.value} tone={kpi.tone} />
           ))}
@@ -402,7 +405,7 @@ export default function Dashboard() {
       </Reveal>
 
       <Reveal delay={0.2}>
-        <section className="grid grid-cols-1 gap-5">
+        <section className="grid grid-cols-1 gap-6">
           <Collapsible
             title="Global Patterns"
             meta={intelSummary?.risk_level || "Live"}

@@ -27,6 +27,108 @@ def test_settings_endpoint():
     assert "system_metrics" in payload
 
 
+def test_client_index_endpoint_stubbed():
+    client = TestClient(web_app.app)
+    fake_client = Client(client_id="c1", name="Test Client", accounts=[])
+    with mock.patch.object(clients_routes.DataHandler, "load_clients") as mocked:
+        mocked.return_value = [fake_client]
+        resp = client.get("/api/clients")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["clients"]
+    assert payload["clients"][0]["client_id"] == "c1"
+
+
+def test_client_create_endpoint_stubbed():
+    client = TestClient(web_app.app)
+    saved = {}
+
+    def _save(payload):
+        saved["clients"] = payload
+
+    with mock.patch.object(clients_routes.DataHandler, "load_clients") as mocked_load, mock.patch.object(
+        clients_routes.DataHandler, "save_clients"
+    ) as mocked_save:
+        mocked_load.return_value = []
+        mocked_save.side_effect = _save
+        resp = client.post(
+            "/api/clients",
+            json={"name": "Atlas Capital", "risk_profile": "Balanced", "tax_profile": {"reporting_currency": "USD"}},
+        )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["name"] == "Atlas Capital"
+    assert saved["clients"]
+    assert saved["clients"][0].name == "Atlas Capital"
+
+
+def test_client_update_endpoint_stubbed():
+    client = TestClient(web_app.app)
+    fake_client = Client(client_id="c1", name="Old Name", accounts=[])
+    saved = {}
+
+    def _save(payload):
+        saved["clients"] = payload
+
+    with mock.patch.object(clients_routes.DataHandler, "load_clients") as mocked_load, mock.patch.object(
+        clients_routes.DataHandler, "save_clients"
+    ) as mocked_save:
+        mocked_load.return_value = [fake_client]
+        mocked_save.side_effect = _save
+        resp = client.patch("/api/clients/c1", json={"name": "New Name", "risk_profile": "Balanced"})
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["name"] == "New Name"
+    assert saved["clients"][0].risk_profile == "Balanced"
+
+
+def test_account_create_endpoint_stubbed():
+    client = TestClient(web_app.app)
+    fake_client = Client(client_id="c1", name="Test Client", accounts=[])
+    saved = {}
+
+    def _save(payload):
+        saved["clients"] = payload
+
+    with mock.patch.object(clients_routes.DataHandler, "load_clients") as mocked_load, mock.patch.object(
+        clients_routes.DataHandler, "save_clients"
+    ) as mocked_save:
+        mocked_load.return_value = [fake_client]
+        mocked_save.side_effect = _save
+        resp = client.post(
+            "/api/clients/c1/accounts",
+            json={"account_name": "Primary Brokerage", "account_type": "Taxable", "tags": ["Core"]},
+        )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["account"]["account_name"] == "Primary Brokerage"
+    assert saved["clients"][0].accounts
+
+
+def test_account_update_endpoint_stubbed():
+    client = TestClient(web_app.app)
+    account = Account(account_id="a1", account_name="Alpha")
+    fake_client = Client(client_id="c1", name="Test Client", accounts=[account])
+    saved = {}
+
+    def _save(payload):
+        saved["clients"] = payload
+
+    with mock.patch.object(clients_routes.DataHandler, "load_clients") as mocked_load, mock.patch.object(
+        clients_routes.DataHandler, "save_clients"
+    ) as mocked_save:
+        mocked_load.return_value = [fake_client]
+        mocked_save.side_effect = _save
+        resp = client.patch(
+            "/api/clients/c1/accounts/a1",
+            json={"account_name": "Alpha Prime", "custodian": "Fidelity"},
+        )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["account"]["account_name"] == "Alpha Prime"
+    assert saved["clients"][0].accounts[0].custodian == "Fidelity"
+
+
 def test_diagnostics_endpoint():
     client = TestClient(web_app.app)
     resp = client.get("/api/tools/diagnostics")
@@ -78,6 +180,22 @@ def test_tracker_search_endpoint_stubbed():
     assert resp.status_code == 200
     payload = resp.json()
     assert payload["count"] == 1
+
+
+def test_tracker_snapshot_endpoint_stubbed():
+    client = TestClient(web_app.app)
+    sample = {
+        "count": 1,
+        "warnings": [],
+        "points": [{"id": "abc123", "kind": "flight", "label": "AAL762"}],
+    }
+    with mock.patch.object(tracker_routes.GlobalTrackers, "get_snapshot") as mocked:
+        mocked.return_value = sample
+        resp = client.get("/api/trackers/snapshot?mode=combined")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["points"]
+    assert payload["count"] == len(payload["points"])
 
 
 def test_tracker_detail_endpoint_stubbed():

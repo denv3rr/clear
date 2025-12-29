@@ -30,7 +30,7 @@ def _redact_settings(settings: Dict[str, object]) -> Dict[str, object]:
     if not isinstance(credentials, dict):
         credentials = {}
     cleaned["credentials"] = {
-        "finnhub_key_set": bool(credentials.get("finnhub_key")),
+        "finnhub_key_set": bool(credentials.get("finnhub_key") or os.getenv("FINNHUB_API_KEY")),
         "smtp_configured": bool(credentials.get("smtp")),
     }
     return cleaned

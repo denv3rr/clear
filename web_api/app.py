@@ -5,6 +5,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from web_api.routes import build_router
 
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except Exception:
+    pass
+
 
 app = FastAPI(title="Clear Web API", version="0.1.0")
 app.add_middleware(

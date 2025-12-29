@@ -46,54 +46,6 @@
 
 A portfolio management, analytics, and global tracking platform.
 
-## Stack
-
-### Core Runtime
-
-![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=white)
-![PySide6](https://img.shields.io/badge/PySide6-111827?style=for-the-badge&logo=qt&logoColor=white)
-![Pandas](https://img.shields.io/badge/Pandas-0F172A?style=for-the-badge&logo=pandas&logoColor=white)
-![NumPy](https://img.shields.io/badge/NumPy-111827?style=for-the-badge&logo=numpy&logoColor=white)
-![Rich](https://img.shields.io/badge/Rich-121212?style=for-the-badge&logo=python&logoColor=white)
-![Requests](https://img.shields.io/badge/Requests-0F172A?style=for-the-badge)
-![HTTPX](https://img.shields.io/badge/HTTPX-0F172A?style=for-the-badge)
-![python-dotenv](https://img.shields.io/badge/python--dotenv-111827?style=for-the-badge)
-![psutil](https://img.shields.io/badge/psutil-111827?style=for-the-badge)
-![Cryptography](https://img.shields.io/badge/Cryptography-0F172A?style=for-the-badge)
-
-### Web Platform
-
-![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
-![Uvicorn](https://img.shields.io/badge/Uvicorn-111827?style=for-the-badge)
-![React](https://img.shields.io/badge/React-111827?style=for-the-badge&logo=react&logoColor=61DAFB)
-![TypeScript](https://img.shields.io/badge/TypeScript-0F172A?style=for-the-badge&logo=typescript&logoColor=3178C6)
-![React Router](https://img.shields.io/badge/React%20Router-1F2937?style=for-the-badge&logo=reactrouter&logoColor=CA4245)
-![Node.js](https://img.shields.io/badge/Node.js-111827?style=for-the-badge&logo=node.js&logoColor=5FA04E)
-![Vite](https://img.shields.io/badge/Vite-1A1B3A?style=for-the-badge&logo=vite&logoColor=646CFF)
-![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-0F172A?style=for-the-badge&logo=tailwindcss&logoColor=38BDF8)
-![React Markdown](https://img.shields.io/badge/React%20Markdown-111827?style=for-the-badge)
-![Remark GFM](https://img.shields.io/badge/Remark%20GFM-0F172A?style=for-the-badge)
-![Lucide](https://img.shields.io/badge/Lucide-111827?style=for-the-badge)
-
-### Visualization
-
-![MapLibre](https://img.shields.io/badge/MapLibre-0F172A?style=for-the-badge&logo=maplibre&logoColor=white)
-![Leaflet](https://img.shields.io/badge/Leaflet-0B3D2E?style=for-the-badge&logo=leaflet&logoColor=white)
-![Recharts](https://img.shields.io/badge/Recharts-1F2937?style=for-the-badge&logo=chartdotjs&logoColor=white)
-![Plotly](https://img.shields.io/badge/Plotly-111827?style=for-the-badge&logo=plotly&logoColor=white)
-![TanStack Table](https://img.shields.io/badge/TanStack%20Table-161B22?style=for-the-badge&logo=reacttable&logoColor=white)
-![Framer Motion](https://img.shields.io/badge/Framer%20Motion-0B0E13?style=for-the-badge&logo=framer&logoColor=white)
-
-### Data Sources
-
-![Finnhub](https://img.shields.io/badge/Finnhub-00C805?style=for-the-badge&logoColor=white)
-![Yahoo Finance](https://img.shields.io/badge/Yahoo%20Finance-6001D2?style=for-the-badge&logo=yahoo&logoColor=white)
-
-### Testing
-
-![PyTest](https://img.shields.io/badge/PyTest-0F172A?style=for-the-badge&logo=pytest&logoColor=white)
-![Playwright](https://img.shields.io/badge/Playwright-0B0E13?style=for-the-badge&logo=playwright&logoColor=45BA4B)
-
 ## Features
 
 - Client and account management
@@ -186,6 +138,17 @@ Convenience wrappers:
 - Windows CMD: `clear web` / `clear cli`
 - macOS/Linux: `./clear web` / `./clear cli`
 
+## Testing
+
+```pwsh
+python -m pytest
+```
+
+```pwsh
+cd web
+npm run test:e2e
+```
+
 Service templates for always-on usage: `docs/platform_services.md`
 
 ## Local Reports (Offline)
@@ -277,11 +240,15 @@ FINNHUB_API_KEY=your_api_key_here
 
 ### Environment Variables
 
+OpenSky is the default flight feed; configure credentials in `.env` when available.
+
 | Variable | Purpose | Used By |
 | --- | --- | --- |
 | `FINNHUB_API_KEY` | Enables Finnhub symbol/quote lookups. | Market Feed, Settings |
 | `FLIGHT_DATA_URL` | Flight feed endpoint (JSON list or `{ "data": [] }`). | Global Trackers |
 | `FLIGHT_DATA_PATH` | Local JSON file path for flight feed data. | Global Trackers |
+| `OPENSKY_USERNAME` | OpenSky basic auth username (optional). | Global Trackers |
+| `OPENSKY_PASSWORD` | OpenSky basic auth password (optional). | Global Trackers |
 | `SHIPPING_DATA_URL` | Shipping feed endpoint for vessel tracker. | Global Trackers |
 | `CLEAR_INCLUDE_COMMERCIAL` | Include commercial flights (set to `1`). | Global Trackers |
 | `CLEAR_INCLUDE_PRIVATE` | Include private flights (set to `1`). | Global Trackers |
@@ -357,10 +324,60 @@ Scroll text settings live in `config/settings.json` under `display.scroll_text`:
 - **Financial Tools**: analytics, CAPM metrics, regime modeling
 - **Settings**: API config, device info, preferences
 
+## Stack
+
+### Core Runtime
+
+![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=white)
+![PySide6](https://img.shields.io/badge/PySide6-111827?style=for-the-badge&logo=qt&logoColor=white)
+![Pandas](https://img.shields.io/badge/Pandas-0F172A?style=for-the-badge&logo=pandas&logoColor=white)
+![NumPy](https://img.shields.io/badge/NumPy-111827?style=for-the-badge&logo=numpy&logoColor=white)
+![Rich](https://img.shields.io/badge/Rich-121212?style=for-the-badge&logo=python&logoColor=white)
+![Requests](https://img.shields.io/badge/Requests-0F172A?style=for-the-badge)
+![HTTPX](https://img.shields.io/badge/HTTPX-0F172A?style=for-the-badge)
+![python-dotenv](https://img.shields.io/badge/python--dotenv-111827?style=for-the-badge)
+![psutil](https://img.shields.io/badge/psutil-111827?style=for-the-badge)
+![Cryptography](https://img.shields.io/badge/Cryptography-0F172A?style=for-the-badge)
+
+### Web Platform
+
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
+![Uvicorn](https://img.shields.io/badge/Uvicorn-111827?style=for-the-badge)
+![React](https://img.shields.io/badge/React-111827?style=for-the-badge&logo=react&logoColor=61DAFB)
+![TypeScript](https://img.shields.io/badge/TypeScript-0F172A?style=for-the-badge&logo=typescript&logoColor=3178C6)
+![React Router](https://img.shields.io/badge/React%20Router-1F2937?style=for-the-badge&logo=reactrouter&logoColor=CA4245)
+![Node.js](https://img.shields.io/badge/Node.js-111827?style=for-the-badge&logo=node.js&logoColor=5FA04E)
+![Vite](https://img.shields.io/badge/Vite-1A1B3A?style=for-the-badge&logo=vite&logoColor=646CFF)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-0F172A?style=for-the-badge&logo=tailwindcss&logoColor=38BDF8)
+![React Markdown](https://img.shields.io/badge/React%20Markdown-111827?style=for-the-badge)
+![Remark GFM](https://img.shields.io/badge/Remark%20GFM-0F172A?style=for-the-badge)
+![Lucide](https://img.shields.io/badge/Lucide-111827?style=for-the-badge)
+
+### Visualization
+
+![MapLibre](https://img.shields.io/badge/MapLibre-0F172A?style=for-the-badge&logo=maplibre&logoColor=white)
+![Leaflet](https://img.shields.io/badge/Leaflet-0B3D2E?style=for-the-badge&logo=leaflet&logoColor=white)
+![Recharts](https://img.shields.io/badge/Recharts-1F2937?style=for-the-badge&logo=chartdotjs&logoColor=white)
+![Plotly](https://img.shields.io/badge/Plotly-111827?style=for-the-badge&logo=plotly&logoColor=white)
+![TanStack Table](https://img.shields.io/badge/TanStack%20Table-161B22?style=for-the-badge&logo=reacttable&logoColor=white)
+![Framer Motion](https://img.shields.io/badge/Framer%20Motion-0B0E13?style=for-the-badge&logo=framer&logoColor=white)
+
+### Data Sources
+
+![Finnhub](https://img.shields.io/badge/Finnhub-00C805?style=for-the-badge&logoColor=white)
+![Yahoo Finance](https://img.shields.io/badge/Yahoo%20Finance-6001D2?style=for-the-badge&logo=yahoo&logoColor=white)
+![OpenSky](https://img.shields.io/badge/OpenSky-111827?style=for-the-badge)
+
+### Testing
+
+![PyTest](https://img.shields.io/badge/PyTest-0F172A?style=for-the-badge&logo=pytest&logoColor=white)
+![Playwright](https://img.shields.io/badge/Playwright-0B0E13?style=for-the-badge&logo=playwright&logoColor=45BA4B)
+
 ## Data Sources
 
 - **Finnhub**: symbols and quotes (optional - see [configuration](#configuration))
 - **Yahoo Finance**: historical data and macro snapshots
+- **OpenSky**: flight tracking feed (auth optional)
 - **Open-Meteo**: weather signals for reports
 - **GDELT**: conflict signals for reports (RSS fallback)
 - **RSS News**: CNBC Top/World, MarketWatch, BBC Business (cached, health-aware)

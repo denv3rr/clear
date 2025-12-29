@@ -124,6 +124,7 @@ web/dist/
 web/.vite/
 web/test-results/
 web/playwright-report/
+web/.playwright/
 web/.env*
 web/.cache/
 web/.parcel-cache/

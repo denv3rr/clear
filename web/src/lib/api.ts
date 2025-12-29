@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DEMO_MODE, getMockResponse } from "./mockData";
+import { getTrackerPaused, useTrackerPause } from "./trackerPause";
 
 const runtimeHost =
   typeof window !== "undefined" && window.location.hostname
@@ -66,6 +67,13 @@ export async function apiGet<T>(path: string, ttl = 0, signal?: AbortSignal): Pr
       return existing.data;
     }
   }
+  if (path.startsWith("/api/trackers") && getTrackerPaused()) {
+    const existing = cache.get(key) as CacheEntry<T> | undefined;
+    if (existing) {
+      return existing.data;
+    }
+    throw new Error("Tracker updates paused.");
+  }
   if (DEMO_MODE) {
     const payload = getMockResponse(path) as T;
     if (ttl > 0) {
@@ -98,6 +106,42 @@ export async function apiGet<T>(path: string, ttl = 0, signal?: AbortSignal): Pr
   return payload;
 }
 
+type WriteMethod = "POST" | "PATCH" | "PUT" | "DELETE";
+
+async function apiWrite<T>(path: string, method: WriteMethod, body?: unknown): Promise<T> {
+  if (DEMO_MODE) {
+    throw new Error("Demo mode: write operations are disabled.");
+  }
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const apiKey = getApiKey() || ENV_API_KEY;
+  if (apiKey) {
+    headers["X-API-Key"] = apiKey;
+  }
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined
+    });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "Network error";
+    throw new Error(`API unreachable at ${API_BASE}. ${detail}`);
+  }
+  if (!response.ok) {
+    throw new Error(`API ${response.status}`);
+  }
+  return parseJson<T>(response);
+}
+
+export function apiPost<T>(path: string, body?: unknown): Promise<T> {
+  return apiWrite<T>(path, "POST", body);
+}
+
+export function apiPatch<T>(path: string, body?: unknown): Promise<T> {
+  return apiWrite<T>(path, "PATCH", body);
+}
+
 type UseApiOptions = {
   ttl?: number;
   interval?: number;
@@ -110,10 +154,12 @@ export function useApi<T>(path: string, options: UseApiOptions = {}) {
   const [loading, setLoading] = useState<boolean>(enabled);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const { paused } = useTrackerPause();
+  const trackerPaused = paused && path.startsWith("/api/trackers");
 
   const fetchData = useMemo(
     () => async () => {
-      if (!enabled) return;
+      if (!enabled || trackerPaused) return;
       abortRef.current?.abort();
       abortRef.current = new AbortController();
       try {
@@ -127,15 +173,19 @@ export function useApi<T>(path: string, options: UseApiOptions = {}) {
         setLoading(false);
       }
     },
-    [enabled, path, ttl]
+    [enabled, path, ttl, trackerPaused]
   );
 
   useEffect(() => {
+    if (trackerPaused) {
+      setLoading(false);
+      return;
+    }
     fetchData();
     if (!interval || !enabled) return;
     const timer = setInterval(fetchData, interval);
     return () => clearInterval(timer);
-  }, [fetchData, interval, enabled]);
+  }, [fetchData, interval, enabled, trackerPaused]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 

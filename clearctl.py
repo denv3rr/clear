@@ -20,6 +20,7 @@ from utils.launcher import (
     filter_matching_pids,
     find_pids_by_port,
     filter_existing,
+    install_windows_console_handler,
     port_in_use,
     process_alive,
     read_pid,
@@ -212,16 +213,19 @@ def _install_shutdown_handlers(args: argparse.Namespace) -> None:
         except Exception:
             continue
     atexit.register(lambda: _stop(args) if _ACTIVE_ARGS is args else None)
+    install_windows_console_handler(lambda: _stop(args))
 
 
 def _cleanup_existing_processes() -> None:
     for label, pid_path in (("API", API_PID), ("Web", WEB_PID)):
         pid = read_pid(pid_path)
         if pid and process_alive(pid):
-            terminate_pid(pid)
+            terminate_pid(pid, timeout=8.0)
             print(f">> Stopped existing {label} process (pid {pid}).")
         if pid_path.exists():
             pid_path.unlink(missing_ok=True)
+    wait_for_port_release(DEFAULT_API_PORT, timeout=10.0)
+    wait_for_port_release(DEFAULT_UI_PORT, timeout=10.0)
 
 
 def _terminate_port_processes(port: int, label: str, auto_yes: bool) -> bool:
@@ -239,14 +243,28 @@ def _terminate_port_processes(port: int, label: str, auto_yes: bool) -> bool:
         print(f">> Terminated {label} port process (pid {pid}).")
     if remaining:
         pid_list = ", ".join(str(pid) for pid in remaining)
-        if not auto_yes and not _prompt_yes_no(
-            f"{label} port {port} in use by pid(s) {pid_list}. Terminate them?"
-        ):
-            return False
+        if not auto_yes:
+            print(
+                f">> {label} port {port} in use by pid(s) {pid_list}. Terminating."
+            )
         for pid in remaining:
             terminate_pid(pid)
             print(f">> Terminated {label} port process (pid {pid}).")
     return True
+
+
+def _force_release_ports(ports: Iterable[int], timeout: float = 8.0) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        all_clear = True
+        for port in ports:
+            if port_in_use(port):
+                all_clear = False
+                terminate_pids_by_port(port, None, timeout=4.0)
+        if all_clear:
+            return True
+        safe_sleep(0.2)
+    return all(not port_in_use(port) for port in ports)
 
 
 def _start(args: argparse.Namespace) -> int:
@@ -328,6 +346,7 @@ def _stop(args: argparse.Namespace) -> int:
     ensure_runtime_dirs()
     stopped = False
     failed = False
+    auto_yes = True
     tokens_by_label = {
         "API": ["uvicorn", "web_api.app:app"],
         "Web": ["vite", "npm", "node"],
@@ -337,9 +356,9 @@ def _stop(args: argparse.Namespace) -> int:
     for label, pid_path in (("API", API_PID), ("Web", WEB_PID)):
         pid = read_pid(pid_path)
         if pid and process_alive(pid):
-            terminate_pid(pid, timeout=8.0)
+            terminate_pid(pid, timeout=4.0)
             stopped = True
-            if wait_for_exit(pid, timeout=8.0):
+            if wait_for_exit(pid, timeout=4.0):
                 print(f">> Stopped {label} (pid {pid}).")
             else:
                 failed = True
@@ -347,13 +366,13 @@ def _stop(args: argparse.Namespace) -> int:
         if pid_path.exists():
             pid_path.unlink(missing_ok=True)
         port = api_port if label == "API" else ui_port
-        extra = terminate_pids_by_port(port, tokens_by_label.get(label), timeout=8.0)
+        extra = terminate_pids_by_port(port, tokens_by_label.get(label), timeout=4.0)
         if extra:
             print(f">> Terminated {label} port process(es): {', '.join(str(pid) for pid in extra)}")
-        if not wait_for_port_release(port, timeout=10.0):
-            failed = True
-    _terminate_port_processes(api_port, "API", args.yes)
-    _terminate_port_processes(ui_port, "UI", args.yes)
+    _terminate_port_processes(api_port, "API", auto_yes)
+    _terminate_port_processes(ui_port, "UI", auto_yes)
+    if not _force_release_ports((api_port, ui_port), timeout=8.0):
+        failed = True
     if port_in_use(api_port) or port_in_use(ui_port):
         failed = True
         print(">> One or more service ports are still in use. Check running processes.")

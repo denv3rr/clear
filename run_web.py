@@ -10,11 +10,19 @@ import sys
 import time
 import webbrowser
 
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except Exception:
+    pass
+
 from utils.launcher import (
     RUNTIME_DIR,
     ensure_runtime_dirs,
     filter_matching_pids,
     find_pids_by_port,
+    install_windows_console_handler,
     process_alive,
     read_pid,
     terminate_pid,
@@ -55,16 +63,15 @@ def _print_header() -> None:
 
 
 def _prompt_yes_no(message: str) -> bool:
-    reply = input(f"{message} [y/N]: ").strip().lower()
-    return reply in ("y", "yes")
+    return False
 
 
-def _python_deps_ready() -> bool:
+def _python_deps_ready(auto_yes: bool) -> bool:
     missing = [pkg for pkg in REQUIRED_PYTHON if importlib.util.find_spec(pkg) is None]
     if not missing:
         return True
     print(">> Missing Python dependencies:", ", ".join(missing))
-    if _prompt_yes_no("Install Python dependencies from requirements.txt?"):
+    if auto_yes:
         subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
         return True
     print(">> Aborted. Install dependencies then retry.")
@@ -110,7 +117,7 @@ def _npm_available() -> str | None:
     return npm_path
 
 
-def _ensure_node_modules(web_dir: str, npm_path: str) -> bool:
+def _ensure_node_modules(web_dir: str, npm_path: str, auto_yes: bool) -> bool:
     if os.path.isdir(os.path.join(web_dir, "node_modules")):
         required = ["react-markdown", "remark-gfm"]
         missing = [
@@ -119,7 +126,7 @@ def _ensure_node_modules(web_dir: str, npm_path: str) -> bool:
         if not missing:
             return True
         print(">> Web dependencies missing:", ", ".join(missing))
-        if _prompt_yes_no("Run npm install in ./web to update dependencies?"):
+        if auto_yes:
             try:
                 subprocess.check_call([npm_path, "install"], cwd=web_dir)
                 return True
@@ -131,7 +138,7 @@ def _ensure_node_modules(web_dir: str, npm_path: str) -> bool:
         print(">> Aborted. Run npm install and retry.")
         return False
     print(">> Web dependencies not installed (node_modules missing).")
-    if _prompt_yes_no("Run npm install in ./web?"):
+    if auto_yes:
         try:
             subprocess.check_call([npm_path, "install"], cwd=web_dir)
             return True
@@ -175,26 +182,31 @@ def _terminate_port_processes(
         for pid in safe_pids:
             terminate_pid(pid)
     if remaining:
-        pid_list = ", ".join(str(pid) for pid in remaining)
-        if auto_yes or _prompt_yes_no(
-            f"{label} port {port} in use by pid(s) {pid_list}. Terminate them?"
-        ):
-            for pid in remaining:
-                terminate_pid(pid)
-            return True
-        print(f">> {label} port {port} in use by non-Clear process(es) {pid_list}.")
-        return False
+        for pid in remaining:
+            terminate_pid(pid)
+        return True
     return True
+
+
+def _force_release_ports() -> None:
+    for port in (8000, 5173):
+        pids = find_pids_by_port(port)
+        for pid in pids:
+            terminate_pid(pid, timeout=8.0)
+        terminate_pids_by_port(port, None, timeout=8.0)
+        wait_for_port_release(port, timeout=10.0)
 
 
 def _cleanup_existing_processes() -> None:
     for label, pid_path in (("API", API_PID), ("Web", WEB_PID)):
         pid = read_pid(pid_path)
         if pid and process_alive(pid):
-            terminate_pid(pid)
+            terminate_pid(pid, timeout=8.0)
             print(f">> Stopped {label} (pid {pid}).")
         if pid_path.exists():
             pid_path.unlink(missing_ok=True)
+    wait_for_port_release(8000, timeout=10.0)
+    wait_for_port_release(5173, timeout=10.0)
 
 
 def _launch_processes(
@@ -272,6 +284,7 @@ def _launch_processes(
         terminate_pids_by_port(ui_port, ["vite", "npm", "node"], timeout=8.0)
         wait_for_port_release(api_port, timeout=10.0)
         wait_for_port_release(ui_port, timeout=10.0)
+        _force_release_ports()
 
     def _handle_signal(signum: int, _frame: object) -> None:
         print("\n>> Shutting down web stack...")
@@ -284,6 +297,7 @@ def _launch_processes(
         except Exception:
             continue
     atexit.register(_shutdown)
+    install_windows_console_handler(_shutdown)
 
     try:
         while True:
@@ -306,14 +320,18 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--no-open", action="store_true", help="Do not open the browser.")
     parser.add_argument("--detach", action="store_true", help="Run API/UI in background and exit.")
     parser.add_argument("--reload", action="store_true", help="Reload the API on code changes.")
-    parser.add_argument("--yes", action="store_true", help="Auto-terminate processes on required ports.")
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Auto-install missing dependencies without prompting.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = _parse_args()
     _print_header()
-    if not _python_deps_ready():
+    if not _python_deps_ready(args.yes):
         return
     npm_path = _npm_available()
     if not npm_path:
@@ -327,14 +345,14 @@ def main() -> None:
     if not os.path.isdir(web_dir):
         print(">> ./web directory missing. Cannot launch web UI.")
         return
-    if not _ensure_node_modules(web_dir, npm_path):
+    if not _ensure_node_modules(web_dir, npm_path, args.yes):
         return
     exit_code = _launch_processes(
         npm_path,
         args.detach,
         not args.no_open,
         args.reload,
-        args.yes,
+        True,
     )
     if exit_code:
         sys.exit(exit_code)

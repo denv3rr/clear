@@ -199,3 +199,31 @@ def safe_sleep(seconds: float) -> None:
     end = time.time() + seconds
     while time.time() < end:
         time.sleep(0.05)
+
+
+_WINDOWS_HANDLER = None
+
+
+def install_windows_console_handler(callback) -> None:
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+    except Exception:
+        return
+
+    handler_type = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_uint)
+
+    def _handler(ctrl_type: int) -> bool:
+        try:
+            callback()
+        finally:
+            os._exit(0)
+        return True
+
+    global _WINDOWS_HANDLER
+    _WINDOWS_HANDLER = handler_type(_handler)
+    try:
+        ctypes.windll.kernel32.SetConsoleCtrlHandler(_WINDOWS_HANDLER, True)
+    except Exception:
+        _WINDOWS_HANDLER = None

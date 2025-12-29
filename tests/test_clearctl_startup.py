@@ -17,7 +17,7 @@ def test_cleanup_existing_processes_removes_pidfiles(monkeypatch, tmp_path: Path
     def fake_alive(pid: int) -> bool:
         return True
 
-    def fake_terminate(pid: int) -> bool:
+    def fake_terminate(pid: int, **_kwargs) -> bool:
         called.append(pid)
         return True
 
@@ -40,7 +40,7 @@ def test_terminate_port_processes_auto_yes(monkeypatch) -> None:
     def fake_find_pids(port: int) -> list[int]:
         return [222, 333]
 
-    def fake_terminate(pid: int) -> bool:
+    def fake_terminate(pid: int, **_kwargs) -> bool:
         killed.append(pid)
         return True
 
@@ -157,7 +157,7 @@ def test_stop_returns_failure_when_pid_lingers(monkeypatch, tmp_path: Path) -> N
     monkeypatch.setattr(clearctl, "WEB_PID", web_pid)
     monkeypatch.setattr(clearctl, "ensure_runtime_dirs", lambda: None)
     monkeypatch.setattr(clearctl, "process_alive", lambda pid: True)
-    monkeypatch.setattr(clearctl, "terminate_pid", lambda pid: True)
+    monkeypatch.setattr(clearctl, "terminate_pid", lambda pid, **_kwargs: True)
     monkeypatch.setattr(clearctl, "wait_for_exit", lambda pid, timeout=5.0: False)
     monkeypatch.setattr(clearctl, "port_in_use", lambda port: True)
     monkeypatch.setattr(clearctl, "_terminate_port_processes", lambda *_args, **_kwargs: True)

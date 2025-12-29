@@ -7,6 +7,7 @@ import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { KpiCard } from "../components/ui/KpiCard";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { apiGet, useApi } from "../lib/api";
+import { useTrackerPause } from "../lib/trackerPause";
 import { useTrackerStream } from "../lib/stream";
 
 type TrackerSnapshot = {
@@ -97,6 +98,7 @@ export default function Trackers() {
     interval: 5,
     mode
   });
+  const { paused } = useTrackerPause();
   const {
     data: pollData,
     error: pollError,
@@ -147,6 +149,7 @@ export default function Trackers() {
   }, [searchResults, includeCommercial, includePrivate, categoryFilter]);
   const authHint = "Check CLEAR_WEB_API_KEY + localStorage clear_api_key.";
   const errorMessages = [
+    paused ? "Tracker updates paused." : null,
     pollError
       ? `Tracker snapshot failed: ${pollError}${
           pollError.includes("401") || pollError.includes("403") ? ` (${authHint})` : ""
@@ -260,10 +263,14 @@ export default function Trackers() {
       setDetail(null);
       return;
     }
+    if (paused) {
+      setDetail(null);
+      return;
+    }
     apiGet<TrackerDetail>(`/api/trackers/detail/${encodeURIComponent(selectedId)}`, 0)
       .then(setDetail)
       .catch(() => setDetail(null));
-  }, [selectedId]);
+  }, [selectedId, paused]);
 
   useEffect(() => {
     if (!mapRef.current || mapInstance.current) return;

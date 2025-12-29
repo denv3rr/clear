@@ -4,6 +4,7 @@ import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { MeterBar } from "../components/ui/Charts";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { clearApiKey, getApiKey, setApiKey, useApi } from "../lib/api";
+import { useTrackerPause } from "../lib/trackerPause";
 
 type SettingsPayload = {
   settings: {
@@ -35,6 +36,7 @@ type SettingsPayload = {
     cpu_usage?: string;
     mem_usage?: string;
     cpu_cores?: number | string;
+    psutil_available?: boolean;
   };
   system_metrics?: {
     cpu_percent?: number | null;
@@ -54,8 +56,10 @@ export default function Settings() {
   const [apiKeyValue, setApiKeyValue] = useState(getApiKey() || "");
   const [apiKeySaved, setApiKeySaved] = useState(Boolean(getApiKey()));
   const [apiKeyMessage, setApiKeyMessage] = useState<string | null>(null);
+  const { paused, toggle } = useTrackerPause();
 
   const metrics = data?.system_metrics;
+  const psutilAvailable = data?.system?.psutil_available;
   const authHint = "Check CLEAR_WEB_API_KEY + localStorage clear_api_key.";
   const errorMessages = [
     error
@@ -86,7 +90,11 @@ export default function Settings() {
               <p>Flight Feeds</p>
               <p>
                 {data?.feeds?.flights?.configured
-                  ? `${data?.feeds?.flights?.url_sources ?? 0} URLs / ${data?.feeds?.flights?.path_sources ?? 0} files`
+                  ? data?.feeds?.flights?.url_sources || data?.feeds?.flights?.path_sources
+                    ? `${data?.feeds?.flights?.url_sources ?? 0} URLs / ${data?.feeds?.flights?.path_sources ?? 0} files`
+                    : data?.feeds?.opensky?.credentials_set
+                    ? "OpenSky (auth)"
+                    : "OpenSky (anon)"
                   : "Not configured"}
               </p>
             </div>
@@ -97,6 +105,22 @@ export default function Settings() {
             <div className="flex items-center justify-between py-2">
               <p>OpenSky Credentials</p>
               <p>{data?.feeds?.opensky?.credentials_set ? "Configured" : "Missing"}</p>
+            </div>
+            <div className="mt-3 flex items-center justify-between rounded-lg border border-slate-900/60 px-3 py-2 text-xs">
+              <span className="text-slate-400">
+                Tracker Requests
+              </span>
+              <button
+                type="button"
+                onClick={toggle}
+                className={`rounded-full border px-3 py-1 ${
+                  paused
+                    ? "border-amber-400/70 text-amber-200"
+                    : "border-emerald-400/70 text-emerald-200"
+                }`}
+              >
+                {paused ? "Paused" : "Live"}
+              </button>
             </div>
           </div>
         </div>
@@ -121,12 +145,28 @@ export default function Settings() {
                 <p>{data?.system?.python_version ?? "unknown"}</p>
               </div>
               <div className="space-y-1">
+                <p className="text-slate-400">psutil</p>
+                <p>{psutilAvailable === false ? "Missing" : psutilAvailable === true ? "Available" : "unknown"}</p>
+              </div>
+              <div className="space-y-1">
                 <p className="text-slate-400">IP</p>
                 <p>{data?.system?.ip ?? "unknown"}</p>
               </div>
               <div className="space-y-1">
                 <p className="text-slate-400">Session</p>
                 <p>{data?.system?.login_time ?? "unknown"}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-slate-400">CPU</p>
+                <p>{data?.system?.cpu_usage ?? "unknown"}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-slate-400">Cores</p>
+                <p>{data?.system?.cpu_cores ?? "unknown"}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-slate-400">Memory</p>
+                <p>{data?.system?.mem_usage ?? "unknown"}</p>
               </div>
             </div>
           </div>
@@ -183,7 +223,7 @@ export default function Settings() {
           </div>
           <div className="rounded-xl border border-slate-800/60 p-4 text-sm text-slate-300">
             <p className="text-xs text-slate-400 mb-4">Live System Load</p>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <div className="space-y-2">
                 <p className="text-slate-400 text-xs uppercase tracking-[0.2em]">CPU</p>
                 <p className="text-lg">{metrics?.cpu_percent ?? 0}%</p>
@@ -202,6 +242,11 @@ export default function Settings() {
                   {metrics?.disk_used_gb ?? 0} / {metrics?.disk_total_gb ?? 0} GB
                 </p>
                 <MeterBar value={metrics?.disk_percent} color="#f5b94c" />
+              </div>
+              <div className="space-y-2">
+                <p className="text-slate-400 text-xs uppercase tracking-[0.2em]">Swap</p>
+                <p className="text-lg">{metrics?.swap_percent ?? 0}%</p>
+                <MeterBar value={metrics?.swap_percent} color="#a3e635" />
               </div>
             </div>
           </div>

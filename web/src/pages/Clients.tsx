@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AreaSparkline, DistributionBars } from "../components/ui/Charts";
 import { Card } from "../components/ui/Card";
 import { Collapsible } from "../components/ui/Collapsible";
@@ -6,7 +6,7 @@ import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { KpiCard } from "../components/ui/KpiCard";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { Surface3D } from "../components/ui/Surface3D";
-import { apiGet, useApi } from "../lib/api";
+import { apiGet, apiPatch, apiPost, useApi } from "../lib/api";
 
 type ClientSummary = {
   client_id: string;
@@ -57,6 +57,7 @@ type RiskPayload = {
 
 type RegimePayload = {
   error?: string;
+  error_detail?: string;
   transition_matrix?: number[][];
   state_probs?: Record<string, number>;
   evolution?: { series?: Record<string, number>[] };
@@ -125,6 +126,11 @@ type DashboardPayload = {
   warnings: string[];
 };
 
+type AccountWriteResponse = {
+  client: ClientDetail;
+  account: AccountDetail;
+};
+
 const intervals = ["1W", "1M", "3M", "6M", "1Y"];
 
 const metricLabels: Record<string, string> = {
@@ -157,7 +163,7 @@ export default function Clients() {
   const [dashboard, setDashboard] = useState<DashboardPayload | null>(null);    
   const [dashboardError, setDashboardError] = useState<string | null>(null);    
   const [patterns, setPatterns] = useState<PatternPayload | null>(null);        
-  const [patternsError, setPatternsError] = useState<string | null>(null);      
+  const [patternsError, setPatternsError] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(true);
   const [profileOpen, setProfileOpen] = useState(true);
   const [riskOpen, setRiskOpen] = useState(true);
@@ -166,12 +172,34 @@ export default function Clients() {
   const [holdingsOpen, setHoldingsOpen] = useState(true);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(true);
   const [manualOpen, setManualOpen] = useState(true);
-
-  useEffect(() => {
-    if (!selectedId && rows.length) {
-      setSelectedId(rows[0].client_id);
-    }
-  }, [rows, selectedId]);
+  const [formMode, setFormMode] = useState<"create" | "edit" | null>(null);
+  const [accountFormOpen, setAccountFormOpen] = useState(false);
+  const [accountEditOpen, setAccountEditOpen] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [formSaving, setFormSaving] = useState(false);
+  const [clientForm, setClientForm] = useState({
+    name: "",
+    risk_profile: "",
+    residency_country: "",
+    tax_country: "",
+    reporting_currency: "USD",
+    treaty_country: "",
+    tax_id: ""
+  });
+  const [accountForm, setAccountForm] = useState({
+    account_name: "",
+    account_type: "Taxable",
+    ownership_type: "Individual",
+    custodian: "",
+    tags: ""
+  });
+  const [accountEditForm, setAccountEditForm] = useState({
+    account_name: "",
+    account_type: "",
+    ownership_type: "",
+    custodian: "",
+    tags: ""
+  });
 
   useEffect(() => {
     if (!selectedId) {
@@ -192,6 +220,38 @@ export default function Clients() {
         setDetailError(err instanceof Error ? err.message : "Client detail failed.");
       });
   }, [selectedId, selectedAccount]);
+
+  useEffect(() => {
+    if (formMode !== "edit" || !detail) return;
+    setClientForm({
+      name: detail.name || "",
+      risk_profile: detail.risk_profile || "",
+      residency_country: String(detail.tax_profile?.residency_country || ""),
+      tax_country: String(detail.tax_profile?.tax_country || ""),
+      reporting_currency: String(detail.tax_profile?.reporting_currency || "USD"),
+      treaty_country: String(detail.tax_profile?.treaty_country || ""),
+      tax_id: String(detail.tax_profile?.tax_id || "")
+    });
+  }, [formMode, detail]);
+
+  useEffect(() => {
+    if (!accountEditOpen || !detail || selectedAccount === "portfolio") return;
+    const account = detail.accounts.find((item) => item.account_id === selectedAccount);
+    if (!account) return;
+    setAccountEditForm({
+      account_name: account.account_name || "",
+      account_type: account.account_type || "",
+      ownership_type: account.ownership_type || "",
+      custodian: account.custodian || "",
+      tags: account.tags?.join(", ") || ""
+    });
+  }, [accountEditOpen, detail, selectedAccount]);
+
+  useEffect(() => {
+    if (selectedAccount === "portfolio") {
+      setAccountEditOpen(false);
+    }
+  }, [selectedAccount]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -250,6 +310,16 @@ export default function Clients() {
     }));
   }, [detail]);
 
+  const summary = useMemo(() => {
+    const accounts = rows.reduce((acc, client) => acc + (client.accounts_count || 0), 0);
+    const holdings = rows.reduce((acc, client) => acc + (client.holdings_count || 0), 0);
+    return {
+      clients: rows.length,
+      accounts,
+      holdings
+    };
+  }, [rows]);
+
   const profileRows = useMemo(() => {
     const entries = Object.entries(detail?.tax_profile || {});
     if (!entries.length) {
@@ -290,22 +360,198 @@ export default function Clients() {
       : null,
     detailError ? `Client detail failed: ${detailError}` : null,
     dashboardError ? `Dashboard failed: ${dashboardError}` : null,
-    patternsError ? `Patterns failed: ${patternsError}` : null
+    patternsError ? `Patterns failed: ${patternsError}` : null,
+    formError ? `Client workflow: ${formError}` : null
   ].filter(Boolean) as string[];
+
+  const resetClientForm = () => {
+    setClientForm({
+      name: "",
+      risk_profile: "",
+      residency_country: "",
+      tax_country: "",
+      reporting_currency: "USD",
+      treaty_country: "",
+      tax_id: ""
+    });
+  };
+
+  const resetAccountForm = () => {
+    setAccountForm({
+      account_name: "",
+      account_type: "Taxable",
+      ownership_type: "Individual",
+      custodian: "",
+      tags: ""
+    });
+  };
+
+  const resetAccountEditForm = () => {
+    setAccountEditForm({
+      account_name: "",
+      account_type: "",
+      ownership_type: "",
+      custodian: "",
+      tags: ""
+    });
+  };
+
+  const handleCreateClient = async (event: FormEvent) => {
+    event.preventDefault();
+    setFormSaving(true);
+    setFormError(null);
+    try {
+      const payload = {
+        name: clientForm.name.trim(),
+        risk_profile: clientForm.risk_profile.trim() || undefined,
+        tax_profile: {
+          residency_country: clientForm.residency_country.trim(),
+          tax_country: clientForm.tax_country.trim(),
+          reporting_currency: clientForm.reporting_currency.trim() || "USD",
+          treaty_country: clientForm.treaty_country.trim(),
+          tax_id: clientForm.tax_id.trim()
+        }
+      };
+      const created = await apiPost<ClientDetail>("/api/clients", payload);
+      await refreshIndex();
+      setSelectedId(created.client_id);
+      setSelectedAccount("portfolio");
+      setFormMode(null);
+      resetClientForm();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to create client.");
+    } finally {
+      setFormSaving(false);
+    }
+  };
+
+  const handleUpdateClient = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!selectedId) return;
+    setFormSaving(true);
+    setFormError(null);
+    try {
+      const payload = {
+        name: clientForm.name.trim(),
+        risk_profile: clientForm.risk_profile.trim() || undefined,
+        tax_profile: {
+          residency_country: clientForm.residency_country.trim(),
+          tax_country: clientForm.tax_country.trim(),
+          reporting_currency: clientForm.reporting_currency.trim() || "USD",
+          treaty_country: clientForm.treaty_country.trim(),
+          tax_id: clientForm.tax_id.trim()
+        }
+      };
+      const updated = await apiPatch<ClientDetail>(
+        `/api/clients/${encodeURIComponent(selectedId)}`,
+        payload
+      );
+      setDetail(updated);
+      await refreshIndex();
+      setFormMode(null);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to update client.");
+    } finally {
+      setFormSaving(false);
+    }
+  };
+
+  const handleAddAccount = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!selectedId) return;
+    setFormSaving(true);
+    setFormError(null);
+    try {
+      const tags = accountForm.tags
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean);
+      const payload = {
+        account_name: accountForm.account_name.trim(),
+        account_type: accountForm.account_type.trim(),
+        ownership_type: accountForm.ownership_type.trim(),
+        custodian: accountForm.custodian.trim(),
+        tags
+      };
+      const updated = await apiPost<AccountWriteResponse>(
+        `/api/clients/${encodeURIComponent(selectedId)}/accounts`,
+        payload
+      );
+      setDetail(updated.client);
+      setSelectedAccount(updated.account.account_id);
+      setAccountFormOpen(false);
+      resetAccountForm();
+      await refreshIndex();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to add account.");
+    } finally {
+      setFormSaving(false);
+    }
+  };
+
+  const handleUpdateAccount = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!selectedId || selectedAccount === "portfolio") return;
+    setFormSaving(true);
+    setFormError(null);
+    try {
+      const tags = accountEditForm.tags
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean);
+      const payload = {
+        account_name: accountEditForm.account_name.trim(),
+        account_type: accountEditForm.account_type.trim(),
+        ownership_type: accountEditForm.ownership_type.trim(),
+        custodian: accountEditForm.custodian.trim(),
+        tags
+      };
+      const updated = await apiPatch<AccountWriteResponse>(
+        `/api/clients/${encodeURIComponent(selectedId)}/accounts/${encodeURIComponent(selectedAccount)}`,
+        payload
+      );
+      setDetail(updated.client);
+      setAccountEditOpen(false);
+      resetAccountEditForm();
+      await refreshIndex();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to update account.");
+    } finally {
+      setFormSaving(false);
+    }
+  };
 
   return (
     <Card className="rounded-2xl p-5">
       <SectionHeader
         label="CLIENTS"
         title="Portfolio Command Center"
-        right={dashboard?.client ? `${dashboard.client.name}` : `${rows.length} clients`}
+        right={
+          selectedId
+            ? `${detail?.name || "Loading client"}`
+            : `${summary.clients} clients`
+        }
       />
       <ErrorBanner messages={errorMessages} onRetry={refreshIndex} />
-      <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-5">
+      <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6">
         <div className="space-y-3 text-sm text-slate-300">
-          <label htmlFor="client-search" className="text-xs text-slate-400">
-            Search
-          </label>
+          <div className="flex items-center justify-between">
+            <label htmlFor="client-search" className="text-xs text-slate-400">
+              Search
+            </label>
+            <button
+              type="button"
+              onClick={() => {
+                setFormMode("create");
+                setAccountFormOpen(false);
+                resetClientForm();
+                setFormError(null);
+              }}
+              className="rounded-full border border-slate-800/70 px-3 py-1 text-[11px] text-slate-300 hover:text-white"
+            >
+              New Client
+            </button>
+          </div>
           <input
             id="client-search"
             name="client-search"
@@ -339,95 +585,617 @@ export default function Clients() {
             ))
           )}
         </div>
-        <div className="lg:col-span-3 space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-            <div className="rounded-xl border border-slate-800/60 p-4">
-              <p className="text-xs text-slate-400">Interval</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {intervals.map((opt) => (
+        <div className="lg:col-span-3 space-y-5">
+          {formMode === "create" ? (
+            <div className="rounded-2xl border border-slate-800/60 bg-ink-950/40 p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-slate-400">Create Client</p>
+                  <p className="text-sm text-slate-100 font-medium">New Client Profile</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFormMode(null)}
+                  className="text-xs text-slate-400 hover:text-slate-200"
+                >
+                  Cancel
+                </button>
+              </div>
+              <form className="mt-4 space-y-4" onSubmit={handleCreateClient}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-slate-400" htmlFor="client-name">
+                      Client Name
+                    </label>
+                    <input
+                      id="client-name"
+                      value={clientForm.name}
+                      onChange={(event) => setClientForm({ ...clientForm, name: event.target.value })}
+                      className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                      placeholder="Atlas Capital"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400" htmlFor="risk-profile">
+                      Risk Profile
+                    </label>
+                    <input
+                      id="risk-profile"
+                      value={clientForm.risk_profile}
+                      onChange={(event) => setClientForm({ ...clientForm, risk_profile: event.target.value })}
+                      className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                      placeholder="Balanced"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400" htmlFor="reporting-currency">
+                      Reporting Currency
+                    </label>
+                    <input
+                      id="reporting-currency"
+                      value={clientForm.reporting_currency}
+                      onChange={(event) =>
+                        setClientForm({ ...clientForm, reporting_currency: event.target.value })
+                      }
+                      className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                      placeholder="USD"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400" htmlFor="residency-country">
+                      Residency Country
+                    </label>
+                    <input
+                      id="residency-country"
+                      value={clientForm.residency_country}
+                      onChange={(event) =>
+                        setClientForm({ ...clientForm, residency_country: event.target.value })
+                      }
+                      className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                      placeholder="United States"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400" htmlFor="tax-country">
+                      Tax Country
+                    </label>
+                    <input
+                      id="tax-country"
+                      value={clientForm.tax_country}
+                      onChange={(event) => setClientForm({ ...clientForm, tax_country: event.target.value })}
+                      className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                      placeholder="United States"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400" htmlFor="treaty-country">
+                      Treaty Country
+                    </label>
+                    <input
+                      id="treaty-country"
+                      value={clientForm.treaty_country}
+                      onChange={(event) =>
+                        setClientForm({ ...clientForm, treaty_country: event.target.value })
+                      }
+                      className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                      placeholder="Canada"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400" htmlFor="tax-id">
+                      Tax ID
+                    </label>
+                    <input
+                      id="tax-id"
+                      value={clientForm.tax_id}
+                      onChange={(event) => setClientForm({ ...clientForm, tax_id: event.target.value })}
+                      className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                      placeholder="Optional"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-end gap-3">
                   <button
-                    key={opt}
                     type="button"
-                    onClick={() => setInterval(opt)}
-                    className={`rounded-full border px-3 py-1 text-[11px] ${
-                      interval === opt
-                        ? "border-emerald-400/70 text-emerald-200"
-                        : "border-slate-800/60 text-slate-400"
-                    }`}
+                    onClick={() => setFormMode(null)}
+                    className="text-xs text-slate-400 hover:text-slate-200"
                   >
-                    {opt}
+                    Cancel
                   </button>
-                ))}
+                  <button
+                    type="submit"
+                    disabled={formSaving}
+                    className="rounded-full border border-emerald-400/70 px-4 py-1 text-xs text-emerald-200"
+                  >
+                    {formSaving ? "Saving..." : "Create Client"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          ) : null}
+          {formMode === "edit" && selectedId ? (
+            <div className="rounded-2xl border border-slate-800/60 bg-ink-950/40 p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-slate-400">Edit Client</p>
+                  <p className="text-sm text-slate-100 font-medium">Update Client Profile</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFormMode(null)}
+                  className="text-xs text-slate-400 hover:text-slate-200"
+                >
+                  Cancel
+                </button>
+              </div>
+              <form className="mt-4 space-y-4" onSubmit={handleUpdateClient}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-slate-400" htmlFor="edit-client-name">
+                      Client Name
+                    </label>
+                    <input
+                      id="edit-client-name"
+                      value={clientForm.name}
+                      onChange={(event) => setClientForm({ ...clientForm, name: event.target.value })}
+                      className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400" htmlFor="edit-risk-profile">
+                      Risk Profile
+                    </label>
+                    <input
+                      id="edit-risk-profile"
+                      value={clientForm.risk_profile}
+                      onChange={(event) => setClientForm({ ...clientForm, risk_profile: event.target.value })}
+                      className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400" htmlFor="edit-reporting-currency">
+                      Reporting Currency
+                    </label>
+                    <input
+                      id="edit-reporting-currency"
+                      value={clientForm.reporting_currency}
+                      onChange={(event) =>
+                        setClientForm({ ...clientForm, reporting_currency: event.target.value })
+                      }
+                      className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400" htmlFor="edit-residency-country">
+                      Residency Country
+                    </label>
+                    <input
+                      id="edit-residency-country"
+                      value={clientForm.residency_country}
+                      onChange={(event) =>
+                        setClientForm({ ...clientForm, residency_country: event.target.value })
+                      }
+                      className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400" htmlFor="edit-tax-country">
+                      Tax Country
+                    </label>
+                    <input
+                      id="edit-tax-country"
+                      value={clientForm.tax_country}
+                      onChange={(event) => setClientForm({ ...clientForm, tax_country: event.target.value })}
+                      className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400" htmlFor="edit-treaty-country">
+                      Treaty Country
+                    </label>
+                    <input
+                      id="edit-treaty-country"
+                      value={clientForm.treaty_country}
+                      onChange={(event) =>
+                        setClientForm({ ...clientForm, treaty_country: event.target.value })
+                      }
+                      className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400" htmlFor="edit-tax-id">
+                      Tax ID
+                    </label>
+                    <input
+                      id="edit-tax-id"
+                      value={clientForm.tax_id}
+                      onChange={(event) => setClientForm({ ...clientForm, tax_id: event.target.value })}
+                      className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setFormMode(null)}
+                    className="text-xs text-slate-400 hover:text-slate-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={formSaving}
+                    className="rounded-full border border-emerald-400/70 px-4 py-1 text-xs text-emerald-200"
+                  >
+                    {formSaving ? "Saving..." : "Save Changes"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          ) : null}
+          {accountFormOpen && selectedId ? (
+            <div className="rounded-2xl border border-slate-800/60 bg-ink-950/40 p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-slate-400">Add Account</p>
+                  <p className="text-sm text-slate-100 font-medium">New Subaccount</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAccountFormOpen(false)}
+                  className="text-xs text-slate-400 hover:text-slate-200"
+                >
+                  Cancel
+                </button>
+              </div>
+              <form className="mt-4 space-y-4" onSubmit={handleAddAccount}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-slate-400" htmlFor="account-name">
+                      Account Name
+                    </label>
+                    <input
+                      id="account-name"
+                      value={accountForm.account_name}
+                      onChange={(event) =>
+                        setAccountForm({ ...accountForm, account_name: event.target.value })
+                      }
+                      className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                      placeholder="Primary Brokerage"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400" htmlFor="account-type">
+                      Account Type
+                    </label>
+                    <input
+                      id="account-type"
+                      value={accountForm.account_type}
+                      onChange={(event) =>
+                        setAccountForm({ ...accountForm, account_type: event.target.value })
+                      }
+                      className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                      placeholder="Taxable"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400" htmlFor="ownership-type">
+                      Ownership Type
+                    </label>
+                    <input
+                      id="ownership-type"
+                      value={accountForm.ownership_type}
+                      onChange={(event) =>
+                        setAccountForm({ ...accountForm, ownership_type: event.target.value })
+                      }
+                      className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                      placeholder="Individual"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400" htmlFor="custodian">
+                      Custodian
+                    </label>
+                    <input
+                      id="custodian"
+                      value={accountForm.custodian}
+                      onChange={(event) =>
+                        setAccountForm({ ...accountForm, custodian: event.target.value })
+                      }
+                      className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                      placeholder="Fidelity"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="text-xs text-slate-400" htmlFor="tags">
+                      Tags
+                    </label>
+                    <input
+                      id="tags"
+                      value={accountForm.tags}
+                      onChange={(event) => setAccountForm({ ...accountForm, tags: event.target.value })}
+                      className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                      placeholder="Retirement, Core"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setAccountFormOpen(false)}
+                    className="text-xs text-slate-400 hover:text-slate-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={formSaving}
+                    className="rounded-full border border-emerald-400/70 px-4 py-1 text-xs text-emerald-200"
+                  >
+                    {formSaving ? "Saving..." : "Add Account"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          ) : null}
+          {accountEditOpen && selectedId && selectedAccount !== "portfolio" ? (
+            <div className="rounded-2xl border border-slate-800/60 bg-ink-950/40 p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-slate-400">Edit Account</p>
+                  <p className="text-sm text-slate-100 font-medium">Update Subaccount</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAccountEditOpen(false)}
+                  className="text-xs text-slate-400 hover:text-slate-200"
+                >
+                  Cancel
+                </button>
+              </div>
+              <form className="mt-4 space-y-4" onSubmit={handleUpdateAccount}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-slate-400" htmlFor="edit-account-name">
+                      Account Name
+                    </label>
+                    <input
+                      id="edit-account-name"
+                      value={accountEditForm.account_name}
+                      onChange={(event) =>
+                        setAccountEditForm({ ...accountEditForm, account_name: event.target.value })
+                      }
+                      className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400" htmlFor="edit-account-type">
+                      Account Type
+                    </label>
+                    <input
+                      id="edit-account-type"
+                      value={accountEditForm.account_type}
+                      onChange={(event) =>
+                        setAccountEditForm({ ...accountEditForm, account_type: event.target.value })
+                      }
+                      className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400" htmlFor="edit-ownership-type">
+                      Ownership Type
+                    </label>
+                    <input
+                      id="edit-ownership-type"
+                      value={accountEditForm.ownership_type}
+                      onChange={(event) =>
+                        setAccountEditForm({ ...accountEditForm, ownership_type: event.target.value })
+                      }
+                      className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400" htmlFor="edit-custodian">
+                      Custodian
+                    </label>
+                    <input
+                      id="edit-custodian"
+                      value={accountEditForm.custodian}
+                      onChange={(event) =>
+                        setAccountEditForm({ ...accountEditForm, custodian: event.target.value })
+                      }
+                      className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="text-xs text-slate-400" htmlFor="edit-tags">
+                      Tags
+                    </label>
+                    <input
+                      id="edit-tags"
+                      value={accountEditForm.tags}
+                      onChange={(event) => setAccountEditForm({ ...accountEditForm, tags: event.target.value })}
+                      className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setAccountEditOpen(false)}
+                    className="text-xs text-slate-400 hover:text-slate-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={formSaving}
+                    className="rounded-full border border-emerald-400/70 px-4 py-1 text-xs text-emerald-200"
+                  >
+                    {formSaving ? "Saving..." : "Save Account"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          ) : null}
+          {!selectedId ? (
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <KpiCard label="Clients" value={`${summary.clients}`} tone="text-emerald-300" />
+                <KpiCard label="Accounts" value={`${summary.accounts}`} tone="text-slate-200" />
+                <KpiCard label="Holdings" value={`${summary.holdings}`} tone="text-slate-200" />
+              </div>
+              <div className="rounded-2xl border border-slate-800/60 bg-ink-950/50 p-6 text-sm text-slate-300">
+                <p className="text-slate-100 font-medium">Select a client to load analytics.</p>
+                <p className="mt-2 text-slate-400">
+                  Choose a profile on the left to open portfolio, risk, and diagnostics views.
+                </p>
               </div>
             </div>
-            <div className="rounded-xl border border-slate-800/60 p-4">
-              <label htmlFor="account-scope" className="text-xs text-slate-400">
-                Scope
-              </label>
-              <select
-                id="account-scope"
-                name="account-scope"
-                value={selectedAccount}
-                onChange={(event) => setSelectedAccount(event.target.value)}
-                className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
-              >
-                <option value="portfolio">Client Portfolio</option>
-                {accountOptions.map((account) => (
-                  <option key={account.value} value={account.value}>
-                    {account.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="rounded-xl border border-slate-800/60 p-4 text-xs text-slate-400">
-              <p className="text-slate-200">Status</p>
-              {dashboard?.warnings?.length ? (
-                <div className="mt-2 space-y-1 text-amber-300">
-                  {dashboard.warnings.map((warn) => (
-                    <p key={warn}>{warn}</p>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+              <div className="rounded-xl border border-slate-800/60 p-4">
+                <p className="text-xs text-slate-400">Interval</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {intervals.map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => setInterval(opt)}
+                      className={`rounded-full border px-3 py-1 text-[11px] ${
+                        interval === opt
+                          ? "border-emerald-400/70 text-emerald-200"
+                          : "border-slate-800/60 text-slate-400"
+                      }`}
+                    >
+                      {opt}
+                    </button>
                   ))}
                 </div>
-              ) : (
-                <p className="mt-2">Realtime valuations active.</p>
-              )}
-            </div>
-          </div>
-
-          {activeTotals ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
-              <KpiCard
-                label="Total Value"
-                value={`$${activeTotals.total_value.toFixed(2)}`}
-                tone="text-emerald-300"
-              />
-              <KpiCard
-                label="Market Value"
-                value={`$${activeTotals.market_value.toFixed(2)}`}
-                tone="text-slate-200"
-              />
-              <KpiCard
-                label="Manual Value"
-                value={`$${activeTotals.manual_value.toFixed(2)}`}
-                tone="text-slate-200"
-              />
-              <KpiCard
-                label="Holdings Count"
-                value={`${activeTotals.holdings_count}`}
-                tone="text-slate-200"
-              />
-            </div>
-          ) : (
-            <div className="rounded-xl border border-slate-800/60 bg-ink-950/50 p-6 text-sm text-slate-400">
-              Select a client to load the dashboard.
+              </div>
+              <div className="rounded-xl border border-slate-800/60 p-4">
+                <label htmlFor="account-scope" className="text-xs text-slate-400">
+                  Scope
+                </label>
+                <select
+                  id="account-scope"
+                  name="account-scope"
+                  value={selectedAccount}
+                  onChange={(event) => setSelectedAccount(event.target.value)}
+                  className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                >
+                  <option value="portfolio">Client Portfolio</option>
+                  {accountOptions.map((account) => (
+                    <option key={account.value} value={account.value}>
+                      {account.label}
+                    </option>
+                  ))}
+                </select>
+                {selectedAccount !== "portfolio" ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccountEditOpen(true);
+                      setAccountFormOpen(false);
+                      setFormMode(null);
+                      setFormError(null);
+                    }}
+                    className="mt-3 rounded-full border border-slate-800/70 px-3 py-1 text-[11px] text-slate-300 hover:text-white"
+                  >
+                    Edit Account
+                  </button>
+                ) : null}
+              </div>
+              <div className="rounded-xl border border-slate-800/60 p-4 text-xs text-slate-400">
+                <p className="text-slate-200">Status</p>
+                {dashboard?.warnings?.length ? (
+                  <div className="mt-2 space-y-1 text-amber-300">
+                    {dashboard.warnings.map((warn) => (
+                      <p key={warn}>{warn}</p>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2">Realtime valuations active.</p>
+                )}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormMode("edit");
+                      setAccountFormOpen(false);
+                      setFormError(null);
+                    }}
+                    className="rounded-full border border-slate-800/70 px-3 py-1 text-[11px] text-slate-300 hover:text-white"
+                  >
+                    Edit Client
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccountFormOpen(true);
+                      setFormMode(null);
+                      resetAccountForm();
+                      setFormError(null);
+                    }}
+                    className="rounded-full border border-slate-800/70 px-3 py-1 text-[11px] text-slate-300 hover:text-white"
+                  >
+                    Add Account
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedId(null)}
+                    className="rounded-full border border-slate-800/70 px-3 py-1 text-[11px] text-slate-300 hover:text-white"
+                  >
+                    Back to overview
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
-          <Collapsible
-            title="Client Profile"
-            meta={detail?.name || "Loading"}
-            open={profileOpen}
-            onToggle={() => setProfileOpen((prev) => !prev)}
-          >
+          {selectedId ? (
+            activeTotals ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+                <KpiCard
+                  label="Total Value"
+                  value={`$${activeTotals.total_value.toFixed(2)}`}
+                  tone="text-emerald-300"
+                />
+                <KpiCard
+                  label="Market Value"
+                  value={`$${activeTotals.market_value.toFixed(2)}`}
+                  tone="text-slate-200"
+                />
+                <KpiCard
+                  label="Manual Value"
+                  value={`$${activeTotals.manual_value.toFixed(2)}`}
+                  tone="text-slate-200"
+                />
+                <KpiCard
+                  label="Holdings Count"
+                  value={`${activeTotals.holdings_count}`}
+                  tone="text-slate-200"
+                />
+              </div>
+            ) : (
+              <div className="rounded-xl border border-slate-800/60 bg-ink-950/50 p-6 text-sm text-slate-400">
+                Loading portfolio snapshot...
+              </div>
+            )
+          ) : null}
+
+          {selectedId ? (
+            <>
+              <Collapsible
+                title="Client Profile"
+                meta={detail?.name || "Loading"}
+                open={profileOpen}
+                onToggle={() => setProfileOpen((prev) => !prev)}
+              >
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 text-xs text-slate-300">
               <div className="rounded-xl border border-slate-800/60 p-4">
                 <p className="text-xs text-slate-400 mb-2">Tax Profile</p>
@@ -463,28 +1231,28 @@ export default function Clients() {
                 )}
               </div>
             </div>
-          </Collapsible>
+              </Collapsible>
 
-          <Collapsible
-            title="Portfolio History"
-            meta={dashboard?.interval || "Loading"}
-            open={historyOpen}
-            onToggle={() => setHistoryOpen((prev) => !prev)}
-          >
+              <Collapsible
+                title="Portfolio History"
+                meta={dashboard?.interval || "Loading"}
+                open={historyOpen}
+                onToggle={() => setHistoryOpen((prev) => !prev)}
+              >
             {dashboard?.history?.length ? (
               <AreaSparkline data={dashboard.history} height={220} />
             ) : (
               <p className="text-xs text-slate-500">No history series available.</p>
             )}
-          </Collapsible>
+              </Collapsible>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <Collapsible
-              title="Risk Metrics"
-              meta={dashboard?.risk?.risk_profile || "Loading"}
-              open={riskOpen}
-              onToggle={() => setRiskOpen((prev) => !prev)}
-            >
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                <Collapsible
+                  title="Risk Metrics"
+                  meta={dashboard?.risk?.risk_profile || "Loading"}
+                  open={riskOpen}
+                  onToggle={() => setRiskOpen((prev) => !prev)}
+                >
               {dashboard?.risk?.error ? (
                 <p className="text-xs text-amber-300">{dashboard.risk.error}</p>
               ) : (
@@ -497,75 +1265,83 @@ export default function Clients() {
                   ))}
                 </div>
               )}
-            </Collapsible>
-            <Collapsible
-              title="Return Distribution"
-              meta={dashboard?.risk?.meta || "Loading"}
-              open={distributionOpen}
-              onToggle={() => setDistributionOpen((prev) => !prev)}
-            >
+                </Collapsible>
+                <Collapsible
+                  title="Return Distribution"
+                  meta={dashboard?.risk?.meta || "Loading"}
+                  open={distributionOpen}
+                  onToggle={() => setDistributionOpen((prev) => !prev)}
+                >
               {dashboard?.risk?.distribution?.length ? (
                 <DistributionBars data={dashboard.risk.distribution} height={200} />
               ) : (
                 <p className="text-xs text-slate-500">No return distribution available.</p>
               )}
-            </Collapsible>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <Surface3D
-              title="Transition Surface"
-              z={dashboard?.regime?.transition_matrix || []}
-            />
-            <div className="space-y-4">
-              <div className="glass-panel rounded-2xl p-5">
-                <p className="text-xs text-slate-400">Stationary Distribution</p>
-                <div className="mt-3 space-y-2 text-xs text-slate-300">
-                  {dashboard?.regime?.state_probs ? (
-                    Object.entries(dashboard.regime.state_probs).map(([key, value]) => (
-                      <div key={key} className="flex items-center justify-between">
-                        <span className="text-slate-400">{key}</span>
-                        <span className="text-emerald-300">{(value * 100).toFixed(1)}%</span>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-slate-500">No regime surface available.</p>
-                  )}
-                </div>
+                </Collapsible>
               </div>
-              <div className="glass-panel rounded-2xl p-5">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-slate-400">Regime Window</p>
-                  <p className="text-[11px] text-emerald-300">
-                    {dashboard?.regime?.window?.interval || dashboard?.interval || "n/a"}
-                  </p>
-                </div>
-                {dashboard?.regime?.window?.series?.length ? (
-                  <div className="mt-3">
-                    <AreaSparkline
-                      data={dashboard.regime.window.series}
-                      height={160}
-                      color="#48f1a6"
-                    />
-                    <p className="mt-2 text-[11px] text-slate-500">
-                      Samples {dashboard?.regime?.samples ?? 0}
-                    </p>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                <Surface3D
+                  title="Transition Surface"
+                  z={dashboard?.regime?.transition_matrix || []}
+                />
+                <div className="space-y-4">
+                  <div className="glass-panel rounded-2xl p-5">
+                    <p className="text-xs text-slate-400">Stationary Distribution</p>
+                    <div className="mt-3 space-y-2 text-xs text-slate-300">
+                      {dashboard?.regime?.error ? (
+                        <p className="text-amber-300">
+                          {dashboard.regime.error_detail || dashboard.regime.error}
+                        </p>
+                      ) : dashboard?.regime?.state_probs ? (
+                        Object.entries(dashboard.regime.state_probs).map(([key, value]) => (
+                          <div key={key} className="flex items-center justify-between">
+                            <span className="text-slate-400">{key}</span>
+                            <span className="text-emerald-300">{(value * 100).toFixed(1)}%</span>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-slate-500">No regime surface available.</p>
+                      )}
+                    </div>
                   </div>
-                ) : (
-                  <p className="mt-3 text-xs text-slate-500">
-                    No regime window data available.
-                  </p>
-                )}
+                  <div className="glass-panel rounded-2xl p-5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-slate-400">Regime Window</p>
+                      <p className="text-[11px] text-emerald-300">
+                        {dashboard?.regime?.window?.interval || dashboard?.interval || "n/a"}
+                      </p>
+                    </div>
+                    {dashboard?.regime?.window?.series?.length ? (
+                      <div className="mt-3">
+                        <AreaSparkline
+                          data={dashboard.regime.window.series}
+                          height={160}
+                          color="#48f1a6"
+                        />
+                        <p className="mt-2 text-[11px] text-slate-500">
+                          Samples {dashboard?.regime?.samples ?? 0}
+                        </p>
+                      </div>
+                    ) : dashboard?.regime?.error_detail ? (
+                      <p className="mt-3 text-xs text-amber-300">
+                        {dashboard.regime.error_detail}
+                      </p>
+                    ) : (
+                      <p className="mt-3 text-xs text-slate-500">
+                        No regime window data available.
+                      </p>
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
 
-          <Collapsible
-            title="Pattern Analysis"
-            meta={patterns?.error ? "Offline" : "Active"}
-            open={patternOpen}
-            onToggle={() => setPatternOpen((prev) => !prev)}
-          >
+              <Collapsible
+                title="Pattern Analysis"
+                meta={patterns?.error ? "Offline" : "Active"}
+                open={patternOpen}
+                onToggle={() => setPatternOpen((prev) => !prev)}
+              >
             {patterns?.error ? (
               <p className="text-xs text-amber-300">{patterns.error}</p>
             ) : (
@@ -618,14 +1394,14 @@ export default function Clients() {
                 </div>
               </div>
             )}
-          </Collapsible>
+              </Collapsible>
 
-          <Collapsible
-            title="Holdings Snapshot"
-            meta={`${activeHoldings.length} positions`}
-            open={holdingsOpen}
-            onToggle={() => setHoldingsOpen((prev) => !prev)}
-          >
+              <Collapsible
+                title="Holdings Snapshot"
+                meta={`${activeHoldings.length} positions`}
+                open={holdingsOpen}
+                onToggle={() => setHoldingsOpen((prev) => !prev)}
+              >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {activeHoldings.map((holding) => (
                 <div key={holding.ticker} className="rounded-xl border border-slate-800/60 p-4">
@@ -638,14 +1414,14 @@ export default function Clients() {
                 </div>
               ))}
             </div>
-          </Collapsible>
+              </Collapsible>
 
-          <Collapsible
-            title="Diagnostics"
-            meta="Concentration + Movers"
-            open={diagnosticsOpen}
-            onToggle={() => setDiagnosticsOpen((prev) => !prev)}
-          >
+              <Collapsible
+                title="Diagnostics"
+                meta="Concentration + Movers"
+                open={diagnosticsOpen}
+                onToggle={() => setDiagnosticsOpen((prev) => !prev)}
+              >
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 text-xs text-slate-300">
               <div className="rounded-xl border border-slate-800/60 p-4">
                 <p className="text-xs text-slate-400 mb-2">Sector Concentration</p>
@@ -685,14 +1461,14 @@ export default function Clients() {
                 )}
               </div>
             </div>
-          </Collapsible>
+              </Collapsible>
 
-          <Collapsible
-            title="Manual Assets"
-            meta={`${dashboard?.manual_holdings?.length || 0} entries`}
-            open={manualOpen}
-            onToggle={() => setManualOpen((prev) => !prev)}
-          >
+              <Collapsible
+                title="Manual Assets"
+                meta={`${dashboard?.manual_holdings?.length || 0} entries`}
+                open={manualOpen}
+                onToggle={() => setManualOpen((prev) => !prev)}
+              >
             {dashboard?.manual_holdings?.length ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {dashboard.manual_holdings.map((holding, idx) => (
@@ -705,7 +1481,9 @@ export default function Clients() {
             ) : (
               <p className="text-xs text-slate-500">No manual assets recorded.</p>
             )}
-          </Collapsible>
+              </Collapsible>
+            </>
+          ) : null}
         </div>
       </div>
     </Card>

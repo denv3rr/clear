@@ -11,7 +11,23 @@ try:
     import psutil
     PSUTIL_AVAILABLE = True
 except ImportError:
+    psutil = None
     PSUTIL_AVAILABLE = False
+
+
+def _ensure_psutil() -> bool:
+    global psutil, PSUTIL_AVAILABLE
+    if PSUTIL_AVAILABLE and psutil is not None:
+        return True
+    try:
+        import psutil as psutil_module
+
+        psutil = psutil_module
+        PSUTIL_AVAILABLE = True
+        return True
+    except ImportError:
+        PSUTIL_AVAILABLE = False
+        return False
     
 class SystemHost:
     """
@@ -49,9 +65,9 @@ class SystemHost:
         cpu_cores = "N/A"
 
         # Hardware Information - ONLY if psutil is available
-        if PSUTIL_AVAILABLE:
+        if _ensure_psutil():
             try:
-                cpu_usage = f"{psutil.cpu_percent(interval=None):.1f}%"
+                cpu_usage = f"{psutil.cpu_percent(interval=0.1):.1f}%"
                 cpu_cores = psutil.cpu_count()
                 
                 mem_info = psutil.virtual_memory()
@@ -107,9 +123,9 @@ class SystemHost:
             "disk_percent": None,
         }
 
-        if PSUTIL_AVAILABLE:
+        if _ensure_psutil():
             try:
-                metrics["cpu_percent"] = round(float(psutil.cpu_percent(interval=None)), 1)
+                metrics["cpu_percent"] = round(float(psutil.cpu_percent(interval=0.1)), 1)
                 mem_info = psutil.virtual_memory()
                 metrics["mem_percent"] = round(float(mem_info.percent), 1)
                 metrics["mem_total_gb"] = round(mem_info.total / (1024.0 ** 3), 2)

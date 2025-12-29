@@ -14,17 +14,18 @@ def feed_status() -> Dict[str, object]:
     flight_urls = [item.strip() for item in os.getenv("FLIGHT_DATA_URL", "").split(",") if item.strip()]
     flight_paths = [item.strip() for item in os.getenv("FLIGHT_DATA_PATH", "").split(",") if item.strip()]
     shipping_url = os.getenv("SHIPPING_DATA_URL")
+    opensky_creds = bool(os.getenv("OPENSKY_USERNAME") and os.getenv("OPENSKY_PASSWORD"))
     return {
         "flights": {
             "url_sources": len(flight_urls),
             "path_sources": len(flight_paths),
-            "configured": bool(flight_urls or flight_paths),
+            "configured": bool(flight_urls or flight_paths or opensky_creds),
         },
         "shipping": {
             "configured": bool(shipping_url),
         },
         "opensky": {
-            "credentials_set": bool(os.getenv("OPENSKY_USERNAME") and os.getenv("OPENSKY_PASSWORD")),
+            "credentials_set": opensky_creds,
         },
     }
 

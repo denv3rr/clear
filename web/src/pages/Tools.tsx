@@ -56,6 +56,7 @@ export default function Tools() {
   const cpuPercent = data?.metrics?.cpu_percent ?? null;
   const memPercent = data?.metrics?.mem_percent ?? null;
   const diskPercent = data?.metrics?.disk_percent ?? null;
+  const swapPercent = data?.metrics?.swap_percent ?? null;
   const authHint = "Check CLEAR_WEB_API_KEY + localStorage clear_api_key.";
   const errorMessages = [
     error
@@ -90,8 +91,15 @@ export default function Tools() {
           <p>psutil: {data?.system?.psutil_available ? "Available" : "Missing"}</p>
           <p>API Health: {health?.status || "Unknown"}</p>
           <p>
-            Flight Feed: {data?.feeds?.flights?.configured ? "Configured" : "Missing"} (
-            {data?.feeds?.flights?.url_sources ?? 0} URL / {data?.feeds?.flights?.path_sources ?? 0} file)
+            Flight Feed:{" "}
+            {data?.feeds?.flights?.configured
+              ? data?.feeds?.flights?.url_sources || data?.feeds?.flights?.path_sources
+                ? "Configured"
+                : data?.feeds?.opensky?.credentials_set
+                ? "OpenSky (auth)"
+                : "OpenSky (anon)"
+              : "Missing"}{" "}
+            ({data?.feeds?.flights?.url_sources ?? 0} URL / {data?.feeds?.flights?.path_sources ?? 0} file)
           </p>
           <p>Shipping Feed: {data?.feeds?.shipping?.configured ? "Configured" : "Missing"}</p>
           <p>OpenSky Creds: {data?.feeds?.opensky?.credentials_set ? "Present" : "Missing"}</p>
@@ -113,6 +121,8 @@ export default function Tools() {
           <MeterBar value={memPercent ?? 0} height={70} max={100} />
           <p className="text-xs text-slate-400 mt-3">Disk Usage</p>
           <MeterBar value={diskPercent ?? 0} height={70} max={100} />
+          <p className="text-xs text-slate-400 mt-3">Swap Load</p>
+          <MeterBar value={swapPercent ?? 0} height={70} max={100} color="#a3e635" />
           <div className="mt-3 text-xs text-slate-400 space-y-1">
             <p>Total: {data?.metrics?.disk_total_gb?.toFixed(2) ?? "—"} GB</p>
             <p>Used: {data?.metrics?.disk_used_gb?.toFixed(2) ?? "—"} GB</p>
