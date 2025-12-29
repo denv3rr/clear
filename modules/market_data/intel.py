@@ -13,6 +13,7 @@ from modules.market_data.collectors import (
     store_cached_news,
     CONFLICT_CATEGORIES,
     DEFAULT_SOURCES,
+    NEWS_CATEGORIES,
 )
 
 
@@ -42,7 +43,7 @@ def get_intel_meta() -> Dict[str, object]:
     return {
         "regions": regions,
         "industries": industries,
-        "categories": list(CONFLICT_CATEGORIES),
+        "categories": list(NEWS_CATEGORIES),
         "sources": sources,
     }
 
@@ -170,6 +171,144 @@ def _confidence_conflict(article_count: int) -> str:
     return "Low"
 
 
+def _bucket_news(
+    items: List[Dict[str, object]],
+    bucket_hours: int,
+    buckets: int,
+) -> List[Dict[str, object]]:
+    now = int(time.time())
+    window = bucket_hours * 3600
+    output = []
+    for idx in range(buckets):
+        end_ts = now - idx * window
+        start_ts = end_ts - window
+        bucket_items = [
+            item
+            for item in items
+            if item.get("published_ts")
+            and start_ts <= int(item["published_ts"]) < end_ts
+        ]
+        output.append({
+            "start_ts": start_ts,
+            "end_ts": end_ts,
+            "items": bucket_items,
+        })
+    return list(reversed(output))
+
+
+def _aggregate_news_metrics(items: List[Dict[str, object]]) -> Dict[str, object]:
+    totals = {
+        "count": 0,
+        "sentiment_sum": 0.0,
+        "sentiment_hits": 0,
+        "negative_hits": 0,
+        "conflict_hits": 0,
+        "disruption_hits": 0,
+        "timestamp_hits": 0,
+    }
+    category_counts: Dict[str, int] = {}
+    emotion_counts: Dict[str, int] = {}
+    region_counts: Dict[str, int] = {}
+    subregion_counts: Dict[str, Dict[str, int]] = {}
+
+    for item in items:
+        totals["count"] += 1
+        sentiment = float(item.get("sentiment", 0.0) or 0.0)
+        totals["sentiment_sum"] += sentiment
+        if sentiment < 0:
+            totals["negative_hits"] += 1
+        if sentiment != 0:
+            totals["sentiment_hits"] += 1
+        tags = [str(tag).lower() for tag in (item.get("tags") or [])]
+        if "conflict" in tags:
+            totals["conflict_hits"] += 1
+        if "disruption" in tags:
+            totals["disruption_hits"] += 1
+        if item.get("published_ts"):
+            totals["timestamp_hits"] += 1
+        for cat in item.get("categories", []) or []:
+            key = str(cat).lower()
+            category_counts[key] = category_counts.get(key, 0) + 1
+        for emotion, count in (item.get("emotions", {}) or {}).items():
+            key = str(emotion).lower()
+            emotion_counts[key] = emotion_counts.get(key, 0) + int(count or 0)
+        regions = [str(region) for region in (item.get("regions") or []) if region]
+        industries = [str(industry) for industry in (item.get("industries") or []) if industry]
+        for region in regions:
+            region_counts[region] = region_counts.get(region, 0) + 1
+            if not industries:
+                subregion_counts.setdefault(region, {})
+                subregion_counts[region]["general"] = subregion_counts[region].get("general", 0) + 1
+            else:
+                for industry in industries:
+                    subregion_counts.setdefault(region, {})
+                    subregion_counts[region][industry] = subregion_counts[region].get(industry, 0) + 1
+
+    sentiment_avg = (
+        totals["sentiment_sum"] / totals["sentiment_hits"]
+        if totals["sentiment_hits"] > 0
+        else 0.0
+    )
+    count = totals["count"]
+    negative_ratio = totals["negative_hits"] / count if count else 0.0
+    conflict_ratio = totals["conflict_hits"] / count if count else 0.0
+    disruption_ratio = totals["disruption_hits"] / count if count else 0.0
+    volume_factor = min(1.0, count / 20.0)
+    sentiment_pressure = max(0.0, -sentiment_avg)
+    timestamp_ratio = totals["timestamp_hits"] / count if count else 0.0
+
+    raw_score = (
+        sentiment_pressure * 4.0
+        + conflict_ratio * 3.0
+        + disruption_ratio * 2.0
+        + volume_factor * 1.5
+    )
+    news_score = int(round(min(10.0, raw_score * 2.0)))
+
+    buckets = _bucket_news(items, bucket_hours=6, buckets=6)
+    series: List[Dict[str, object]] = []
+    emotion_series: List[Dict[str, object]] = []
+    for bucket in buckets:
+        bucket_items = bucket["items"]
+        if not bucket_items:
+            series.append({"label": "No data", "value": 0.0, "count": 0})
+            emotion_series.append({"label": "No data", "emotions": {}})
+            continue
+        bucket_sentiment = sum(
+            float(item.get("sentiment", 0.0) or 0.0) for item in bucket_items
+        ) / max(1, len(bucket_items))
+        bucket_negative = sum(
+            1 for item in bucket_items if float(item.get("sentiment", 0.0) or 0.0) < 0
+        )
+        bucket_emotions: Dict[str, int] = {}
+        for item in bucket_items:
+            for emotion, count_val in (item.get("emotions", {}) or {}).items():
+                key = str(emotion).lower()
+                bucket_emotions[key] = bucket_emotions.get(key, 0) + int(count_val or 0)
+        label = time.strftime("%H:%M", time.gmtime(bucket["end_ts"]))
+        series.append({
+            "label": label,
+            "value": round(bucket_sentiment, 3),
+            "count": len(bucket_items),
+            "negative_ratio": round(bucket_negative / max(1, len(bucket_items)), 3),
+        })
+        emotion_series.append({"label": label, "emotions": bucket_emotions})
+
+    return {
+        "count": count,
+        "sentiment_avg": round(sentiment_avg, 3),
+        "negative_ratio": round(negative_ratio, 3),
+        "category_counts": category_counts,
+        "emotion_counts": emotion_counts,
+        "region_counts": region_counts,
+        "subregion_counts": subregion_counts,
+        "timestamp_ratio": round(timestamp_ratio, 3),
+        "risk_score": news_score,
+        "series": series,
+        "emotion_series": emotion_series,
+    }
+
+
 def _filter_conflict_news(
     items: List[Dict[str, object]],
     region_name: str,
@@ -198,6 +337,21 @@ def _filter_conflict_news(
             if not any(cat in derived for cat in categories_l):
                 continue
         if has_conflict and in_region:
+            filtered.append(item)
+    return filtered
+
+
+def _filter_news_categories(
+    items: List[Dict[str, object]],
+    categories: Optional[List[str]] = None,
+) -> List[Dict[str, object]]:
+    if not categories:
+        return items
+    wanted = {str(cat).lower() for cat in categories if cat}
+    filtered: List[Dict[str, object]] = []
+    for item in items:
+        cats = item.get("categories", []) or []
+        if any(str(cat).lower() in wanted for cat in cats):
             filtered.append(item)
     return filtered
 
@@ -913,39 +1067,63 @@ class MarketIntel:
             ttl_seconds=600,
             enabled_sources=enabled_sources,
         )
-        news_filtered = []
+        news_filtered: List[Dict[str, object]] = []
         news_items = news_payload.get("items", []) if news_payload else []
         if news_items:
             news_filtered = self._filter_news(news_items, region_name, industry_filter)
             if categories:
-                news_filtered = _filter_conflict_news(news_filtered, region_name, categories=categories)
+                news_filtered = _filter_news_categories(news_filtered, categories=categories)
+                conflict_categories = {c.lower() for c in CONFLICT_CATEGORIES}
+                if any(str(cat).lower() in conflict_categories for cat in categories):
+                    news_filtered = _filter_conflict_news(news_filtered, region_name, categories=categories)
+        news_metrics = _aggregate_news_metrics(news_filtered)
+        news_score = news_metrics.get("risk_score") if news_filtered else None
         weather_score = weather.get("risk_score")
         conflict_score = conflict.get("risk_score")
         weather_ok = weather_score is not None
         conflict_ok = conflict_score is not None
+        news_ok = news_score is not None
         combined_score = None
-        if weather_ok and conflict_ok:
-            w_score = int(weather_score or 0)
-            c_score = int(conflict_score or 0)
-            combined_score = min(10, int(round((w_score + c_score) / 2 + max(w_score, c_score) / 4)))
+        components: Dict[str, int] = {}
+        if weather_ok:
+            components["weather"] = int(weather_score or 0)
+        if conflict_ok:
+            components["conflict"] = int(conflict_score or 0)
+        if news_ok:
+            components["news"] = int(news_score or 0)
+        if components:
+            weights = {"weather": 0.35, "conflict": 0.35, "news": 0.3}
+            weighted = 0.0
+            total_weight = 0.0
+            for key, value in components.items():
+                weight = weights.get(key, 0.3)
+                weighted += value * weight
+                total_weight += weight
+            combined_score = min(10, int(round(weighted / max(total_weight, 0.1))))
             combined_risk = _risk_level(combined_score)
-            confidence = "High"
-            if "Low" in (weather.get("confidence"), conflict.get("confidence")):
-                confidence = "Medium"
-            if weather.get("confidence") == "Low" and conflict.get("confidence") == "Low":
-                confidence = "Low"
-        elif weather_ok or conflict_ok:
-            score_val = int(weather_score or conflict_score or 0)
-            combined_score = score_val
-            combined_risk = _risk_level(score_val)
-            confidence = "Low"
         else:
             combined_risk = "Unavailable"
-            confidence = "Low"
+        confidence = "Low"
+        if weather_ok and conflict_ok and news_ok and news_metrics.get("count", 0) >= 10:
+            confidence = "High"
+        elif weather_ok or conflict_ok or news_ok:
+            confidence = "Medium"
         summary = [
             f"Region: {region_name}",
-            "Weather: " + (weather.get("summary", ["n/a"])[-1] if weather.get("summary") else "n/a"),
-            "Conflict: " + (conflict.get("summary", ["n/a"])[-1] if conflict.get("summary") else "n/a"),
+            "Weather: "
+            + (
+                f"{weather.get('risk_level', 'Unavailable')} ({weather.get('risk_score', 'n/a')}/10), "
+                f"Confidence {weather.get('confidence', 'n/a')}"
+                if weather_ok
+                else "Unavailable"
+            ),
+            "Conflict: "
+            + (
+                f"{conflict.get('risk_level', 'Unavailable')} ({conflict.get('risk_score', 'n/a')}/10), "
+                f"Confidence {conflict.get('confidence', 'n/a')}"
+                if conflict_ok
+                else "Unavailable"
+            ),
             f"Combined Risk: {combined_risk}" + (f" (score {combined_score}/10)" if combined_score is not None else ""),
             f"Confidence: {confidence}",
         ]
@@ -963,10 +1141,20 @@ class MarketIntel:
             "rows": [
                 ["Combined Risk", f"{combined_risk}" + (f" ({combined_score}/10)" if combined_score is not None else "")],
                 ["Confidence", confidence],
+                ["News Risk", f"{news_score}/10" if news_score is not None else "Unavailable"],
                 ["Key Signals", "; ".join(fusion_signals[:5]) or "None detected"],
                 ["Key Impacts", "; ".join(fusion_impacts[:5]) or "None detected"],
             ],
         })
+        if news_filtered:
+            sections.append({
+                "title": "News Metrics",
+                "rows": [
+                    ["Articles", str(news_metrics.get("count", 0))],
+                    ["Sentiment (avg)", str(news_metrics.get("sentiment_avg", 0.0))],
+                    ["Negative ratio", str(news_metrics.get("negative_ratio", 0.0))],
+                ],
+            })
         if weather.get("sections"):
             sections.append({"title": "Weather Snapshot", "rows": weather["summary"]})
             sections.extend(weather["sections"])
@@ -986,6 +1174,12 @@ class MarketIntel:
                 "title": "Report Sources",
                 "rows": [[source, ""] for source in sorted(set(sources))],
             })
+        risk_series = []
+        for point in news_metrics.get("series", []):
+            sentiment = float(point.get("value", 0.0) or 0.0)
+            negative_ratio = float(point.get("negative_ratio", 0.0) or 0.0)
+            value = min(10.0, max(0.0, (negative_ratio * 6.0) + (max(0.0, -sentiment) * 4.0)))
+            risk_series.append({"label": point.get("label", ""), "value": round(value, 2)})
         return {
             "title": "Global Impact Report",
             "summary": summary,
@@ -993,6 +1187,19 @@ class MarketIntel:
             "risk_level": combined_risk,
             "risk_score": combined_score,
             "confidence": confidence,
+            "risk_series": risk_series,
+            "news": {
+                "count": news_metrics.get("count", 0),
+                "risk_score": news_score,
+                "sentiment_avg": news_metrics.get("sentiment_avg", 0.0),
+                "negative_ratio": news_metrics.get("negative_ratio", 0.0),
+                "category_counts": news_metrics.get("category_counts", {}),
+                "emotion_counts": news_metrics.get("emotion_counts", {}),
+                "region_counts": news_metrics.get("region_counts", {}),
+                "subregion_counts": news_metrics.get("subregion_counts", {}),
+                "timestamp_ratio": news_metrics.get("timestamp_ratio", 0.0),
+                "emotion_series": news_metrics.get("emotion_series", []),
+            },
         }
 
     def _weather_outlook(self, risk: str, region: RegionSpec, industry_filter: str) -> str:

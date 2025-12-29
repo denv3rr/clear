@@ -185,6 +185,108 @@ REGION_KEYWORDS: Dict[str, List[str]] = {
     "Africa": ["africa", "nigeria", "south africa", "egypt"],
 }
 
+NEWS_CATEGORY_KEYWORDS: Dict[str, List[str]] = {
+    "markets": ["stocks", "equities", "markets", "index", "wall street", "shares"],
+    "rates": ["rates", "yield", "treasury", "bond", "fed", "central bank"],
+    "energy": ["oil", "gas", "opec", "energy", "power", "electricity"],
+    "shipping": ["shipping", "port", "freight", "logistics", "container", "supply chain"],
+    "conflict": ["war", "strike", "protest", "attack", "conflict", "ceasefire"],
+    "technology": ["ai", "chip", "semiconductor", "cloud", "cyber", "software"],
+    "economy": ["gdp", "inflation", "jobs", "employment", "economy", "growth"],
+    "policy": ["regulation", "sanction", "tariff", "policy", "election", "government"],
+    "commodities": ["gold", "copper", "wheat", "corn", "soy", "commodity"],
+}
+
+NEWS_CATEGORIES: List[str] = sorted(
+    {*(NEWS_CATEGORY_KEYWORDS.keys()), *CONFLICT_CATEGORIES}
+)
+
+NEWS_CATEGORY_ALIASES: Dict[str, str] = {
+    "technology": "tech",
+    "logistics": "shipping",
+    "supply chain": "shipping",
+    "commodities": "commodities",
+}
+
+EMOTION_KEYWORDS: Dict[str, List[str]] = {
+    "fear": ["fear", "panic", "crisis", "turmoil", "shock", "uncertainty", "risk"],
+    "anger": ["anger", "backlash", "protest", "strike", "boycott", "sanction"],
+    "optimism": ["rally", "surge", "boost", "recover", "optimism", "beat"],
+    "sadness": ["slump", "decline", "recession", "layoffs", "loss", "downgrade"],
+    "anticipation": ["forecast", "expect", "outlook", "ahead", "guidance", "plan"],
+}
+
+SENTIMENT_LEXICON: Dict[str, int] = {
+    "gain": 1,
+    "rise": 1,
+    "surge": 2,
+    "beat": 1,
+    "improve": 1,
+    "growth": 1,
+    "upgrade": 1,
+    "record": 1,
+    "optimism": 1,
+    "recover": 1,
+    "drop": -1,
+    "fall": -1,
+    "slump": -2,
+    "decline": -1,
+    "miss": -1,
+    "downgrade": -1,
+    "loss": -1,
+    "recession": -2,
+    "crisis": -2,
+    "uncertainty": -1,
+}
+
+
+def _extract_news_categories(
+    text_l: str,
+    tags: List[str],
+    industries: List[str],
+) -> List[str]:
+    categories = set()
+    for key, keywords in NEWS_CATEGORY_KEYWORDS.items():
+        if any(word in text_l for word in keywords):
+            categories.add(key)
+    for tag in tags:
+        if tag:
+            categories.add(str(tag).lower())
+    for industry in industries:
+        if industry:
+            categories.add(str(industry).lower())
+    if not categories:
+        categories.add("general")
+    normalized = set()
+    for category in categories:
+        key = str(category).strip().lower()
+        normalized.add(NEWS_CATEGORY_ALIASES.get(key, key))
+    return sorted(normalized)
+
+
+def _score_sentiment(text: str) -> float:
+    words = re.findall(r"[a-z]+", (text or "").lower())
+    if not words:
+        return 0.0
+    score = 0
+    hits = 0
+    for word in words:
+        if word in SENTIMENT_LEXICON:
+            score += SENTIMENT_LEXICON[word]
+            hits += 1
+    if hits == 0:
+        return 0.0
+    return max(-1.0, min(1.0, score / max(1, hits)))
+
+
+def _extract_emotions(text_l: str) -> Dict[str, int]:
+    emotions: Dict[str, int] = {}
+    for emotion, keywords in EMOTION_KEYWORDS.items():
+        count = sum(1 for word in keywords if word in text_l)
+        if count:
+            emotions[emotion] = count
+    return emotions
+
 
 def classify_event(text: str) -> Dict[str, List[str]]:
     text_l = (text or "").lower()
@@ -197,10 +299,16 @@ def classify_event(text: str) -> Dict[str, List[str]]:
         tags.append("conflict")
     if "storm" in text_l or "hurricane" in text_l or "flood" in text_l:
         tags.append("weather")
+    categories = _extract_news_categories(text_l, tags, industries)
+    sentiment = _score_sentiment(text)
+    emotions = _extract_emotions(text_l)
     return {
         "industries": industries,
         "regions": regions,
         "tags": tags,
+        "categories": categories,
+        "sentiment": sentiment,
+        "emotions": emotions,
     }
 
 

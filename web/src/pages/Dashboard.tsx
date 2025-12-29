@@ -56,6 +56,12 @@ type IntelSummary = {
   risk_level?: string;
   risk_score?: number;
   confidence?: string;
+  risk_series?: { label: string; value: number }[];
+  news?: {
+    sentiment_avg?: number;
+    negative_ratio?: number;
+    risk_score?: number;
+  };
 };
 
 const columns: ColumnDef<TrackerRow>[] = [
@@ -350,6 +356,12 @@ export default function Dashboard() {
   );
 
   const riskSeries = useMemo(() => {
+    if (intelSummary?.risk_series?.length) {
+      return intelSummary.risk_series.map((point) => ({
+        day: point.label,
+        value: point.value
+      }));
+    }
     const value = intelSummary?.risk_score ?? 0;
     return ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => ({
       day,

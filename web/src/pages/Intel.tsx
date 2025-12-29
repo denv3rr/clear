@@ -1,4 +1,15 @@
 import { useMemo, useState } from "react";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis
+} from "recharts";
 import { Card } from "../components/ui/Card";
 import { Collapsible } from "../components/ui/Collapsible";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
@@ -13,6 +24,19 @@ type IntelReport = {
   risk_level?: string;
   risk_score?: number;
   confidence?: string;
+  risk_series?: { label: string; value: number }[];
+  news?: {
+    count?: number;
+    risk_score?: number | null;
+    sentiment_avg?: number;
+    negative_ratio?: number;
+    category_counts?: Record<string, number>;
+    emotion_counts?: Record<string, number>;
+    region_counts?: Record<string, number>;
+    subregion_counts?: Record<string, Record<string, number>>;
+    timestamp_ratio?: number;
+    emotion_series?: { label: string; emotions: Record<string, number> }[];
+  };
 };
 
 type IntelMeta = {
@@ -79,6 +103,51 @@ export default function Intel() {
   const toggleSource = (value: string) => {
     setSources((prev) => (prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value]));
   };
+
+  const categoryMix = useMemo(() => {
+    const entries = Object.entries(data?.news?.category_counts || {});
+    return entries.sort((a, b) => b[1] - a[1]);
+  }, [data?.news?.category_counts]);
+
+  const emotionMix = useMemo(() => {
+    const entries = Object.entries(data?.news?.emotion_counts || {});
+    return entries.sort((a, b) => b[1] - a[1]);
+  }, [data?.news?.emotion_counts]);
+
+  const regionMix = useMemo(() => {
+    const entries = Object.entries(data?.news?.region_counts || {});
+    return entries.sort((a, b) => b[1] - a[1]);
+  }, [data?.news?.region_counts]);
+
+  const subregionMix = useMemo(() => {
+    const entries = Object.entries(data?.news?.subregion_counts || {});
+    const flat: Array<[string, number]> = [];
+    entries.forEach(([regionName, industries]) => {
+      Object.entries(industries || {}).forEach(([industryName, count]) => {
+        flat.push([`${regionName} • ${industryName}`, count]);
+      });
+    });
+    return flat.sort((a, b) => b[1] - a[1]);
+  }, [data?.news?.subregion_counts]);
+
+  const topEmotions = useMemo(() => emotionMix.slice(0, 3).map(([name]) => name), [emotionMix]);
+
+  const emotionSeries = useMemo(() => {
+    const series = data?.news?.emotion_series || [];
+    if (!series.length || !topEmotions.length) {
+      return [];
+    }
+    return series.map((entry) => {
+      const row: Record<string, number | string> = { label: entry.label };
+      topEmotions.forEach((emotion) => {
+        row[emotion] = entry.emotions?.[emotion] || 0;
+      });
+      return row;
+    });
+  }, [data?.news?.emotion_series, topEmotions]);
+
+  const timestampCoverage = data?.news?.timestamp_ratio ?? 0;
+  const showTrendData = timestampCoverage >= 0.2 && (data?.risk_series || []).length > 0;
 
   const renderRows = (rows?: (string[] | string)[]) => {
     if (!rows || rows.length === 0) {
@@ -214,6 +283,119 @@ export default function Intel() {
                 ))}
               </div>
             </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="rounded-xl border border-slate-800/60 p-4">
+                <p className="text-xs text-slate-400 mb-2">Global Risk Trend</p>
+                {showTrendData ? (
+                  <div className="h-40 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={data.risk_series}>
+                        <defs>
+                          <linearGradient id="riskFill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.6} />
+                            <stop offset="95%" stopColor="#0f172a" stopOpacity={0.1} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid stroke="#1f2937" strokeDasharray="3 3" />
+                        <XAxis dataKey="label" tick={{ fill: "#94a3b8", fontSize: 10 }} />
+                        <YAxis tick={{ fill: "#94a3b8", fontSize: 10 }} domain={[0, 10]} />
+                        <Tooltip contentStyle={{ background: "#0f172a", borderRadius: 8, borderColor: "#1f2937" }} />
+                        <Area type="monotone" dataKey="value" stroke="#10b981" fill="url(#riskFill)" strokeWidth={2} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500">
+                    Time trend unavailable (missing timestamps).
+                  </p>
+                )}
+              </div>
+              <div className="rounded-xl border border-slate-800/60 p-4">
+                <p className="text-xs text-slate-400 mb-2">Emotion Trend</p>
+                {showTrendData && emotionSeries.length > 0 ? (
+                  <div className="h-40 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={emotionSeries}>
+                        <CartesianGrid stroke="#1f2937" strokeDasharray="3 3" />
+                        <XAxis dataKey="label" tick={{ fill: "#94a3b8", fontSize: 10 }} />
+                        <YAxis tick={{ fill: "#94a3b8", fontSize: 10 }} />
+                        <Tooltip contentStyle={{ background: "#0f172a", borderRadius: 8, borderColor: "#1f2937" }} />
+                        {topEmotions.map((emotion, index) => (
+                          <Bar
+                            key={emotion}
+                            dataKey={emotion}
+                            stackId="emotion"
+                            fill={index === 0 ? "#38bdf8" : index === 1 ? "#fbbf24" : "#f97316"}
+                          />
+                        ))}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500">
+                    Time trend unavailable (missing timestamps).
+                  </p>
+                )}
+              </div>
+              <div className="rounded-xl border border-slate-800/60 p-4">
+                <p className="text-xs text-slate-400 mb-2">Category Mix</p>
+                {categoryMix.length > 0 ? (
+                  <div className="space-y-2 text-xs text-slate-300">
+                    {categoryMix.slice(0, 6).map(([category, count]) => (
+                      <div key={category} className="flex items-center justify-between">
+                        <span className="text-slate-400">{category}</span>
+                        <span className="text-slate-200">{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500">No category mix available yet.</p>
+                )}
+                {emotionMix.length > 0 ? (
+                  <div className="mt-4 space-y-2 text-xs text-slate-300">
+                    <p className="text-xs text-slate-400">Emotion Mix</p>
+                    {emotionMix.slice(0, 6).map(([emotion, count]) => (
+                      <div key={emotion} className="flex items-center justify-between">
+                        <span className="text-slate-400">{emotion}</span>
+                        <span className="text-slate-200">{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="rounded-xl border border-slate-800/60 p-4">
+                <p className="text-xs text-slate-400 mb-2">Regional Coverage</p>
+                {regionMix.length > 0 ? (
+                  <div className="space-y-2 text-xs text-slate-300">
+                    {regionMix.slice(0, 6).map(([regionName, count]) => (
+                      <div key={regionName} className="flex items-center justify-between">
+                        <span className="text-slate-400">{regionName}</span>
+                        <span className="text-slate-200">{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500">No regional coverage data yet.</p>
+                )}
+              </div>
+              <div className="rounded-xl border border-slate-800/60 p-4">
+                <p className="text-xs text-slate-400 mb-2">Subregional Coverage</p>
+                {subregionMix.length > 0 ? (
+                  <div className="space-y-2 text-xs text-slate-300">
+                    {subregionMix.slice(0, 6).map(([label, count]) => (
+                      <div key={label} className="flex items-center justify-between">
+                        <span className="text-slate-400">{label}</span>
+                        <span className="text-slate-200">{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500">No subregional coverage data yet.</p>
+                )}
+              </div>
+            </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {(data?.sections || []).slice(0, 4).map((section) => (
                 <div key={section.title} className="rounded-xl border border-slate-800/60 p-4">
@@ -221,6 +403,20 @@ export default function Intel() {
                   {renderRows(section.rows as (string[] | string)[])}
                 </div>
               ))}
+            </div>
+            <div className="rounded-xl border border-slate-800/60 p-4">
+              <p className="text-xs text-slate-400 mb-2">News Metrics</p>
+              {renderRows([
+                ["Articles", String(data?.news?.count ?? 0)],
+                ["Sentiment avg", String(data?.news?.sentiment_avg ?? 0)],
+                ["Negative ratio", String(data?.news?.negative_ratio ?? 0)],
+                [
+                  "News risk score",
+                  data?.news?.risk_score !== undefined && data?.news?.risk_score !== null
+                    ? `${data?.news?.risk_score}/10`
+                    : "Unavailable"
+                ]
+              ])}
             </div>
           </div>
         </Collapsible>

@@ -1,6 +1,7 @@
 import unittest
 
 from modules.market_data.intel import (
+    _aggregate_news_metrics,
     _impact_for_conflict,
     _impact_for_weather,
     _risk_level,
@@ -46,6 +47,17 @@ class TestIntelScoring(unittest.TestCase):
         impacts = _impact_for_conflict(["oil", "shipping", "military"])
         self.assertTrue(any("energy" in impact.lower() for impact in impacts))
         self.assertTrue(any("shipping" in impact.lower() for impact in impacts))
+
+    def test_news_aggregate_metrics(self):
+        items = [
+            {"title": "Markets surge on growth", "sentiment": 0.8, "tags": [], "categories": ["markets"], "emotions": {"optimism": 1}},
+            {"title": "Conflict escalates after strike", "sentiment": -0.7, "tags": ["conflict"], "categories": ["conflict"], "emotions": {"fear": 2}},
+            {"title": "Rates fall as inflation cools", "sentiment": 0.3, "tags": [], "categories": ["rates"], "emotions": {"anticipation": 1}},
+        ]
+        metrics = _aggregate_news_metrics(items)
+        self.assertEqual(metrics["count"], 3)
+        self.assertGreaterEqual(metrics["risk_score"], 0)
+        self.assertIn("markets", metrics["category_counts"])
 
 
 if __name__ == "__main__":
