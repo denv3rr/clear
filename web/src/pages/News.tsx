@@ -17,6 +17,9 @@ type NewsItem = {
   source?: string;
   url?: string;
   published_ts?: number;
+  regions?: string[];
+  industries?: string[];
+  tags?: string[];
 };
 
 type NewsPayload = {
@@ -65,6 +68,23 @@ export default function News() {
   const industryOptions = meta?.industries || ["all"];
   const sourceOptions = meta?.sources || [];
   const authHint = "Check CLEAR_WEB_API_KEY + localStorage clear_api_key.";
+
+  const formatTimestamp = (ts?: number) => {
+    if (!ts) return null;
+    const date = new Date(ts * 1000);
+    return new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short"
+    }).format(date);
+  };
+
+  const formatAge = (ts?: number) => {
+    if (!ts) return null;
+    const delta = Math.max(0, Math.floor(Date.now() / 1000) - ts);
+    if (delta < 3600) return `${Math.max(1, Math.floor(delta / 60))}m ago`;
+    if (delta < 86400) return `${Math.floor(delta / 3600)}h ago`;
+    return `${Math.floor(delta / 86400)}d ago`;
+  };
   const errorMessages = [
     metaError ? `Intel metadata failed: ${metaError}` : null,
     newsError
@@ -79,7 +99,7 @@ export default function News() {
   };
 
   return (
-    <Card className="rounded-2xl p-6">
+    <Card className="rounded-2xl p-5">
       <SectionHeader label="NEWS" title="Market Signals" right={data?.stale ? "Stale" : "Live"} />
       <div className="mt-4">
         <ErrorBanner messages={errorMessages} onRetry={refresh} />
@@ -214,11 +234,42 @@ export default function News() {
           <p>No news items available.</p>
         ) : (
           items.map((item) => (
-            <div key={`${item.title}-${item.source}`} className="border-b border-slate-900/60 pb-3">
-              <p className="text-slate-100 font-medium">{item.title}</p>
-              <p className="text-xs text-slate-400">{item.source || "Unknown source"}</p>
+            <div key={`${item.title}-${item.source}`} className="border-b border-slate-900/60 pb-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-slate-100 font-medium">{item.title}</p>
+                {item.published_ts ? (
+                  <p className="text-[11px] text-slate-500">
+                    {formatAge(item.published_ts)}
+                  </p>
+                ) : null}
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-slate-400">
+                <span>{item.source || "Unknown source"}</span>
+                {item.published_ts ? (
+                  <span>{formatTimestamp(item.published_ts)}</span>
+                ) : null}
+              </div>
+              {(item.regions?.length || item.industries?.length || item.tags?.length) ? (
+                <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-400">
+                  {(item.regions || []).slice(0, 2).map((region) => (
+                    <span key={`region-${region}`} className="rounded-full border border-slate-800/70 px-2 py-0.5">
+                      {region}
+                    </span>
+                  ))}
+                  {(item.industries || []).slice(0, 2).map((industry) => (
+                    <span key={`industry-${industry}`} className="rounded-full border border-slate-800/70 px-2 py-0.5">
+                      {industry}
+                    </span>
+                  ))}
+                  {(item.tags || []).slice(0, 3).map((tag) => (
+                    <span key={`tag-${tag}`} className="rounded-full border border-slate-800/70 px-2 py-0.5">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
               {item.url && (
-                <a className="text-xs text-emerald-300" href={item.url} target="_blank" rel="noreferrer">
+                <a className="mt-2 inline-flex text-xs text-emerald-300" href={item.url} target="_blank" rel="noreferrer">
                   Open source
                 </a>
               )}

@@ -20,7 +20,7 @@ export function SurfaceGrid({ title, data, labels, className = "" }: SurfaceProp
   const safeLabels = labels?.length === columns ? labels : null;
 
   return (
-    <div className={`glass-panel rounded-2xl p-4 ${className}`}>
+    <div className={`glass-panel rounded-2xl p-5 ${className}`}>
       <div className="flex items-center justify-between">
         <p className="text-xs text-slate-400">{title}</p>
         <p className="text-[11px] text-emerald-300">{columns ? `${rows.length}x${columns}` : "No data"}</p>

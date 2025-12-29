@@ -142,16 +142,43 @@ def terminate_pid(pid: int, timeout: float = 5.0) -> bool:
     except Exception:
         return True
     try:
-        for child in proc.children(recursive=True):
+        children = proc.children(recursive=True)
+        for child in children:
             child.terminate()
         proc.terminate()
-        _, alive = psutil.wait_procs([proc], timeout=timeout)
+        _, alive = psutil.wait_procs(children + [proc], timeout=timeout)
         if alive:
             for target in alive:
                 target.kill()
-        return True
+        return not process_alive(pid)
     except Exception:
         return False
+
+
+def terminate_pids_by_port(
+    port: int, tokens: Optional[Iterable[str]] = None, timeout: float = 8.0
+) -> list[int]:
+    pids = find_pids_by_port(port)
+    if tokens:
+        pids = filter_matching_pids(pids, tokens)
+    stopped: list[int] = []
+    for pid in pids:
+        terminate_pid(pid, timeout=timeout)
+        wait_for_exit(pid, timeout=timeout)
+        if not process_alive(pid):
+            stopped.append(pid)
+    return stopped
+
+
+def wait_for_port_release(
+    port: int, host: str = "127.0.0.1", timeout: float = 8.0
+) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if not port_in_use(port, host=host):
+            return True
+        time.sleep(0.2)
+    return not port_in_use(port, host=host)
 
 
 def tail_lines(path: Path, limit: int = 200) -> list[str]:

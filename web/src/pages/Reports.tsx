@@ -90,7 +90,7 @@ export default function Reports() {
   ].filter(Boolean) as string[];
 
   return (
-    <Card className="rounded-2xl p-6">
+    <Card className="rounded-2xl p-5">
       <SectionHeader label="REPORTS" title="Client Reporting" right={clientLabel} />
       <div className="mt-4">
         <ErrorBanner messages={errorMessages} onRetry={refresh} />

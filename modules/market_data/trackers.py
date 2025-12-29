@@ -53,6 +53,30 @@ class TrackerProviders:
     _COUNTRY_KEYS = ("country", "origin")
     _CATEGORY_KEYS = ("category", "type", "flight_type")
     _OPENSKY_URL = "https://opensky-network.org/api/states/all"
+    _OPENSKY_BACKOFF_UNTIL = 0.0
+    _OPENSKY_LAST_REQUEST = 0.0
+
+    @staticmethod
+    def _parse_retry_after(value: Optional[str]) -> Optional[int]:
+        if not value:
+            return None
+        try:
+            return int(value)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _parse_bbox(value: Optional[str]) -> Optional[Dict[str, float]]:
+        if not value:
+            return None
+        parts = [part.strip() for part in value.split(",")]
+        if len(parts) != 4:
+            return None
+        try:
+            min_lat, min_lon, max_lat, max_lon = (float(part) for part in parts)
+        except ValueError:
+            return None
+        return {"lamin": min_lat, "lomin": min_lon, "lamax": max_lat, "lomax": max_lon}
 
     @staticmethod
     def _parse_sources(env_value: Optional[str]) -> List[str]:
@@ -249,12 +273,37 @@ class TrackerProviders:
     @staticmethod
     def _fetch_opensky_rows() -> Tuple[List[Dict[str, Any]], List[str]]:
         warnings: List[str] = []
+        now = time.time()
+        min_refresh = int(os.getenv("OPENSKY_MIN_REFRESH", "120") or 120)
+        if min_refresh > 0 and (now - TrackerProviders._OPENSKY_LAST_REQUEST) < min_refresh:
+            wait = int(min_refresh - (now - TrackerProviders._OPENSKY_LAST_REQUEST))
+            warnings.append(f"OpenSky refresh throttled; retry in {wait}s.")
+            return [], warnings
+        if now < TrackerProviders._OPENSKY_BACKOFF_UNTIL:
+            wait = int(TrackerProviders._OPENSKY_BACKOFF_UNTIL - now)
+            warnings.append(f"OpenSky rate limited; retry in {wait}s.")
+            return [], warnings
         username = os.getenv("OPENSKY_USERNAME")
         password = os.getenv("OPENSKY_PASSWORD")
         auth = (username, password) if username and password else None
+        params = TrackerProviders._parse_bbox(os.getenv("OPENSKY_BBOX"))
         try:
-            resp = requests.get(TrackerProviders._OPENSKY_URL, timeout=8, auth=auth)
+            TrackerProviders._OPENSKY_LAST_REQUEST = now
+            resp = requests.get(
+                TrackerProviders._OPENSKY_URL,
+                timeout=8,
+                auth=auth,
+                params=params or None,
+            )
             if resp.status_code != 200:
+                if resp.status_code == 429:
+                    retry_after = TrackerProviders._parse_retry_after(
+                        resp.headers.get("Retry-After") if hasattr(resp, "headers") else None
+                    )
+                    backoff = retry_after if retry_after is not None else 120
+                    TrackerProviders._OPENSKY_BACKOFF_UNTIL = now + max(backoff, 30)
+                    if not auth:
+                        warnings.append("OpenSky credentials missing; anonymous limits apply.")
                 warnings.append(f"OpenSky HTTP {resp.status_code}")
                 return [], warnings
             payload = resp.json()

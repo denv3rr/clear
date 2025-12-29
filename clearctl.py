@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import importlib.util
 import os
 import shutil
+import signal
 import subprocess
 import time
 import sys
@@ -26,6 +28,8 @@ from utils.launcher import (
     wait_for_exit,
     tail_lines,
     terminate_pid,
+    terminate_pids_by_port,
+    wait_for_port_release,
     write_pid,
 )
 
@@ -36,6 +40,7 @@ WEB_LOG = LOG_DIR / "web.log"
 
 DEFAULT_API_PORT = 8000
 DEFAULT_UI_PORT = 5173
+_ACTIVE_ARGS: argparse.Namespace | None = None
 
 
 def _print_header() -> None:
@@ -193,6 +198,22 @@ def _wait_for_api(api_port: int, timeout: float = 20.0) -> bool:
     return False
 
 
+def _install_shutdown_handlers(args: argparse.Namespace) -> None:
+    global _ACTIVE_ARGS
+    _ACTIVE_ARGS = args
+
+    def _handle_signal(signum: int, _frame: object) -> None:
+        _stop(args)
+        raise SystemExit(1)
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            signal.signal(sig, _handle_signal)
+        except Exception:
+            continue
+    atexit.register(lambda: _stop(args) if _ACTIVE_ARGS is args else None)
+
+
 def _cleanup_existing_processes() -> None:
     for label, pid_path in (("API", API_PID), ("Web", WEB_PID)):
         pid = read_pid(pid_path)
@@ -231,6 +252,8 @@ def _terminate_port_processes(port: int, label: str, auto_yes: bool) -> bool:
 def _start(args: argparse.Namespace) -> int:
     ensure_runtime_dirs()
     _cleanup_existing_processes()
+    if args.foreground:
+        _install_shutdown_handlers(args)
     if not _python_deps_ready(args.yes):
         return 1
     if not _terminate_port_processes(args.api_port, "API", args.yes):
@@ -293,6 +316,9 @@ def _start(args: argparse.Namespace) -> int:
         try:
             while True:
                 safe_sleep(0.5)
+                if api_proc.poll() is not None or ui_proc.poll() is not None:
+                    print(">> Detected process exit; shutting down stack.")
+                    return _stop(args)
         except KeyboardInterrupt:
             return _stop(args)
     return 0
@@ -302,21 +328,33 @@ def _stop(args: argparse.Namespace) -> int:
     ensure_runtime_dirs()
     stopped = False
     failed = False
+    tokens_by_label = {
+        "API": ["uvicorn", "web_api.app:app"],
+        "Web": ["vite", "npm", "node"],
+    }
+    api_port = getattr(args, "api_port", DEFAULT_API_PORT)
+    ui_port = getattr(args, "ui_port", DEFAULT_UI_PORT)
     for label, pid_path in (("API", API_PID), ("Web", WEB_PID)):
         pid = read_pid(pid_path)
         if pid and process_alive(pid):
-            terminate_pid(pid)
+            terminate_pid(pid, timeout=8.0)
             stopped = True
-            if wait_for_exit(pid, timeout=5.0):
+            if wait_for_exit(pid, timeout=8.0):
                 print(f">> Stopped {label} (pid {pid}).")
             else:
                 failed = True
                 print(f">> {label} process (pid {pid}) did not exit cleanly.")
         if pid_path.exists():
             pid_path.unlink(missing_ok=True)
-    _terminate_port_processes(DEFAULT_API_PORT, "API", args.yes)
-    _terminate_port_processes(DEFAULT_UI_PORT, "UI", args.yes)
-    if port_in_use(DEFAULT_API_PORT) or port_in_use(DEFAULT_UI_PORT):
+        port = api_port if label == "API" else ui_port
+        extra = terminate_pids_by_port(port, tokens_by_label.get(label), timeout=8.0)
+        if extra:
+            print(f">> Terminated {label} port process(es): {', '.join(str(pid) for pid in extra)}")
+        if not wait_for_port_release(port, timeout=10.0):
+            failed = True
+    _terminate_port_processes(api_port, "API", args.yes)
+    _terminate_port_processes(ui_port, "UI", args.yes)
+    if port_in_use(api_port) or port_in_use(ui_port):
         failed = True
         print(">> One or more service ports are still in use. Check running processes.")
     if not stopped:

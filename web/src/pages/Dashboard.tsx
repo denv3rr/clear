@@ -385,7 +385,7 @@ export default function Dashboard() {
       </Reveal>
 
       <Reveal delay={0.1}>
-        <section className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
           {kpis.map((kpi) => (
             <KpiCard key={kpi.label} label={kpi.label} value={kpi.value} tone={kpi.tone} />
           ))}
@@ -402,7 +402,7 @@ export default function Dashboard() {
       </Reveal>
 
       <Reveal delay={0.2}>
-        <section className="grid grid-cols-1 gap-6">
+        <section className="grid grid-cols-1 gap-5">
           <Collapsible
             title="Global Patterns"
             meta={intelSummary?.risk_level || "Live"}

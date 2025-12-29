@@ -1,5 +1,13 @@
+from datetime import datetime, timedelta
+
 from modules.client_mgr.client_model import Client, Account
-from modules.view_models import account_detail, client_detail, list_clients
+from modules.client_mgr.toolkit import RegimeModels
+from modules.view_models import (
+    _regime_window_payload,
+    account_detail,
+    client_detail,
+    list_clients,
+)
 
 
 def test_client_view_models():
@@ -30,3 +38,15 @@ def test_account_detail_ignores_invalid_holdings():
     detail = account_detail(acc)
     assert detail["holdings"]["AAPL"] == 2.0
     assert "BROKEN" not in detail["holdings"]
+
+
+def test_regime_window_payload_uses_recent_window():
+    base = datetime(2024, 1, 1)
+    dates = [base + timedelta(days=idx) for idx in range(40)]
+    values = [float(idx) for idx in range(40)]
+    payload = _regime_window_payload(dates, values, "1M")
+    expected = RegimeModels.INTERVAL_POINTS.get("1M", 21) + 1
+    assert payload["interval"] == "1M"
+    assert len(payload["series"]) == expected
+    assert payload["series"][0]["value"] == values[-expected]
+    assert payload["series"][-1]["value"] == values[-1]

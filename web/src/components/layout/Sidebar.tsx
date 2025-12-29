@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { NavLink } from "react-router-dom";
+import { useApi } from "../../lib/api";
 
 type NavItem = {
   label: string;
@@ -12,8 +13,18 @@ type SidebarProps = {
 };
 
 export function Sidebar({ items }: SidebarProps) {
+  const { data: diagnostics } = useApi<{
+    trackers?: { count?: number; warning_count?: number; warnings?: string[] };
+    system?: { hostname?: string; platform?: string };
+  }>("/api/tools/diagnostics", 60000);
+  const { data: health } = useApi<{ status?: string }>("/api/health", 30000);
+  const trackerWarnings = diagnostics?.trackers?.warnings || [];
+  const trackerCount = diagnostics?.trackers?.count ?? 0;
+  const warningCount = diagnostics?.trackers?.warning_count ?? 0;
+  const status = health?.status === "ok" ? "Online" : "Degraded";
+
   return (
-    <aside className="w-64 border-r border-slate-800/70 p-6 space-y-10 bg-ink-950/80">
+    <aside className="w-60 border-r border-slate-900/80 p-6 space-y-8 bg-ink-950">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">[ CLEAR ]</h1>
         <p className="tag text-xs text-emerald-300">Copyright © 2025</p>
@@ -29,7 +40,9 @@ export function Sidebar({ items }: SidebarProps) {
             {({ isActive }) => (
               <motion.div
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left ${
-                  isActive ? "bg-ink-700/70 text-white shadow-glow" : "text-slate-300 hover:bg-ink-700/40"
+                  isActive
+                    ? "bg-slate-900/70 text-white"
+                    : "text-slate-300 hover:bg-slate-900/40"
                 }`}
                 whileHover={{ x: 4 }}
                 transition={{ type: "spring", stiffness: 120, damping: 12 }}
@@ -41,10 +54,23 @@ export function Sidebar({ items }: SidebarProps) {
           </NavLink>
         ))}
       </nav>
-      <div className="glass-panel rounded-2xl p-4 scanline">
+      <div className="glass-panel rounded-2xl p-5">
         <p className="tag text-xs text-emerald-300">SYSTEM STATUS</p>
-        <h3 className="text-lg font-semibold mt-2">--</h3>
-        <p className="text-sm text-slate-400 mt-1">--</p>
+        <h3 className="text-lg font-semibold mt-2">{status}</h3>
+        <p className="text-sm text-slate-400 mt-1">
+          Trackers: {trackerCount} • Warnings: {warningCount}
+        </p>
+        {trackerWarnings.length ? (
+          <p className="text-[11px] text-slate-500 mt-2">
+            {trackerWarnings[0]}
+          </p>
+        ) : (
+          <p className="text-[11px] text-slate-500 mt-2">
+            {diagnostics?.system?.hostname
+              ? `${diagnostics.system.hostname} • ${diagnostics.system.platform || "system"}`
+              : "No tracker warnings."}
+          </p>
+        )}
       </div>
     </aside>
   );

@@ -1,7 +1,9 @@
 import argparse
+import atexit
 import importlib.util
 import os
 import shutil
+import signal
 import subprocess
 import httpx
 import sys
@@ -16,6 +18,8 @@ from utils.launcher import (
     process_alive,
     read_pid,
     terminate_pid,
+    terminate_pids_by_port,
+    wait_for_port_release,
     wait_for_port,
     write_pid,
 )
@@ -217,6 +221,8 @@ def _launch_processes(
 
     api_proc = _spawn_process(api_cmd, detach=detach)
     write_pid(API_PID, api_proc.pid)
+    api_port = 8000
+    ui_port = 5173
     try:
         if not _wait_for_api():
             print(">> API failed to start on http://127.0.0.1:8000. Check logs/output.")
@@ -239,7 +245,7 @@ def _launch_processes(
         ui_env.setdefault("VITE_API_KEY", api_key)
     ui_proc = _spawn_process(ui_cmd, cwd=web_dir, env=ui_env, detach=detach)
     write_pid(WEB_PID, ui_proc.pid)
-    if not wait_for_port(5173, timeout=6.0):
+    if not wait_for_port(ui_port, timeout=6.0):
         print(">> Web UI failed to start on http://127.0.0.1:5173. Check output.")
         terminate_pid(api_proc.pid)
         terminate_pid(ui_proc.pid)
@@ -255,22 +261,43 @@ def _launch_processes(
         return 0
     print(">> Press CTRL+C to stop.")
 
+    def _shutdown() -> None:
+        for proc in (api_proc, ui_proc):
+            if proc.poll() is None:
+                terminate_pid(proc.pid, timeout=8.0)
+        for pid_path in (API_PID, WEB_PID):
+            if pid_path.exists():
+                pid_path.unlink(missing_ok=True)
+        terminate_pids_by_port(api_port, ["uvicorn", "web_api.app:app"], timeout=8.0)
+        terminate_pids_by_port(ui_port, ["vite", "npm", "node"], timeout=8.0)
+        wait_for_port_release(api_port, timeout=10.0)
+        wait_for_port_release(ui_port, timeout=10.0)
+
+    def _handle_signal(signum: int, _frame: object) -> None:
+        print("\n>> Shutting down web stack...")
+        _shutdown()
+        raise SystemExit(1)
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            signal.signal(sig, _handle_signal)
+        except Exception:
+            continue
+    atexit.register(_shutdown)
+
     try:
         while True:
             if api_proc.poll() is not None:
+                _shutdown()
                 return api_proc.returncode or 0
             if ui_proc.poll() is not None:
+                _shutdown()
                 return ui_proc.returncode or 0
             time.sleep(0.5)
     except KeyboardInterrupt:
         print("\n>> Shutting down web stack...")
     finally:
-        for proc in (api_proc, ui_proc):
-            if proc.poll() is None:
-                terminate_pid(proc.pid)
-        for pid_path in (API_PID, WEB_PID):
-            if pid_path.exists():
-                pid_path.unlink(missing_ok=True)
+        _shutdown()
     return 0
 
 

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import createPlotlyComponent from "react-plotly.js/factory";
 import Plotly from "plotly.js-dist-min";
 
@@ -29,7 +30,9 @@ export function Surface3D({
   height = 320,
   className = ""
 }: Surface3DProps) {
+  const [expanded, setExpanded] = useState(false);
   const hasData = Array.isArray(z) && z.length > 0 && Array.isArray(z[0]) && z[0].length > 0;
+  const expandedHeight = Math.max(height + 280, 520);
   const data = hasData
     ? [
         {
@@ -57,66 +60,111 @@ export function Surface3D({
       ]
     : [];
 
+  const renderPlot = (plotHeight: number) =>
+    hasData ? (
+      <Plot
+        data={data as any}
+        layout={{
+          autosize: true,
+          height: plotHeight,
+          margin: { l: 0, r: 0, t: 0, b: 0 },
+          paper_bgcolor: "rgba(0,0,0,0)",
+          plot_bgcolor: "rgba(0,0,0,0)",
+          scene: {
+            bgcolor: "rgba(0,0,0,0)",
+            xaxis: {
+              showgrid: true,
+              gridcolor: "rgba(72,241,166,0.08)",
+              zerolinecolor: "rgba(72,241,166,0.2)",
+              color: "#94a3b8"
+            },
+            yaxis: {
+              showgrid: true,
+              gridcolor: "rgba(72,241,166,0.08)",
+              zerolinecolor: "rgba(72,241,166,0.2)",
+              color: "#94a3b8"
+            },
+            zaxis: {
+              showgrid: true,
+              gridcolor: "rgba(72,241,166,0.08)",
+              zerolinecolor: "rgba(72,241,166,0.2)",
+              color: "#94a3b8"
+            },
+            camera: {
+              eye: { x: 1.15, y: 1.15, z: 0.9 },
+              center: { x: 0, y: 0, z: 0 }
+            },
+            aspectratio: { x: 1, y: 1, z: 0.6 }
+          },
+          dragmode: "orbit"
+        }}
+        config={{ displayModeBar: false, responsive: true, scrollZoom: true }}
+        style={{ width: "100%", height: "100%" }}
+        useResizeHandler
+      />
+    ) : (
+      <div className="surface-empty">Surface data unavailable.</div>
+    );
+
   return (
-    <div className={`glass-panel rounded-2xl p-4 surface-3d ${className}`}>
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-slate-400">{title}</p>
-        <p className="text-[11px] text-emerald-300">{hasData ? "3D Surface" : "No data"}</p>
+    <>
+      <div className={`glass-panel rounded-2xl p-5 surface-3d ${className}`}>
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-slate-400">{title}</p>
+          <div className="flex items-center gap-3">
+            <p className="text-[11px] text-emerald-300">{hasData ? "3D Surface" : "No data"}</p>
+            <button
+              className="text-[11px] text-slate-400 hover:text-emerald-300"
+              type="button"
+              onClick={() => setExpanded(true)}
+            >
+              Expand
+            </button>
+          </div>
+        </div>
+        {axis ? (
+          <p className="mt-1 text-[11px] text-slate-500">
+            X: {axis.x_label || "X"}
+            {axis.x_unit ? ` (${axis.x_unit})` : ""} | Y: {axis.y_label || "Y"}
+            {axis.y_unit ? ` (${axis.y_unit})` : ""} | Z: {axis.z_label || "Z"}
+            {axis.z_unit ? ` (${axis.z_unit})` : ""}
+          </p>
+        ) : null}
+        <div className="mt-3">{renderPlot(height)}</div>
       </div>
-      {axis ? (
-        <p className="mt-1 text-[11px] text-slate-500">
-          X: {axis.x_label || "X"}
-          {axis.x_unit ? ` (${axis.x_unit})` : ""} | Y: {axis.y_label || "Y"}
-          {axis.y_unit ? ` (${axis.y_unit})` : ""} | Z: {axis.z_label || "Z"}
-          {axis.z_unit ? ` (${axis.z_unit})` : ""}
-        </p>
+      {expanded ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-6"
+          onClick={() => setExpanded(false)}
+        >
+          <div
+            className="w-full max-w-6xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="glass-panel rounded-2xl p-5">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-slate-200">{title}</p>
+                <button
+                  className="text-xs text-slate-400 hover:text-emerald-300"
+                  type="button"
+                  onClick={() => setExpanded(false)}
+                >
+                  Close
+                </button>
+              </div>
+              {axis ? (
+                <p className="mt-1 text-[11px] text-slate-500">
+                  X: {axis.x_label || "X"}
+                  {axis.x_unit ? ` (${axis.x_unit})` : ""} | Y: {axis.y_label || "Y"}
+                  {axis.y_unit ? ` (${axis.y_unit})` : ""} | Z: {axis.z_label || "Z"}
+                  {axis.z_unit ? ` (${axis.z_unit})` : ""}
+                </p>
+              ) : null}
+              <div className="mt-4">{renderPlot(expandedHeight)}</div>
+            </div>
+          </div>
+        </div>
       ) : null}
-      <div className="mt-3">
-        {hasData ? (
-          <Plot
-            data={data as any}
-            layout={{
-              autosize: true,
-              height,
-              margin: { l: 0, r: 0, t: 0, b: 0 },
-              paper_bgcolor: "rgba(0,0,0,0)",
-              plot_bgcolor: "rgba(0,0,0,0)",
-              scene: {
-                bgcolor: "rgba(0,0,0,0)",
-                xaxis: {
-                  showgrid: true,
-                  gridcolor: "rgba(72,241,166,0.08)",
-                  zerolinecolor: "rgba(72,241,166,0.2)",
-                  color: "#94a3b8"
-                },
-                yaxis: {
-                  showgrid: true,
-                  gridcolor: "rgba(72,241,166,0.08)",
-                  zerolinecolor: "rgba(72,241,166,0.2)",
-                  color: "#94a3b8"
-                },
-                zaxis: {
-                  showgrid: true,
-                  gridcolor: "rgba(72,241,166,0.08)",
-                  zerolinecolor: "rgba(72,241,166,0.2)",
-                  color: "#94a3b8"
-                },
-                camera: {
-                  eye: { x: 1.15, y: 1.15, z: 0.9 },
-                  center: { x: 0, y: 0, z: 0 }
-                },
-                aspectratio: { x: 1, y: 1, z: 0.6 }
-              },
-              dragmode: "orbit"
-            }}
-            config={{ displayModeBar: false, responsive: true, scrollZoom: true }}
-            style={{ width: "100%", height: "100%" }}
-            useResizeHandler
-          />
-        ) : (
-          <div className="surface-empty">Surface data unavailable.</div>
-        )}
-      </div>
-    </div>
+    </>
   );
 }

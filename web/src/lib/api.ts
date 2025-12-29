@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { DEMO_MODE, getMockResponse } from "./mockData";
 
 const runtimeHost =
   typeof window !== "undefined" && window.location.hostname
@@ -64,6 +65,13 @@ export async function apiGet<T>(path: string, ttl = 0, signal?: AbortSignal): Pr
     if (existing && Date.now() - existing.ts < existing.ttl) {
       return existing.data;
     }
+  }
+  if (DEMO_MODE) {
+    const payload = getMockResponse(path) as T;
+    if (ttl > 0) {
+      cache.set(key, { ts: Date.now(), ttl, data: payload });
+    }
+    return payload;
   }
   const headers: Record<string, string> = {};
   const apiKey = getApiKey() || ENV_API_KEY;

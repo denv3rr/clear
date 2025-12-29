@@ -1,5 +1,7 @@
 from unittest import mock
 
+import time
+
 from modules.market_data.trackers import GlobalTrackers, TrackerPoint, TrackerProviders
 
 
@@ -76,6 +78,8 @@ def test_fetch_flights_uses_opensky_when_no_feed(monkeypatch):
     monkeypatch.delenv("FLIGHT_DATA_URL", raising=False)
     monkeypatch.delenv("FLIGHT_DATA_PATH", raising=False)
     monkeypatch.setenv("CLEAR_INCLUDE_COMMERCIAL", "1")
+    TrackerProviders._OPENSKY_LAST_REQUEST = 0.0
+    TrackerProviders._OPENSKY_BACKOFF_UNTIL = 0.0
 
     class OpenSkyResponse:
         status_code = 200
@@ -109,3 +113,37 @@ def test_fetch_flights_uses_opensky_when_no_feed(monkeypatch):
         points, warnings = TrackerProviders.fetch_flights()
     assert points
     assert warnings == []
+
+
+def test_opensky_throttle_respects_min_refresh(monkeypatch):
+    monkeypatch.delenv("FLIGHT_DATA_URL", raising=False)
+    monkeypatch.delenv("FLIGHT_DATA_PATH", raising=False)
+    monkeypatch.setenv("OPENSKY_MIN_REFRESH", "120")
+    TrackerProviders._OPENSKY_LAST_REQUEST = time.time()
+    TrackerProviders._OPENSKY_BACKOFF_UNTIL = 0.0
+    with mock.patch("modules.market_data.trackers.requests.get") as mocked_get:
+        points, warnings = TrackerProviders.fetch_flights()
+    assert points == []
+    assert any("OpenSky refresh throttled" in warning for warning in warnings)
+    mocked_get.assert_not_called()
+
+
+def test_opensky_backoff_on_429(monkeypatch):
+    monkeypatch.delenv("FLIGHT_DATA_URL", raising=False)
+    monkeypatch.delenv("FLIGHT_DATA_PATH", raising=False)
+    monkeypatch.delenv("OPENSKY_MIN_REFRESH", raising=False)
+    TrackerProviders._OPENSKY_BACKOFF_UNTIL = 0.0
+    TrackerProviders._OPENSKY_LAST_REQUEST = 0.0
+
+    class RateLimitResponse:
+        status_code = 429
+        headers = {"Retry-After": "120"}
+
+        def json(self):
+            return {}
+
+    with mock.patch("modules.market_data.trackers.requests.get", return_value=RateLimitResponse()):
+        points, warnings = TrackerProviders.fetch_flights()
+    assert points == []
+    assert any("OpenSky HTTP 429" in warning for warning in warnings)
+    assert TrackerProviders._OPENSKY_BACKOFF_UNTIL > time.time()

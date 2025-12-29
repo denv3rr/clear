@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { DEMO_MODE, getMockTrackerSnapshot } from "./mockData";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
 const ENV_API_KEY = import.meta.env.VITE_API_KEY;
@@ -17,6 +18,15 @@ export function useTrackerStream<T>(options: StreamOptions = {}) {
 
   useEffect(() => {
     if (!enabled) return;
+    if (DEMO_MODE) {
+      setConnected(true);
+      setData(getMockTrackerSnapshot(mode) as T);
+      if (!interval) return;
+      const timer = setInterval(() => {
+        setData(getMockTrackerSnapshot(mode) as T);
+      }, interval * 1000);
+      return () => clearInterval(timer);
+    }
     const params = new URLSearchParams();
     params.set("mode", mode);
     params.set("interval", String(interval));

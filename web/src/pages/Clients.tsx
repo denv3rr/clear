@@ -60,6 +60,7 @@ type RegimePayload = {
   transition_matrix?: number[][];
   state_probs?: Record<string, number>;
   evolution?: { series?: Record<string, number>[] };
+  window?: { interval?: string; series?: HistoryPoint[] };
 };
 
 type SurfacePayload = {
@@ -293,14 +294,14 @@ export default function Clients() {
   ].filter(Boolean) as string[];
 
   return (
-    <Card className="rounded-2xl p-6">
+    <Card className="rounded-2xl p-5">
       <SectionHeader
         label="CLIENTS"
         title="Portfolio Command Center"
         right={dashboard?.client ? `${dashboard.client.name}` : `${rows.length} clients`}
       />
       <ErrorBanner messages={errorMessages} onRetry={refreshIndex} />
-      <div className="mt-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-5">
         <div className="space-y-3 text-sm text-slate-300">
           <label htmlFor="client-search" className="text-xs text-slate-400">
             Search
@@ -339,7 +340,7 @@ export default function Clients() {
           )}
         </div>
         <div className="lg:col-span-3 space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             <div className="rounded-xl border border-slate-800/60 p-4">
               <p className="text-xs text-slate-400">Interval</p>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -393,7 +394,7 @@ export default function Clients() {
           </div>
 
           {activeTotals ? (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
               <KpiCard
                 label="Total Value"
                 value={`$${activeTotals.total_value.toFixed(2)}`}
@@ -427,7 +428,7 @@ export default function Clients() {
             open={profileOpen}
             onToggle={() => setProfileOpen((prev) => !prev)}
           >
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs text-slate-300">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 text-xs text-slate-300">
               <div className="rounded-xl border border-slate-800/60 p-4">
                 <p className="text-xs text-slate-400 mb-2">Tax Profile</p>
                 <div className="space-y-2">
@@ -477,7 +478,7 @@ export default function Clients() {
             )}
           </Collapsible>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             <Collapsible
               title="Risk Metrics"
               meta={dashboard?.risk?.risk_profile || "Loading"}
@@ -511,23 +512,49 @@ export default function Clients() {
             </Collapsible>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             <Surface3D
               title="Transition Surface"
               z={dashboard?.regime?.transition_matrix || []}
             />
-            <div className="glass-panel rounded-2xl p-4">
-              <p className="text-xs text-slate-400">Stationary Distribution</p>
-              <div className="mt-3 space-y-2 text-xs text-slate-300">
-                {dashboard?.regime?.state_probs ? (
-                  Object.entries(dashboard.regime.state_probs).map(([key, value]) => (
-                    <div key={key} className="flex items-center justify-between">
-                      <span className="text-slate-400">{key}</span>
-                      <span className="text-emerald-300">{(value * 100).toFixed(1)}%</span>
-                    </div>
-                  ))
+            <div className="space-y-4">
+              <div className="glass-panel rounded-2xl p-5">
+                <p className="text-xs text-slate-400">Stationary Distribution</p>
+                <div className="mt-3 space-y-2 text-xs text-slate-300">
+                  {dashboard?.regime?.state_probs ? (
+                    Object.entries(dashboard.regime.state_probs).map(([key, value]) => (
+                      <div key={key} className="flex items-center justify-between">
+                        <span className="text-slate-400">{key}</span>
+                        <span className="text-emerald-300">{(value * 100).toFixed(1)}%</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-slate-500">No regime surface available.</p>
+                  )}
+                </div>
+              </div>
+              <div className="glass-panel rounded-2xl p-5">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-slate-400">Regime Window</p>
+                  <p className="text-[11px] text-emerald-300">
+                    {dashboard?.regime?.window?.interval || dashboard?.interval || "n/a"}
+                  </p>
+                </div>
+                {dashboard?.regime?.window?.series?.length ? (
+                  <div className="mt-3">
+                    <AreaSparkline
+                      data={dashboard.regime.window.series}
+                      height={160}
+                      color="#48f1a6"
+                    />
+                    <p className="mt-2 text-[11px] text-slate-500">
+                      Samples {dashboard?.regime?.samples ?? 0}
+                    </p>
+                  </div>
                 ) : (
-                  <p className="text-slate-500">No regime surface available.</p>
+                  <p className="mt-3 text-xs text-slate-500">
+                    No regime window data available.
+                  </p>
                 )}
               </div>
             </div>
@@ -548,7 +575,7 @@ export default function Clients() {
                   <KpiCard label="Perm Entropy" value={patterns?.perm_entropy !== undefined ? patterns.perm_entropy.toFixed(3) : "—"} tone="text-slate-200" />
                   <KpiCard label="Hurst" value={patterns?.hurst !== undefined ? patterns.hurst.toFixed(3) : "—"} tone="text-slate-200" />
                 </div>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                   <Surface3D
                     title="Waveform Surface"
                     z={patterns?.wave_surface?.z || []}
@@ -566,7 +593,7 @@ export default function Clients() {
                     height={300}
                   />
                 </div>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs text-slate-300">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 text-xs text-slate-300">
                   <div className="rounded-xl border border-slate-800/60 p-4">
                     <p className="text-xs text-slate-400 mb-2">Motif Matches</p>
                     {patterns?.motifs?.length ? (
@@ -599,7 +626,7 @@ export default function Clients() {
             open={holdingsOpen}
             onToggle={() => setHoldingsOpen((prev) => !prev)}
           >
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {activeHoldings.map((holding) => (
                 <div key={holding.ticker} className="rounded-xl border border-slate-800/60 p-4">
                   <p className="text-slate-100 font-medium">{holding.ticker}</p>
@@ -619,7 +646,7 @@ export default function Clients() {
             open={diagnosticsOpen}
             onToggle={() => setDiagnosticsOpen((prev) => !prev)}
           >
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs text-slate-300">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 text-xs text-slate-300">
               <div className="rounded-xl border border-slate-800/60 p-4">
                 <p className="text-xs text-slate-400 mb-2">Sector Concentration</p>
                 {dashboard?.diagnostics?.sectors?.length ? (

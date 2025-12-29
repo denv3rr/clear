@@ -64,7 +64,7 @@ export default function Settings() {
   ].filter(Boolean) as string[];
 
   return (
-    <Card className="rounded-2xl p-6">
+    <Card className="rounded-2xl p-5">
       <SectionHeader label="SETTINGS" title="System Settings Snapshot" />
       <div className="mt-4">
         <ErrorBanner messages={errorMessages} onRetry={refresh} />

@@ -3,7 +3,12 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, List
 
 from modules.client_mgr.client_model import Client, Account
-from modules.client_mgr.toolkit import FinancialToolkit, TOOLKIT_PERIOD, TOOLKIT_INTERVAL
+from modules.client_mgr.toolkit import (
+    FinancialToolkit,
+    RegimeModels,
+    TOOLKIT_INTERVAL,
+    TOOLKIT_PERIOD,
+)
 from modules.client_mgr.valuation import ValuationEngine
 from modules.client_mgr.holdings import normalize_ticker
 
@@ -122,6 +127,20 @@ def _history_payload(dates: List[Any], values: List[float]) -> List[Dict[str, An
     return series
 
 
+def _regime_window_payload(
+    dates: List[Any], values: List[float], interval: str
+) -> Dict[str, Any]:
+    if not values:
+        return {"interval": interval, "series": []}
+    window = RegimeModels.INTERVAL_POINTS.get(interval, 21) + 1
+    window_values = values[-window:] if len(values) > window else values
+    window_dates = dates[-len(window_values) :] if dates else []
+    return {
+        "interval": interval,
+        "series": _history_payload(window_dates, window_values),
+    }
+
+
 def portfolio_dashboard(client: Client, interval: str = "1M") -> Dict[str, Any]:
     valuation = ValuationEngine()
     holdings = _aggregate_holdings(client.accounts)
@@ -160,6 +179,9 @@ def portfolio_dashboard(client: Client, interval: str = "1M") -> Dict[str, Any]:
         interval=interval,
         label=client.name,
         scope="Portfolio",
+    )
+    regime_payload["window"] = _regime_window_payload(
+        history_dates, history_values, interval
     )
 
     holdings_list = sorted(
@@ -272,6 +294,9 @@ def account_dashboard(client: Client, account: Account, interval: str = "1M") ->
         interval=interval,
         label=account.account_name,
         scope="Account",
+    )
+    regime_payload["window"] = _regime_window_payload(
+        history_dates, history_values, interval
     )
 
     holdings_list = sorted(

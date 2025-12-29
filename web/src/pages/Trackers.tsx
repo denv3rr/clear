@@ -513,7 +513,7 @@ export default function Trackers() {
   }, [mapOpen, mapReady]);
 
   return (
-    <Card className="rounded-2xl p-6">
+    <Card className="rounded-2xl p-5">
       <SectionHeader
         label="TRACKERS"
         title="Live Trackers"
@@ -529,12 +529,12 @@ export default function Trackers() {
           open={riskOpen}
           onToggle={() => setRiskOpen((prev) => !prev)}
         >
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
             <KpiCard label="Active Flights" value={`${riskTotals.counts.flights}`} tone="text-emerald-300" />
             <KpiCard label="Active Ships" value={`${riskTotals.counts.ships}`} tone="text-slate-200" />
             <KpiCard label="Signal Density" value={`${points.length}`} tone="text-slate-200" />
           </div>
-          <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="mt-5 grid grid-cols-1 lg:grid-cols-2 gap-5">
             <div className="rounded-xl border border-slate-800/60 p-4">
               <p className="text-xs text-slate-400 mb-2">Dominant Categories</p>
               <div className="space-y-2">
@@ -743,7 +743,7 @@ export default function Trackers() {
                   ))}
                 </div>
                 {history && (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                     <div className="text-xs text-slate-400 space-y-2">
                       <p>History points: {history.summary?.points ?? history.history.length}</p>
                       {history.summary?.distance_km ? (
@@ -796,7 +796,7 @@ export default function Trackers() {
                 )}
               </div>
             )}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {filteredPoints.slice(0, 12).map((point) => (
                 <div key={`${point.kind}-${point.label}`} className="rounded-xl border border-slate-800/60 p-4">
                   <p className="text-slate-100 font-medium">{point.label}</p>
