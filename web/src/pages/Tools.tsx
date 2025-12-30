@@ -4,6 +4,7 @@ import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { KpiCard } from "../components/ui/KpiCard";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { useApi } from "../lib/api";
+import { useSystemMetrics } from "../lib/systemMetrics";
 
 type DiagnosticsPayload = {
   system?: {
@@ -23,11 +24,6 @@ type DiagnosticsPayload = {
     disk_used_gb?: number | null;
     disk_free_gb?: number | null;
     disk_percent?: number | null;
-    cpu_percent?: number | null;
-    mem_percent?: number | null;
-    mem_used_gb?: number | null;
-    mem_total_gb?: number | null;
-    swap_percent?: number | null;
   };
   feeds?: {
     flights?: {
@@ -53,10 +49,11 @@ export default function Tools() {
     interval: 60000
   });
   const { data: health } = useApi<HealthPayload>("/api/health", { interval: 60000 });
-  const cpuPercent = data?.metrics?.cpu_percent ?? null;
-  const memPercent = data?.metrics?.mem_percent ?? null;
-  const diskPercent = data?.metrics?.disk_percent ?? null;
-  const swapPercent = data?.metrics?.swap_percent ?? null;
+  const { metrics } = useSystemMetrics();
+  const cpuPercent = metrics?.cpu_percent ?? null;
+  const memPercent = metrics?.mem_percent ?? null;
+  const diskPercent = metrics?.disk_percent ?? null;
+  const swapPercent = metrics?.swap_percent ?? null;
   const authHint = "Check CLEAR_WEB_API_KEY + localStorage clear_api_key.";
   const errorMessages = [
     error
@@ -124,9 +121,9 @@ export default function Tools() {
           <p className="text-xs text-slate-400 mt-3">Swap Load</p>
           <MeterBar value={swapPercent ?? 0} height={70} max={100} color="#a3e635" />
           <div className="mt-3 text-xs text-slate-400 space-y-1">
-            <p>Total: {data?.metrics?.disk_total_gb?.toFixed(2) ?? "—"} GB</p>
-            <p>Used: {data?.metrics?.disk_used_gb?.toFixed(2) ?? "—"} GB</p>
-            <p>Free: {data?.metrics?.disk_free_gb?.toFixed(2) ?? "—"} GB</p>
+            <p>Total: {metrics?.disk_total_gb?.toFixed(2) ?? "—"} GB</p>
+            <p>Used: {metrics?.disk_used_gb?.toFixed(2) ?? "—"} GB</p>
+            <p>Free: {metrics?.disk_free_gb?.toFixed(2) ?? "—"} GB</p>
           </div>
         </div>
       </div>

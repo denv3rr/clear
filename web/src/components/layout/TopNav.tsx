@@ -1,6 +1,6 @@
+import { useState } from "react";
 import { NavLink } from "react-router-dom";
-import { Pause, Play } from "lucide-react";
-import { useTrackerPause } from "../../lib/trackerPause";
+import { Menu, X } from "lucide-react";
 
 type NavItem = {
   label: string;
@@ -17,19 +17,28 @@ export function TopNav({ items, onToggleContext }: TopNavProps) {
   const utilityPaths = new Set(["/tools", "/settings"]);
   const primaryItems = items.filter((item) => !utilityPaths.has(item.path));
   const utilityItems = items.filter((item) => utilityPaths.has(item.path));
-  const { paused, toggle } = useTrackerPause();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
     <header className="border-b border-slate-900/80 bg-ink-950/95 backdrop-blur">
-      <div className="flex items-center gap-6 py-4 pl-[44px] pr-6 md:pl-[60px] md:pr-10 lg:pl-[68px] lg:pr-12">
+      <div className="flex min-w-0 items-center gap-6 py-4 pl-6 pr-6 md:pl-10 md:pr-10 lg:pl-[68px] lg:pr-12">
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            aria-label="Toggle navigation"
+            aria-expanded={mobileOpen}
+            onClick={() => setMobileOpen((prev) => !prev)}
+            className="lg:hidden rounded-full border border-slate-800/80 p-2 text-slate-300 hover:border-slate-700 hover:text-white"
+          >
+            {mobileOpen ? <X size={18} /> : <Menu size={18} />}
+          </button>
           <span className="text-lg font-semibold tracking-tight">[ CLEAR ]</span>
           <span className="hidden text-xs text-slate-500 sm:inline">
             Markets • Risk • Trackers
           </span>
         </div>
-        <nav className="flex-1">
-          <div className="flex gap-2 overflow-x-auto py-1">
+        <nav className="hidden lg:flex flex-1 min-w-0">
+          <div className="flex gap-2 py-1">
             {primaryItems.map(({ label, icon: Icon, path }) => (
               <NavLink
                 key={label}
@@ -50,7 +59,7 @@ export function TopNav({ items, onToggleContext }: TopNavProps) {
           </div>
         </nav>
         <div className="flex items-center gap-2">
-          <div className="hidden md:flex items-center gap-2">
+          <div className="hidden lg:flex items-center gap-2">
             {utilityItems.map(({ label, icon: Icon, path }) => (
               <NavLink
                 key={label}
@@ -70,21 +79,7 @@ export function TopNav({ items, onToggleContext }: TopNavProps) {
             ))}
           </div>
           <button
-            className={`rounded-full border px-3 py-2 text-xs transition ${
-              paused
-                ? "border-amber-400/70 text-amber-200 hover:border-amber-300"
-                : "border-slate-800/80 text-slate-300 hover:border-slate-700 hover:text-white"
-            }`}
-            type="button"
-            onClick={toggle}
-          >
-            <span className="flex items-center gap-2">
-              {paused ? <Play size={14} /> : <Pause size={14} />}
-              {paused ? "Resume Trackers" : "Pause Trackers"}
-            </span>
-          </button>
-          <button
-            className="rounded-full border border-slate-800/80 px-4 py-2 text-xs text-slate-300 hover:border-slate-700 hover:text-white"
+            className="hidden lg:inline-flex rounded-full border border-slate-800/80 px-4 py-2 text-xs text-slate-300 hover:border-slate-700 hover:text-white"
             type="button"
             onClick={onToggleContext}
           >
@@ -92,6 +87,62 @@ export function TopNav({ items, onToggleContext }: TopNavProps) {
           </button>
         </div>
       </div>
+      {mobileOpen ? (
+        <div className="lg:hidden border-t border-slate-900/70 bg-ink-950/95">
+          <div className="px-6 py-4 space-y-4">
+            <nav className="space-y-2">
+              {primaryItems.map(({ label, icon: Icon, path }) => (
+                <NavLink
+                  key={label}
+                  to={path}
+                  onClick={() => setMobileOpen(false)}
+                  className={({ isActive }) =>
+                    [
+                      "flex items-center gap-2 rounded-xl px-4 py-2 text-sm transition",
+                      isActive
+                        ? "bg-slate-900/80 text-white"
+                        : "text-slate-300 hover:bg-slate-900/50"
+                    ].join(" ")
+                  }
+                >
+                  <Icon size={16} />
+                  <span>{label}</span>
+                </NavLink>
+              ))}
+            </nav>
+            <div className="border-t border-slate-900/70 pt-3 space-y-2">
+              {utilityItems.map(({ label, icon: Icon, path }) => (
+                <NavLink
+                  key={label}
+                  to={path}
+                  onClick={() => setMobileOpen(false)}
+                  className={({ isActive }) =>
+                    [
+                      "flex items-center gap-2 rounded-xl px-4 py-2 text-sm transition",
+                      isActive
+                        ? "bg-slate-900/80 text-white"
+                        : "text-slate-300 hover:bg-slate-900/50"
+                    ].join(" ")
+                  }
+                >
+                  <Icon size={16} />
+                  <span>{label}</span>
+                </NavLink>
+              ))}
+              <button
+                className="w-full rounded-xl border border-slate-800/80 px-4 py-2 text-left text-sm text-slate-300 hover:border-slate-700 hover:text-white"
+                type="button"
+                onClick={() => {
+                  onToggleContext?.();
+                  setMobileOpen(false);
+                }}
+              >
+                Context
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </header>
   );
 }

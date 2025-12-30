@@ -1,5 +1,7 @@
 import { NavLink } from "react-router-dom";
+import { Pause, Play } from "lucide-react";
 import { useApi } from "../../lib/api";
+import { useSystemMetrics } from "../../lib/systemMetrics";
 import { useTrackerPause } from "../../lib/trackerPause";
 import { MeterBar } from "../ui/Charts";
 
@@ -30,7 +32,7 @@ export function ContextDrawer({ variant = "inline", onClose }: ContextDrawerProp
   const { data: health } = useApi<{ status?: string }>("/api/health", {
     interval: 30000
   });
-  const { paused } = useTrackerPause();
+  const { paused, toggle } = useTrackerPause();
 
   const trackerWarnings = diagnostics?.trackers?.warnings || [];
   const trackerCount = diagnostics?.trackers?.count ?? 0;
@@ -38,7 +40,7 @@ export function ContextDrawer({ variant = "inline", onClose }: ContextDrawerProp
   const status = health?.status === "ok" ? "Online" : "Degraded";
   const feedConfigured = diagnostics?.feeds?.flights?.configured;
   const openskyConfigured = diagnostics?.feeds?.opensky?.credentials_set;
-  const metrics = diagnostics?.metrics;
+  const { metrics } = useSystemMetrics();
 
   const panelClass =
     variant === "overlay"
@@ -93,6 +95,21 @@ export function ContextDrawer({ variant = "inline", onClose }: ContextDrawerProp
       </div>
       <div className="rounded-xl border border-slate-900/70 px-3 py-2 text-[11px] text-slate-400">
         {warningCount > 0 ? "Recent tracker warnings detected." : "All systems nominal."}
+      </div>
+      <div className="space-y-2">
+        <p className="text-[11px] text-slate-500 uppercase tracking-[0.2em]">Tracker Controls</p>
+        <button
+          className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs transition ${
+            paused
+              ? "border-amber-400/70 text-amber-200 hover:border-amber-300"
+              : "border-slate-800/70 text-slate-300 hover:border-slate-700 hover:text-white"
+          }`}
+          type="button"
+          onClick={toggle}
+        >
+          {paused ? <Play size={14} /> : <Pause size={14} />}
+          {paused ? "Resume Trackers" : "Pause Trackers"}
+        </button>
       </div>
       <div className="grid grid-cols-2 gap-3 text-[11px] text-slate-400">
         <div>

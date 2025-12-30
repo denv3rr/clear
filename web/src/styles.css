@@ -15,10 +15,19 @@
   --gridline: rgba(72, 241, 166, 0.03);
 }
 
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+}
+
 body {
   font-family: "Space Grotesk", system-ui, sans-serif;
   background: var(--ink-950);
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 .glass-panel {

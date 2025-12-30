@@ -9,6 +9,7 @@ import {
   XAxis,
   YAxis
 } from "recharts";
+import { useMeasuredSize } from "../../lib/useMeasuredSize";
 
 type SeriesPoint = {
   ts: number | null;
@@ -41,8 +42,8 @@ export function AreaSparkline({
   }));
 
   return (
-    <div className="chart-panel" style={{ width: "100%", height }}>
-      <ResponsiveContainer width="100%" height="100%">
+    <div className="chart-panel" style={{ width: "100%", height, minHeight: height }}>
+      <ResponsiveContainer width="100%" height="100%" minHeight={height} minWidth={120}>
         <AreaChart data={series}>
           <defs>
             <linearGradient id="sparkGlow" x1="0" y1="0" x2="0" y2="1">
@@ -116,34 +117,45 @@ export function MeterBar({
       ? Math.min(Math.max(value, 0), max)
       : 0;
   const data: MeterPoint[] = [{ name: "util", value: safeValue }];
+  const { ref, size } = useMeasuredSize<HTMLDivElement>();
+  const visible = ref.current ? ref.current.offsetParent !== null : false;
+  const ready = visible && size.width > 0 && size.height > 0;
 
   return (
-    <div className="chart-panel" style={{ width: "100%", height }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart
-          data={data}
-          layout="vertical"
-          margin={{ top: 6, right: 12, left: 12, bottom: 6 }}
-        >
-          <CartesianGrid stroke="#0f172a" strokeDasharray="2 4" />
-          <XAxis type="number" domain={[0, max]} hide />
-          <YAxis type="category" dataKey="name" hide />
-          <Tooltip
-            formatter={(val) => [`${Number(val).toFixed(1)}%`, "Load"]}
-            contentStyle={{
-              background: "#0b0e13",
-              border: "1px solid #1f2937",
-              color: "#e2e8f0"
-            }}
-          />
-          <Bar
-            dataKey="value"
-            fill={color}
-            radius={[8, 8, 8, 8]}
-            background={{ fill: "#0f172a" }}
-          />
-        </BarChart>
-      </ResponsiveContainer>
+    <div
+      ref={ref}
+      className="chart-panel"
+      style={{ width: "100%", height, minHeight: height }}
+    >
+      {ready ? (
+        <ResponsiveContainer width="100%" height="100%" minHeight={height} minWidth={120}>
+          <BarChart
+            data={data}
+            layout="vertical"
+            margin={{ top: 6, right: 12, left: 12, bottom: 6 }}
+          >
+            <CartesianGrid stroke="#0f172a" strokeDasharray="2 4" />
+            <XAxis type="number" domain={[0, max]} hide />
+            <YAxis type="category" dataKey="name" hide />
+            <Tooltip
+              formatter={(val) => [`${Number(val).toFixed(1)}%`, "Load"]}
+              contentStyle={{
+                background: "#0b0e13",
+                border: "1px solid #1f2937",
+                color: "#e2e8f0"
+              }}
+            />
+            <Bar
+              dataKey="value"
+              fill={color}
+              radius={[8, 8, 8, 8]}
+              background={{ fill: "#0f172a" }}
+            />
+          </BarChart>
+        </ResponsiveContainer>
+      ) : (
+        <div className="h-full w-full" />
+      )}
     </div>
   );
 }

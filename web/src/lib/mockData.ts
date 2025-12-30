@@ -218,11 +218,12 @@ const demoPatterns = {
       [0.18, 0.24, 0.29, 0.27]
     ],
     axis: {
-      x_label: "Time",
-      y_label: "Lag",
-      z_label: "Amplitude",
-      x_unit: "days",
-      y_unit: "days"
+      x_label: "Sample Index",
+      y_label: "Window Row",
+      z_label: "Return Value",
+      x_unit: "index",
+      y_unit: "row",
+      z_unit: "return"
     }
   },
   fft_surface: {
@@ -236,9 +237,11 @@ const demoPatterns = {
     ],
     axis: {
       x_label: "Frequency",
-      y_label: "Window",
-      z_label: "Power",
-      x_unit: "Hz"
+      y_label: "Window Start",
+      z_label: "Log Power",
+      x_unit: "cycles/sample",
+      y_unit: "index",
+      z_unit: "log power"
     }
   }
 };
@@ -537,7 +540,16 @@ const demoIntelSummary = {
   ],
   risk_level: "Moderate",
   risk_score: 6.4,
-  confidence: "Medium"
+  confidence: "Medium",
+  risk_series: [
+    { label: "Mon", value: 5.8 },
+    { label: "Tue", value: 6.2 },
+    { label: "Wed", value: 6.4 },
+    { label: "Thu", value: 6.6 },
+    { label: "Fri", value: 6.1 },
+    { label: "Sat", value: 5.9 },
+    { label: "Sun", value: 6.3 }
+  ]
 };
 
 const demoWeather = {
@@ -714,6 +726,7 @@ const demoReport = (format: string, interval: string, detail: string) => {
 export function getMockResponse(path: string) {
   const url = new URL(path, "http://mock.local");
   const { pathname, searchParams } = url;
+  const empty = searchParams.get("empty") === "true";
   const parts = pathname.split("/").filter(Boolean);
 
   if (pathname === "/api/health") {
@@ -729,6 +742,15 @@ export function getMockResponse(path: string) {
     return demoIntelMeta;
   }
   if (pathname === "/api/intel/summary") {
+    if (empty) {
+      return {
+        ...demoIntelSummary,
+        risk_level: "Unavailable",
+        risk_score: null,
+        confidence: "Low",
+        risk_series: []
+      };
+    }
     return demoIntelSummary;
   }
   if (pathname === "/api/intel/weather") {
@@ -738,9 +760,21 @@ export function getMockResponse(path: string) {
     return demoConflict;
   }
   if (pathname === "/api/intel/news") {
+    if (empty) {
+      return {
+        items: [],
+        cached: false,
+        stale: false,
+        skipped: [],
+        health: {}
+      };
+    }
     return demoNewsPayload;
   }
   if (pathname === "/api/clients") {
+    if (empty) {
+      return { clients: [] };
+    }
     return { clients: demoClients };
   }
   if (parts[0] === "api" && parts[1] === "clients") {
@@ -776,6 +810,9 @@ export function getMockResponse(path: string) {
   if (parts[0] === "api" && parts[1] === "trackers") {
     if (parts[2] === "snapshot") {
       const mode = searchParams.get("mode") || "combined";
+      if (empty) {
+        return { count: 0, warnings: ["No tracker data in demo mode."], points: [] };
+      }
       return getMockTrackerSnapshot(mode);
     }
     if (parts[2] === "search") {

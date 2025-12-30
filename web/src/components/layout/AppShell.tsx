@@ -21,22 +21,19 @@ export function AppShell({ children }: AppShellProps) {
     : null;
 
   return (
-    <div className="min-h-screen text-slate-100">
+    <div className="min-h-screen text-slate-100 overflow-x-hidden">
       <TopNav
         items={navItems}
         onToggleContext={() => setContextOpen((prev) => !prev)}
       />
-      <div className="flex min-h-screen">
-        <main className="flex-1 px-6 py-8 md:px-10 lg:px-12 space-y-10">
+      <div className="flex min-h-screen min-w-0">
+        <main className="flex-1 min-w-0 px-6 py-8 md:px-10 lg:px-12 space-y-10 overflow-x-hidden">
           <ErrorBanner
             messages={healthMessage ? [healthMessage] : []}
             onRetry={refresh}
           />
           {children}
         </main>
-        <div className="hidden xl:flex px-6 py-8">
-          <ContextDrawer />
-        </div>
       </div>
       {contextOpen ? (
         <ContextDrawer variant="overlay" onClose={() => setContextOpen(false)} />

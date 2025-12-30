@@ -21,8 +21,14 @@ import { KpiCard } from "../components/ui/KpiCard";
 import { Reveal } from "../components/ui/Reveal";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { useApi } from "../lib/api";
+import { useMeasuredSize } from "../lib/useMeasuredSize";
 import { useTrackerPause } from "../lib/trackerPause";
 import { useTrackerStream } from "../lib/stream";
+import {
+  checkWorkerClass,
+  preflightMapResources,
+  preflightStyle
+} from "../lib/mapDiagnostics";
 
 type TrackerRow = {
   type: string;
@@ -75,12 +81,13 @@ const columns: ColumnDef<TrackerRow>[] = [
 ];
 
 export default function Dashboard() {
-  const mapRef = useRef<HTMLDivElement | null>(null);
+  const { ref: mapRef, size: mapSize } = useMeasuredSize<HTMLDivElement>();
   const mapInstance = useRef<maplibregl.Map | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapStatus, setMapStatus] = useState("Initializing map...");
   const [mapFallback, setMapFallback] = useState(false);
+  const [mapDiagnostics, setMapDiagnostics] = useState<string[]>([]);
   const leafletRef = useRef<HTMLDivElement | null>(null);
   const leafletMap = useRef<L.Map | null>(null);
   const leafletLayer = useRef<L.LayerGroup | null>(null);
@@ -88,12 +95,20 @@ export default function Dashboard() {
   const styleFallbackUsed = useRef(false);
   const styleRequested = useRef(false);
   const styleLoaded = useRef(false);
+  const layersReadyRef = useRef(false);
+  const mapReadyRef = useRef(false);
+  const mapErrorRef = useRef<string | null>(null);
+  const styleDataSeenRef = useRef(false);
 
   const [riskOpen, setRiskOpen] = useState(true);
   const [mapOpen, setMapOpen] = useState(true);
   const [feedOpen, setFeedOpen] = useState(true);
   const { paused } = useTrackerPause();
-  const { data: trackerStream, connected: streamConnected } = useTrackerStream<TrackerSnapshot>({
+  const {
+    data: trackerStream,
+    connected: streamConnected,
+    error: streamError
+  } = useTrackerStream<TrackerSnapshot>({
     interval: 5,
     mode: "combined"
   });
@@ -113,119 +128,227 @@ export default function Dashboard() {
   });
   const activeSnapshot = trackerStream || trackerSnapshot;
 
+  const mapInitRef = useRef(false);
+  const mapActiveRef = useRef(true);
+  const mapResizeHandler = useRef<(() => void) | null>(null);
+
   useEffect(() => {
-    if (!mapRef.current || mapInstance.current) return;
-    const canvas = document.createElement("canvas");
-    const hasWebgl =
-      !!window.WebGLRenderingContext &&
-      (canvas.getContext("webgl") || canvas.getContext("experimental-webgl"));
-    if (!hasWebgl) {
-      setMapError("WebGL not supported in this browser.");
-      setMapStatus("WebGL not supported.");
-      return;
-    }
-    setMapStatus("Booting map engine...");
-    let map: maplibregl.Map;
-    try {
-      map = new maplibregl.Map({
-        container: mapRef.current,
-        style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
-        center: [0, 15],
-        zoom: 1.5,
-        attributionControl: false,
-        transformRequest: (url, resourceType) => {
-          if (resourceType === "Style" && !styleRequested.current) {
-            styleRequested.current = true;
-            setMapStatus("Requesting style...");
-          }
-          return { url };
-        }
-      });
-    } catch (err) {
-      setMapError(err instanceof Error ? err.message : "Map initialization failed.");
-      setMapStatus("Map init failed.");
-      return;
-    }
-    setMapStatus("Map instance created.");
-    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
-    map.on("styledata", () => {
-      setMapStatus("Loading style and tiles...");
-    });
-    map.on("style.load", () => {
-      styleLoaded.current = true;
-      setMapStatus("Style loaded.");
-    });
-    map.on("render", () => {
-      if (mapReady) {
-        setMapStatus("Rendering map.");
-      }
-    });
-    map.on("load", () => {
-      setMapReady(true);
-      setMapError(null);
-      setMapStatus("Map ready.");
-      map.resize();
-      map.addSource("tracker-points", {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] }
-      });
-      map.addLayer({
-        id: "tracker-points-glow",
-        type: "circle",
-        source: "tracker-points",
-        paint: {
-          "circle-radius": 6,
-          "circle-color": "#48f1a6",
-          "circle-opacity": 0.12
-        }
-      });
-      map.addLayer({
-        id: "tracker-points-layer",
-        type: "circle",
-        source: "tracker-points",
-        paint: {
-          "circle-radius": 3,
-          "circle-color": [
-            "match",
-            ["get", "kind"],
-            "ship",
-            "#8892a0",
-            "#48f1a6"
-          ],
-          "circle-opacity": 0.8
-        }
-      });
-    });
-    map.on("error", (event) => {
-      const message = event?.error?.message;
-      if (!styleFallbackUsed.current) {
-        styleFallbackUsed.current = true;
-        setMapStatus("Primary style blocked. Switching to fallback.");
-        map.setStyle("https://demotiles.maplibre.org/style.json");
+    let raf = 0;
+    let timeout = 0;
+    const initMap = () => {
+      if (mapInitRef.current || mapInstance.current) return;
+      if (!mapRef.current) {
+        raf = window.requestAnimationFrame(initMap);
         return;
       }
-      setMapError(message || "Map data unavailable.");
-      setMapStatus("Map error.");
-      setMapFallback(true);
-    });
-    mapInstance.current = map;
-    const timeout = window.setTimeout(() => {
-      if (!mapReady && !mapError) {
-        if (!styleRequested.current) {
-          setMapStatus("Style request blocked before fetch.");
-        } else if (!styleLoaded.current) {
-          setMapStatus("Style requested but never loaded.");
-        } else {
-          setMapStatus("Map load timeout. Check CSP/worker settings.");
-        }
-        setMapFallback(true);
+      const rect = mapRef.current.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) {
+        setMapStatus("Waiting for map container...");
+        raf = window.requestAnimationFrame(initMap);
+        return;
       }
-    }, 6000);
+      mapInitRef.current = true;
+      const canvas = document.createElement("canvas");
+      const hasWebgl =
+        !!window.WebGLRenderingContext &&
+        (canvas.getContext("webgl") || canvas.getContext("experimental-webgl"));
+      if (!hasWebgl) {
+        setMapError("WebGL not supported in this browser.");
+        setMapStatus("WebGL not supported.");
+        mapInitRef.current = false;
+        return;
+      }
+      setMapStatus("Booting map engine...");
+      const diagnostics: string[] = [];
+      diagnostics.push(checkWorkerClass(maplibregl));
+      setMapDiagnostics(diagnostics);
+      mapActiveRef.current = true;
+      const styleUrl =
+        "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
+      preflightStyle(styleUrl).then((result) => {
+        if (!mapActiveRef.current) return;
+        setMapDiagnostics((prev) => {
+          const next = prev.filter((item) => !item.startsWith("Style:"));
+          next.push(`Style: ${result.ok ? "ok" : result.detail}`);
+          return next;
+        });
+      });
+      preflightMapResources(styleUrl).then((resourceLines) => {
+        if (!mapActiveRef.current) return;
+        setMapDiagnostics((prev) => {
+          const next = prev.filter(
+            (item) =>
+              !item.startsWith("Sprite") &&
+              !item.startsWith("Glyphs") &&
+              !item.startsWith("Tile")
+          );
+          return [...next, ...resourceLines];
+        });
+      });
+      let map: maplibregl.Map;
+      try {
+        map = new maplibregl.Map({
+          container: mapRef.current,
+          style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+          center: [0, 15],
+          zoom: 1.5,
+          attributionControl: false,
+          transformRequest: (url, resourceType) => {
+            if (resourceType === "Style" && !styleRequested.current) {
+              styleRequested.current = true;
+              setMapStatus("Requesting style...");
+            }
+            return { url };
+          }
+        });
+      } catch (err) {
+        setMapError(err instanceof Error ? err.message : "Map initialization failed.");
+        setMapStatus("Map init failed.");
+        mapInitRef.current = false;
+        return;
+      }
+      setMapStatus("Map instance created.");
+      map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+      map.on("styledata", () => {
+        styleDataSeenRef.current = true;
+        setMapStatus("Loading style and tiles...");
+      });
+      const initLayers = () => {
+        if (layersReadyRef.current) return;
+        layersReadyRef.current = true;
+        map.addSource("tracker-points", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] }
+        });
+        map.addLayer({
+          id: "tracker-points-glow",
+          type: "circle",
+          source: "tracker-points",
+          paint: {
+            "circle-radius": 6,
+            "circle-color": "#48f1a6",
+            "circle-opacity": 0.12
+          }
+        });
+        map.addLayer({
+          id: "tracker-points-layer",
+          type: "circle",
+          source: "tracker-points",
+          paint: {
+            "circle-radius": 3,
+            "circle-color": [
+              "match",
+              ["get", "kind"],
+              "ship",
+              "#8892a0",
+              "#48f1a6"
+            ],
+            "circle-opacity": 0.8
+          }
+        });
+      };
+      map.on("style.load", () => {
+        styleLoaded.current = true;
+        setMapStatus("Style loaded.");
+        if (!mapReady) {
+          setMapReady(true);
+          mapReadyRef.current = true;
+          setMapError(null);
+          mapErrorRef.current = null;
+          initLayers();
+        }
+      });
+      map.on("render", () => {
+        if (mapReady) {
+          setMapStatus("Rendering map.");
+        }
+      });
+      map.on("load", () => {
+        setMapReady(true);
+        mapReadyRef.current = true;
+        setMapError(null);
+        mapErrorRef.current = null;
+        setMapStatus("Map ready.");
+        map.resize();
+        initLayers();
+      });
+      map.on("error", (event) => {
+        const message = event?.error?.message;
+        if (!styleFallbackUsed.current) {
+          styleFallbackUsed.current = true;
+          setMapStatus("Primary style blocked. Switching to fallback.");
+          map.setStyle("https://demotiles.maplibre.org/style.json");
+          return;
+        }
+        const detail = message || "Map data unavailable.";
+        setMapError(detail);
+        mapErrorRef.current = detail;
+        setMapStatus("Map error.");
+        setMapFallback(true);
+      });
+      mapInstance.current = map;
+      timeout = window.setTimeout(() => {
+        if (!mapReadyRef.current && !mapErrorRef.current) {
+          if (!styleRequested.current) {
+            setMapStatus("Style request blocked before fetch.");
+          } else if (!styleLoaded.current) {
+            setMapStatus("Style requested but never loaded.");
+          } else {
+            setMapStatus("Map load timeout. Check CSP/worker settings.");
+          }
+          setMapFallback(true);
+          if (
+            styleLoaded.current ||
+            (styleDataSeenRef.current && map.isStyleLoaded && map.isStyleLoaded())
+          ) {
+            setMapReady(true);
+            mapReadyRef.current = true;
+            setMapError(null);
+            mapErrorRef.current = null;
+            initLayers();
+            map.resize();
+            map.triggerRepaint();
+          }
+        }
+      }, 6000);
+      const onResize = () => map.resize();
+      mapResizeHandler.current = onResize;
+      window.addEventListener("resize", onResize);
+    };
+    initMap();
     return () => {
+      window.cancelAnimationFrame(raf);
       window.clearTimeout(timeout);
-      map.remove();
     };
   }, []);
+
+  useEffect(() => {
+    return () => {
+      mapActiveRef.current = false;
+      if (mapResizeHandler.current) {
+        window.removeEventListener("resize", mapResizeHandler.current);
+      }
+      mapInstance.current?.remove();
+      mapInstance.current = null;
+      mapInitRef.current = false;
+      setMapReady(false);
+      mapReadyRef.current = false;
+      setMapError(null);
+      mapErrorRef.current = null;
+      setMapStatus("Initializing map...");
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!mapInstance.current || !mapReady) return;
+    mapInstance.current.resize();
+  }, [mapSize.height, mapSize.width, mapReady]);
+
+  useEffect(() => {
+    if (!mapInstance.current || !mapOpen) return;
+    const handle = window.setTimeout(() => mapInstance.current?.resize(), 200);
+    return () => window.clearTimeout(handle);
+  }, [mapOpen]);
 
   useEffect(() => {
     if (!mapFallback || !leafletRef.current || leafletMap.current) return;
@@ -362,12 +485,9 @@ export default function Dashboard() {
         value: point.value
       }));
     }
-    const value = intelSummary?.risk_score ?? 0;
-    return ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => ({
-      day,
-      value
-    }));
+    return [];
   }, [intelSummary]);
+  const hasRiskSeries = riskSeries.length > 0;
 
   const authHint = "Check CLEAR_WEB_API_KEY + localStorage clear_api_key.";
   const errorMessages = [
@@ -379,6 +499,7 @@ export default function Dashboard() {
             : ""
         }`
       : null,
+    streamError ? `Tracker stream failed: ${streamError}` : null,
     intelError
       ? `Intel summary failed: ${intelError}${
           intelError.includes("401") || intelError.includes("403")
@@ -426,26 +547,39 @@ export default function Dashboard() {
           >
             <SectionHeader label="RISK SIGNALS" title="Global Patterns" />
             <div className="mt-4 h-52">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={riskSeries}>
-                  <defs>
-                    <linearGradient id="riskGlow" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#48f1a6" stopOpacity={0.7} />
-                      <stop offset="100%" stopColor="#48f1a6" stopOpacity={0.11} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="day" stroke="#334155" tick={{ fill: "#94a3b8", fontSize: 12 }} />
-                  <YAxis stroke="#334155" tick={{ fill: "#94a3b8", fontSize: 12 }} />
-                  <Tooltip
-                    contentStyle={{
-                      background: "#0b0e13",
-                      border: "1px solid #1f2937",
-                      color: "#e2e8f0"
-                    }}
-                  />
-                  <Area type="monotone" dataKey="value" stroke="#48f1a6" fill="url(#riskGlow)" />
-                </AreaChart>
-              </ResponsiveContainer>
+              {hasRiskSeries ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={riskSeries}>
+                    <defs>
+                      <linearGradient id="riskGlow" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#48f1a6" stopOpacity={0.7} />
+                        <stop offset="100%" stopColor="#48f1a6" stopOpacity={0.11} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis
+                      dataKey="day"
+                      stroke="#334155"
+                      tick={{ fill: "#94a3b8", fontSize: 12 }}
+                    />
+                    <YAxis
+                      stroke="#334155"
+                      tick={{ fill: "#94a3b8", fontSize: 12 }}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: "#0b0e13",
+                        border: "1px solid #1f2937",
+                        color: "#e2e8f0"
+                      }}
+                    />
+                    <Area type="monotone" dataKey="value" stroke="#48f1a6" fill="url(#riskGlow)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center text-xs text-slate-500">
+                  No risk series available.
+                </div>
+              )}
             </div>
           </Collapsible>
 
@@ -456,28 +590,37 @@ export default function Dashboard() {
             onToggle={() => setMapOpen((prev) => !prev)}
           >
             <SectionHeader label="MAPS" title="Flight + Maritime Layer" right={mapFallback ? "Leaflet" : "MapLibre GL"} />
-            <div className="mt-4 h-[300px] rounded-2xl overflow-hidden border border-slate-800 relative">
-              <div ref={mapRef} className="absolute inset-0" />
+            <div
+              ref={mapRef}
+              className="mt-4 h-[300px] rounded-2xl overflow-hidden border border-slate-800 relative"
+            >
               {mapFallback ? (
                 <div ref={leafletRef} className="absolute inset-0" />
               ) : null}
               {!mapReady && !mapError && !mapFallback ? (
-                <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-400 bg-ink-950/40">
+                <div className="absolute inset-0 z-10 flex items-center justify-center text-xs text-slate-400 bg-ink-950/40">
                   Loading map...
                 </div>
               ) : null}
               {noPoints ? (
-                <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-400 bg-ink-950/40">
+                <div className="absolute inset-0 z-10 flex items-center justify-center text-xs text-slate-400 bg-ink-950/40">
                   No tracker points in snapshot.
                 </div>
               ) : null}
               {mapError && !mapFallback ? (
-                <div className="absolute inset-0 flex items-center justify-center text-xs text-amber-300 bg-ink-950/40">
+                <div className="absolute inset-0 z-10 flex items-center justify-center text-xs text-amber-300 bg-ink-950/40">
                   {mapError}
                 </div>
               ) : null}
-              <div className="absolute bottom-3 right-3 rounded-lg border border-slate-800/60 bg-ink-950/80 px-3 py-2 text-[11px] text-slate-400">
-                {mapFallback ? leafletStatus : mapStatus}
+              <div className="absolute bottom-3 right-3 z-10 rounded-lg border border-slate-800/60 bg-ink-950/80 px-3 py-2 text-[11px] text-slate-400">
+                <p>{mapFallback ? leafletStatus : mapStatus}</p>
+                {!mapFallback && mapDiagnostics.length ? (
+                  <div className="mt-1 space-y-0.5">
+                    {mapDiagnostics.map((item) => (
+                      <p key={item}>{item}</p>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             </div>
           </Collapsible>

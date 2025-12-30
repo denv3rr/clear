@@ -15,16 +15,19 @@ export function useTrackerStream<T>(options: StreamOptions = {}) {
   const { interval = 5, enabled = true, mode = "combined" } = options;
   const [data, setData] = useState<T | null>(null);
   const [connected, setConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const { paused } = useTrackerPause();
 
   useEffect(() => {
     if (!enabled || paused) {
       setConnected(false);
+      setError(null);
       return;
     }
     if (DEMO_MODE) {
       setConnected(true);
+      setError(null);
       setData(getMockTrackerSnapshot(mode) as T);
       if (!interval) return;
       const timer = setInterval(() => {
@@ -52,15 +55,30 @@ export function useTrackerStream<T>(options: StreamOptions = {}) {
     const ws = new WebSocket(wsUrl);
     socketRef.current = ws;
 
-    ws.onopen = () => setConnected(true);
-    ws.onclose = () => setConnected(false);
-    ws.onerror = () => setConnected(false);
+    setError(null);
+    ws.onopen = () => {
+      setConnected(true);
+      setError(null);
+    };
+    ws.onclose = (event) => {
+      setConnected(false);
+      if (event.code === 1008) {
+        setError("WebSocket rejected. Check API key settings.");
+      } else if (event.code === 1006) {
+        setError("WebSocket closed unexpectedly. Check API base and auth.");
+      }
+    };
+    ws.onerror = () => {
+      setConnected(false);
+      setError("WebSocket connection failed. Check API base and auth.");
+    };
     ws.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data) as T;
         setData(payload);
       } catch {
         setConnected(false);
+        setError("WebSocket payload parsing failed.");
       }
     };
 
@@ -69,5 +87,5 @@ export function useTrackerStream<T>(options: StreamOptions = {}) {
     };
   }, [enabled, interval, mode, paused]);
 
-  return { data, connected };
+  return { data, connected, error };
 }

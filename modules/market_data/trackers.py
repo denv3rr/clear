@@ -53,8 +53,11 @@ class TrackerProviders:
     _COUNTRY_KEYS = ("country", "origin")
     _CATEGORY_KEYS = ("category", "type", "flight_type")
     _OPENSKY_URL = "https://opensky-network.org/api/states/all"
+    _OPENSKY_TOKEN_URL = "https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token"
     _OPENSKY_BACKOFF_UNTIL = 0.0
     _OPENSKY_LAST_REQUEST = 0.0
+    _OPENSKY_TOKEN = None
+    _OPENSKY_TOKEN_EXPIRES = 0.0
 
     @staticmethod
     def _parse_retry_after(value: Optional[str]) -> Optional[int]:
@@ -77,6 +80,71 @@ class TrackerProviders:
         except ValueError:
             return None
         return {"lamin": min_lat, "lomin": min_lon, "lamax": max_lat, "lomax": max_lon}
+
+    @staticmethod
+    def _parse_icao24_list(value: Optional[str]) -> List[str]:
+        if not value:
+            return []
+        return [item.strip().lower() for item in value.split(",") if item.strip()]
+
+    @staticmethod
+    def _parse_extended(value: Optional[str]) -> Optional[int]:
+        if value is None:
+            return 1
+        text = str(value).strip().lower()
+        if text in ("1", "true", "yes", "y"):
+            return 1
+        if text in ("0", "false", "no", "n"):
+            return 0
+        return None
+
+    @staticmethod
+    def _clear_opensky_token() -> None:
+        TrackerProviders._OPENSKY_TOKEN = None
+        TrackerProviders._OPENSKY_TOKEN_EXPIRES = 0.0
+
+    @staticmethod
+    def _get_opensky_token(warnings: List[str]) -> Optional[str]:
+        client_id = os.getenv("OPENSKY_CLIENT_ID")
+        client_secret = os.getenv("OPENSKY_CLIENT_SECRET")
+        if not client_id or not client_secret:
+            return None
+        now = time.time()
+        if (
+            TrackerProviders._OPENSKY_TOKEN
+            and TrackerProviders._OPENSKY_TOKEN_EXPIRES - 30 > now
+        ):
+            return TrackerProviders._OPENSKY_TOKEN
+        try:
+            resp = requests.post(
+                TrackerProviders._OPENSKY_TOKEN_URL,
+                data={
+                    "grant_type": "client_credentials",
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=8,
+            )
+        except Exception as exc:
+            warnings.append(f"OpenSky token fetch failed: {exc}")
+            return None
+        if resp.status_code != 200:
+            warnings.append(f"OpenSky token HTTP {resp.status_code}")
+            return None
+        payload = resp.json()
+        token = payload.get("access_token")
+        if not token:
+            warnings.append("OpenSky token missing in response.")
+            return None
+        expires_in = payload.get("expires_in", 1800)
+        try:
+            expires = int(expires_in)
+        except Exception:
+            expires = 1800
+        TrackerProviders._OPENSKY_TOKEN = token
+        TrackerProviders._OPENSKY_TOKEN_EXPIRES = now + max(expires, 60)
+        return token
 
     @staticmethod
     def _parse_sources(env_value: Optional[str]) -> List[str]:
@@ -232,15 +300,9 @@ class TrackerProviders:
                     flight_number = flight_number or flight_guess
                     tail_number = tail_number or tail_guess
                 if category == "commercial" and not include_commercial:
-                    high_speed = speed_kts is not None and speed_kts >= 520
-                    high_alt = altitude_ft is not None and altitude_ft >= 38000
-                    if (speed_kts is not None or altitude_ft is not None) and not (high_speed or high_alt):
-                        continue
+                    continue
                 if category == "private" and not include_private:
-                    high_speed = speed_kts is not None and speed_kts >= 520
-                    high_alt = altitude_ft is not None and altitude_ft >= 38000
-                    if (speed_kts is not None or altitude_ft is not None) and not (high_speed or high_alt):
-                        continue
+                    continue
                 points.append(TrackerPoint(
                     lat=lat,
                     lon=lon,
@@ -286,20 +348,61 @@ class TrackerProviders:
         username = os.getenv("OPENSKY_USERNAME")
         password = os.getenv("OPENSKY_PASSWORD")
         auth = (username, password) if username and password else None
-        params = TrackerProviders._parse_bbox(os.getenv("OPENSKY_BBOX"))
+        headers: Dict[str, str] = {}
+        used_oauth = False
+        token = TrackerProviders._get_opensky_token(warnings)
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+            used_oauth = True
+        elif os.getenv("OPENSKY_CLIENT_ID") or os.getenv("OPENSKY_CLIENT_SECRET"):
+            warnings.append("OpenSky OAuth token missing; check OPENSKY_CLIENT_ID/OPENSKY_CLIENT_SECRET.")
+            return [], warnings
+
+        params = TrackerProviders._parse_bbox(os.getenv("OPENSKY_BBOX")) or {}
+        extended = TrackerProviders._parse_extended(os.getenv("OPENSKY_EXTENDED"))
+        if extended is not None:
+            params["extended"] = extended
+        time_value = os.getenv("OPENSKY_TIME")
+        if time_value:
+            try:
+                params["time"] = int(time_value)
+            except Exception:
+                warnings.append("OpenSky time must be a unix timestamp.")
+        icao24_list = TrackerProviders._parse_icao24_list(os.getenv("OPENSKY_ICAO24"))
+        if icao24_list:
+            params["icao24"] = icao24_list
         try:
             TrackerProviders._OPENSKY_LAST_REQUEST = now
-            resp = requests.get(
-                TrackerProviders._OPENSKY_URL,
-                timeout=8,
-                auth=auth,
-                params=params or None,
-            )
+            refreshed = False
+            while True:
+                resp = requests.get(
+                    TrackerProviders._OPENSKY_URL,
+                    timeout=8,
+                    auth=auth,
+                    headers=headers or None,
+                    params=params or None,
+                )
+                if resp.status_code == 401 and used_oauth and not refreshed:
+                    TrackerProviders._clear_opensky_token()
+                    token = TrackerProviders._get_opensky_token(warnings)
+                    if not token:
+                        warnings.append("OpenSky OAuth token refresh failed.")
+                        return [], warnings
+                    headers["Authorization"] = f"Bearer {token}"
+                    refreshed = True
+                    continue
+                break
             if resp.status_code != 200:
                 if resp.status_code == 429:
                     retry_after = TrackerProviders._parse_retry_after(
-                        resp.headers.get("Retry-After") if hasattr(resp, "headers") else None
+                        resp.headers.get("X-Rate-Limit-Retry-After-Seconds")
+                        if hasattr(resp, "headers")
+                        else None
                     )
+                    if retry_after is None:
+                        retry_after = TrackerProviders._parse_retry_after(
+                            resp.headers.get("Retry-After") if hasattr(resp, "headers") else None
+                        )
                     backoff = retry_after if retry_after is not None else 120
                     TrackerProviders._OPENSKY_BACKOFF_UNTIL = now + max(backoff, 30)
                     if not auth:
@@ -622,6 +725,11 @@ class GlobalTrackers:
         # Preserve last good data if provider returns empty.
         if not flights and self._cached.get("flights"):
             flights = self._cached.get("flights", [])
+            warnings = [
+                warn
+                for warn in warnings
+                if "no live flight data returned" not in str(warn).lower()
+            ]
             warnings.append("Flight feed returned empty; showing last cached flights.")
         if not ships and self._cached.get("ships"):
             ships = self._cached.get("ships", [])

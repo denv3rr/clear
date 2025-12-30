@@ -4,6 +4,7 @@ import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { MeterBar } from "../components/ui/Charts";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { clearApiKey, getApiKey, setApiKey, useApi } from "../lib/api";
+import { useSystemMetrics } from "../lib/systemMetrics";
 import { useTrackerPause } from "../lib/trackerPause";
 
 type SettingsPayload = {
@@ -53,12 +54,13 @@ type SettingsPayload = {
 
 export default function Settings() {
   const { data, error, refresh } = useApi<SettingsPayload>("/api/settings", { interval: 60000 });
+  const { metrics } = useSystemMetrics();
   const [apiKeyValue, setApiKeyValue] = useState(getApiKey() || "");
   const [apiKeySaved, setApiKeySaved] = useState(Boolean(getApiKey()));
   const [apiKeyMessage, setApiKeyMessage] = useState<string | null>(null);
   const { paused, toggle } = useTrackerPause();
 
-  const metrics = data?.system_metrics;
+  const metricsWithFallback = metrics || data?.system_metrics;
   const psutilAvailable = data?.system?.psutil_available;
   const authHint = "Check CLEAR_WEB_API_KEY + localStorage clear_api_key.";
   const errorMessages = [
@@ -223,30 +225,30 @@ export default function Settings() {
           </div>
           <div className="rounded-xl border border-slate-800/60 p-4 text-sm text-slate-300">
             <p className="text-xs text-slate-400 mb-4">Live System Load</p>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="space-y-2">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 items-stretch">
+              <div className="flex min-h-[110px] flex-col justify-between gap-2">
                 <p className="text-slate-400 text-xs uppercase tracking-[0.2em]">CPU</p>
-                <p className="text-lg">{metrics?.cpu_percent ?? 0}%</p>
-                <MeterBar value={metrics?.cpu_percent} color="#44f5a6" />
+                <p className="text-lg tabular-nums">{metricsWithFallback?.cpu_percent ?? 0}%</p>
+                <MeterBar value={metricsWithFallback?.cpu_percent} color="#44f5a6" />
               </div>
-              <div className="space-y-2">
+              <div className="flex min-h-[110px] flex-col justify-between gap-2">
                 <p className="text-slate-400 text-xs uppercase tracking-[0.2em]">Memory</p>
-                <p className="text-lg">
-                  {metrics?.mem_used_gb ?? 0} / {metrics?.mem_total_gb ?? 0} GB
+                <p className="text-lg tabular-nums">
+                  {metricsWithFallback?.mem_used_gb ?? 0} / {metricsWithFallback?.mem_total_gb ?? 0} GB
                 </p>
-                <MeterBar value={metrics?.mem_percent} color="#36c9f8" />
+                <MeterBar value={metricsWithFallback?.mem_percent} color="#36c9f8" />
               </div>
-              <div className="space-y-2">
+              <div className="flex min-h-[110px] flex-col justify-between gap-2">
                 <p className="text-slate-400 text-xs uppercase tracking-[0.2em]">Disk</p>
-                <p className="text-lg">
-                  {metrics?.disk_used_gb ?? 0} / {metrics?.disk_total_gb ?? 0} GB
+                <p className="text-lg tabular-nums">
+                  {metricsWithFallback?.disk_used_gb ?? 0} / {metricsWithFallback?.disk_total_gb ?? 0} GB
                 </p>
-                <MeterBar value={metrics?.disk_percent} color="#f5b94c" />
+                <MeterBar value={metricsWithFallback?.disk_percent} color="#f5b94c" />
               </div>
-              <div className="space-y-2">
+              <div className="flex min-h-[110px] flex-col justify-between gap-2">
                 <p className="text-slate-400 text-xs uppercase tracking-[0.2em]">Swap</p>
-                <p className="text-lg">{metrics?.swap_percent ?? 0}%</p>
-                <MeterBar value={metrics?.swap_percent} color="#a3e635" />
+                <p className="text-lg tabular-nums">{metricsWithFallback?.swap_percent ?? 0}%</p>
+                <MeterBar value={metricsWithFallback?.swap_percent} color="#a3e635" />
               </div>
             </div>
           </div>

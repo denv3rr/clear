@@ -99,6 +99,22 @@ If npm is not found, install Node.js first (includes npm) and retry:
 - macOS: `brew install node`
 - Linux: https://nodejs.org/en/download/package-manager
 
+## Web Demo (GitHub Pages)
+
+The web demo uses deterministic mock data and hash routing for GitHub Pages.
+
+```pwsh
+cd web
+VITE_DEMO_MODE=true VITE_HASH_ROUTER=true VITE_BASE=/ npm run build
+```
+
+For project pages (non-user pages), set `VITE_BASE=/clear/` to match the repo name.
+
+The workflow deploys via `GH_PAGES_TOKEN`, which must be stored as a repository
+secret in this repo with `public_repo` (or full `repo`) scope. The destination
+repo (`denv3rr/denv3rr.github.io`) should have Pages set to the `main` branch
+root.
+
 ## Launcher Commands
 
 ```pwsh
@@ -238,22 +254,36 @@ FINNHUB_API_KEY=your_api_key_here
 > [!WARNING]
 > Do not commit any `.env` files.
 
+### Web API Key (Optional)
+
+If you set `CLEAR_WEB_API_KEY`, the API enforces `X-API-Key` on all routes and
+the launcher forwards it to the UI as `VITE_API_KEY` for local auth.
+
+```bash
+CLEAR_WEB_API_KEY=your_local_key
+```
+
 ### Environment Variables
 
-OpenSky is the default flight feed; configure credentials in `.env` when available.
+OpenSky is the only flight feed right now; configure OAuth credentials in `.env` for new accounts (legacy basic auth still works for older accounts).
 
 | Variable | Purpose | Used By |
 | --- | --- | --- |
 | `FINNHUB_API_KEY` | Enables Finnhub symbol/quote lookups. | Market Feed, Settings |
-| `FLIGHT_DATA_URL` | Flight feed endpoint (JSON list or `{ "data": [] }`). | Global Trackers |
-| `FLIGHT_DATA_PATH` | Local JSON file path for flight feed data. | Global Trackers |
-| `OPENSKY_USERNAME` | OpenSky basic auth username (optional). | Global Trackers |
-| `OPENSKY_PASSWORD` | OpenSky basic auth password (optional). | Global Trackers |
+| `OPENSKY_CLIENT_ID` | OpenSky OAuth client id (new accounts). | Global Trackers |
+| `OPENSKY_CLIENT_SECRET` | OpenSky OAuth client secret (new accounts). | Global Trackers |
+| `OPENSKY_USERNAME` | OpenSky basic auth username (legacy accounts). | Global Trackers |
+| `OPENSKY_PASSWORD` | OpenSky basic auth password (legacy accounts). | Global Trackers |
+| `OPENSKY_BBOX` | OpenSky bounding box (`minLat,minLon,maxLat,maxLon`). | Global Trackers |
+| `OPENSKY_EXTENDED` | Request OpenSky category metadata (`1`/`0`). | Global Trackers |
+| `OPENSKY_ICAO24` | Comma-separated ICAO24 filter list. | Global Trackers |
+| `OPENSKY_TIME` | Unix timestamp to request historical state vectors. | Global Trackers |
 | `SHIPPING_DATA_URL` | Shipping feed endpoint for vessel tracker. | Global Trackers |
-| `CLEAR_INCLUDE_COMMERCIAL` | Include commercial flights (set to `1`). | Global Trackers |
-| `CLEAR_INCLUDE_PRIVATE` | Include private flights (set to `1`). | Global Trackers |
+| `CLEAR_INCLUDE_COMMERCIAL` | Include commercial flights when set to `1` (default off). | Global Trackers |
+| `CLEAR_INCLUDE_PRIVATE` | Include private flights when set to `1` (default off). | Global Trackers |
 | `CLEAR_GUI_REFRESH` | GUI tracker refresh seconds (default `10`). | GUI Tracker |
 | `CLEAR_GUI_PAUSED` | Start GUI tracker paused when `1`. | GUI Tracker |
+| `CLEAR_WEB_API_KEY` | Enforces API key auth + forwards to UI as `VITE_API_KEY`. | Web API, Web UI |
 
 Flight operator metadata can be extended by copying `config/flight_operators.example.json` to `config/flight_operators.json`.
 
@@ -377,7 +407,7 @@ Scroll text settings live in `config/settings.json` under `display.scroll_text`:
 
 - **Finnhub**: symbols and quotes (optional - see [configuration](#configuration))
 - **Yahoo Finance**: historical data and macro snapshots
-- **OpenSky**: flight tracking feed (auth optional)
+- **OpenSky**: flight tracking feed (only source right now; OAuth for new accounts, legacy basic auth optional)
 - **Open-Meteo**: weather signals for reports
 - **GDELT**: conflict signals for reports (RSS fallback)
 - **RSS News**: CNBC Top/World, MarketWatch, BBC Business (cached, health-aware)
@@ -510,4 +540,7 @@ No information presented should be construed as an offer to buy or sell securiti
     <img width="100" src="https://github.com/denv3rr/denv3rr/blob/main/IMG_4225.gif" />
   </a>
 </div>
+
+
+
 

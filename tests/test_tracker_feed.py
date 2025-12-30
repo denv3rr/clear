@@ -115,6 +115,67 @@ def test_fetch_flights_uses_opensky_when_no_feed(monkeypatch):
     assert warnings == []
 
 
+def test_opensky_oauth_uses_bearer_token(monkeypatch):
+    monkeypatch.delenv("FLIGHT_DATA_URL", raising=False)
+    monkeypatch.delenv("FLIGHT_DATA_PATH", raising=False)
+    monkeypatch.setenv("CLEAR_INCLUDE_COMMERCIAL", "1")
+    monkeypatch.setenv("OPENSKY_CLIENT_ID", "client")
+    monkeypatch.setenv("OPENSKY_CLIENT_SECRET", "secret")
+    TrackerProviders._OPENSKY_LAST_REQUEST = 0.0
+    TrackerProviders._OPENSKY_BACKOFF_UNTIL = 0.0
+    TrackerProviders._OPENSKY_TOKEN = None
+    TrackerProviders._OPENSKY_TOKEN_EXPIRES = 0.0
+
+    class TokenResponse:
+        status_code = 200
+
+        def json(self):
+            return {"access_token": "token", "expires_in": 1800}
+
+    class OpenSkyResponse:
+        status_code = 200
+
+        def json(self):
+            return {
+                "states": [
+                    [
+                        "abc123",
+                        "AAL123",
+                        "United States",
+                        1700000000,
+                        1700000001,
+                        -84.43,
+                        33.63,
+                        10000.0,
+                        False,
+                        200.0,
+                        90.0,
+                        0.0,
+                        None,
+                        11000.0,
+                        "1200",
+                        False,
+                        0,
+                    ]
+                ]
+            }
+
+    def fake_post(url, data=None, headers=None, timeout=8):
+        return TokenResponse()
+
+    def fake_get(url, timeout=8, auth=None, headers=None, params=None):
+        assert headers
+        assert headers.get("Authorization") == "Bearer token"
+        return OpenSkyResponse()
+
+    with mock.patch("modules.market_data.trackers.requests.post", side_effect=fake_post) as mocked_post:
+        with mock.patch("modules.market_data.trackers.requests.get", side_effect=fake_get):
+            points, warnings = TrackerProviders.fetch_flights()
+    assert points
+    assert warnings == []
+    mocked_post.assert_called_once()
+
+
 def test_opensky_throttle_respects_min_refresh(monkeypatch):
     monkeypatch.delenv("FLIGHT_DATA_URL", raising=False)
     monkeypatch.delenv("FLIGHT_DATA_PATH", raising=False)

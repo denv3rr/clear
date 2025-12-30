@@ -7,8 +7,14 @@ import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { KpiCard } from "../components/ui/KpiCard";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { apiGet, useApi } from "../lib/api";
+import { useMeasuredSize } from "../lib/useMeasuredSize";
 import { useTrackerPause } from "../lib/trackerPause";
 import { useTrackerStream } from "../lib/stream";
+import {
+  checkWorkerClass,
+  preflightMapResources,
+  preflightStyle
+} from "../lib/mapDiagnostics";
 
 type TrackerSnapshot = {
   count: number;
@@ -89,12 +95,16 @@ type TrackerDetail = {
 export default function Trackers() {
   const [mode, setMode] = useState<"combined" | "flights" | "ships">("combined");
   const [categoryFilter, setCategoryFilter] = useState("all");
-  const [includeCommercial, setIncludeCommercial] = useState(true);
-  const [includePrivate, setIncludePrivate] = useState(true);
+  const [includeCommercial, setIncludeCommercial] = useState(false);
+  const [includePrivate, setIncludePrivate] = useState(false);
   const [countryFilter, setCountryFilter] = useState("");
   const [operatorFilter, setOperatorFilter] = useState("");
   const [idFilter, setIdFilter] = useState("");
-  const { data: streamData, connected } = useTrackerStream<TrackerSnapshot>({
+  const {
+    data: streamData,
+    connected,
+    error: streamError
+  } = useTrackerStream<TrackerSnapshot>({
     interval: 5,
     mode
   });
@@ -110,14 +120,19 @@ export default function Trackers() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<TrackerDetail | null>(null);
   const history = detail ? { id: detail.id, history: detail.history, summary: detail.summary } : null;
-  const mapRef = useRef<HTMLDivElement | null>(null);
+  const { ref: mapRef, size: mapSize } = useMeasuredSize<HTMLDivElement>();
   const mapInstance = useRef<maplibregl.Map | null>(null);
   const styleFallbackUsed = useRef(false);
   const styleRequested = useRef(false);
   const styleLoaded = useRef(false);
+  const layersReadyRef = useRef(false);
+  const mapReadyRef = useRef(false);
+  const mapErrorRef = useRef<string | null>(null);
+  const styleDataSeenRef = useRef(false);
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapStatus, setMapStatus] = useState("Initializing map...");
+  const [mapDiagnostics, setMapDiagnostics] = useState<string[]>([]);
   const leafletRef = useRef<HTMLDivElement | null>(null);
   const leafletMap = useRef<L.Map | null>(null);
   const leafletLayer = useRef<L.LayerGroup | null>(null);
@@ -155,6 +170,7 @@ export default function Trackers() {
           pollError.includes("401") || pollError.includes("403") ? ` (${authHint})` : ""
         }`
       : null,
+    streamError ? `Tracker stream failed: ${streamError}` : null,
     searchError ? `Search failed: ${searchError}` : null
   ].filter(Boolean) as string[];
   const filteredPoints = useMemo(() => {
@@ -272,159 +288,264 @@ export default function Trackers() {
       .catch(() => setDetail(null));
   }, [selectedId, paused]);
 
+  const mapInitRef = useRef(false);
+  const mapActiveRef = useRef(true);
+  const mapResizeHandler = useRef<(() => void) | null>(null);
+
   useEffect(() => {
-    if (!mapRef.current || mapInstance.current) return;
-    const canvas = document.createElement("canvas");
-    const hasWebgl =
-      !!window.WebGLRenderingContext &&
-      (canvas.getContext("webgl") || canvas.getContext("experimental-webgl"));
-    if (!hasWebgl) {
-      setMapError("WebGL not supported in this browser.");
-      setMapStatus("WebGL not supported.");
-      return;
-    }
-    setMapStatus("Booting map engine...");
-    let map: maplibregl.Map;
-    try {
-      map = new maplibregl.Map({
-        container: mapRef.current,
-        style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
-        center: [0, 15],
-        zoom: 1.4,
-        attributionControl: false,
-        transformRequest: (url, resourceType) => {
-          if (resourceType === "Style" && !styleRequested.current) {
-            styleRequested.current = true;
-            setMapStatus("Requesting style...");
-          }
-          return { url };
-        }
-      });
-    } catch (err) {
-      setMapError(err instanceof Error ? err.message : "Map initialization failed.");
-      setMapStatus("Map init failed.");
-      return;
-    }
-    setMapStatus("Map instance created.");
-    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
-    map.on("styledata", () => {
-      setMapStatus("Loading style and tiles...");
-    });
-    map.on("style.load", () => {
-      styleLoaded.current = true;
-      setMapStatus("Style loaded.");
-    });
-    map.on("render", () => {
-      if (mapReady) {
-        setMapStatus("Rendering map.");
-      }
-    });
-    map.on("load", () => {
-      setMapReady(true);
-      setMapError(null);
-      setMapStatus("Map ready.");
-      map.resize();
-      window.setTimeout(() => map.resize(), 200);
-      map.addSource("tracker-points", {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] }
-      });
-      map.addLayer({
-        id: "tracker-points-glow",
-        type: "circle",
-        source: "tracker-points",
-        paint: {
-          "circle-radius": 6,
-          "circle-color": "#48f1a6",
-          "circle-opacity": 0.12
-        }
-      });
-      map.addLayer({
-        id: "tracker-points-layer",
-        type: "circle",
-        source: "tracker-points",
-        paint: {
-          "circle-radius": 3,
-          "circle-color": [
-            "match",
-            ["get", "kind"],
-            "ship",
-            "#8892a0",
-            "#48f1a6"
-          ],
-          "circle-opacity": 0.8
-        }
-      });
-      map.on("mouseenter", "tracker-points-layer", () => {
-        map.getCanvas().style.cursor = "pointer";
-      });
-      map.on("mouseleave", "tracker-points-layer", () => {
-        map.getCanvas().style.cursor = "";
-      });
-      map.on("click", "tracker-points-layer", (event) => {
-        const feature = event.features?.[0];
-        const id = feature?.properties?.id as string | undefined;
-        if (id) {
-          setSelectedId(id);
-          setFeedOpen(true);
-        }
-      });
-      map.addSource("history-line", {
-        type: "geojson",
-        data: {
-          type: "Feature",
-          geometry: { type: "LineString", coordinates: [] },
-          properties: {}
-        }
-      });
-      map.addLayer({
-        id: "history-line-layer",
-        type: "line",
-        source: "history-line",
-        paint: {
-          "line-color": "#48f1a6",
-          "line-width": 2,
-          "line-opacity": 0.8
-        }
-      });
-    });
-    map.on("error", (event) => {
-      const message = event?.error?.message;
-      if (!styleFallbackUsed.current) {
-        styleFallbackUsed.current = true;
-        setMapStatus("Primary style blocked. Switching to fallback.");
-        map.setStyle("https://demotiles.maplibre.org/style.json");
+    let raf = 0;
+    let timeout = 0;
+    const initMap = () => {
+      if (mapInitRef.current || mapInstance.current) return;
+      if (!mapRef.current) {
+        raf = window.requestAnimationFrame(initMap);
         return;
       }
-      setMapError(message || "Map data unavailable.");
-      setMapStatus("Map error.");
-    });
-    map.on("idle", () => {
-      if (!mapError) {
-        setMapError(null);
-        setMapStatus("Map idle.");
+      const rect = mapRef.current.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) {
+        setMapStatus("Waiting for map container...");
+        raf = window.requestAnimationFrame(initMap);
+        return;
       }
+      mapInitRef.current = true;
+      const canvas = document.createElement("canvas");
+      const hasWebgl =
+        !!window.WebGLRenderingContext &&
+        (canvas.getContext("webgl") || canvas.getContext("experimental-webgl"));
+      if (!hasWebgl) {
+        setMapError("WebGL not supported in this browser.");
+        setMapStatus("WebGL not supported.");
+        mapInitRef.current = false;
+        return;
+      }
+      setMapStatus("Booting map engine...");
+    const diagnostics: string[] = [];
+    diagnostics.push(checkWorkerClass(maplibregl));
+    setMapDiagnostics(diagnostics);
+    mapActiveRef.current = true;
+    const styleUrl =
+      "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
+    preflightStyle(styleUrl).then((result) => {
+      if (!mapActiveRef.current) return;
+      setMapDiagnostics((prev) => {
+        const next = prev.filter((item) => !item.startsWith("Style:"));
+        next.push(`Style: ${result.ok ? "ok" : result.detail}`);
+        return next;
+      });
     });
-    mapInstance.current = map;
-    const timeout = window.setTimeout(() => {
-      if (!mapReady && !mapError) {
-        if (!styleRequested.current) {
-          setMapStatus("Style request blocked before fetch.");
-        } else if (!styleLoaded.current) {
-          setMapStatus("Style requested but never loaded.");
-        } else {
-          setMapStatus("Map load timeout. Check CSP/worker settings.");
+    preflightMapResources(styleUrl).then((resourceLines) => {
+      if (!mapActiveRef.current) return;
+      setMapDiagnostics((prev) => {
+        const next = prev.filter(
+          (item) =>
+            !item.startsWith("Sprite") &&
+            !item.startsWith("Glyphs") &&
+            !item.startsWith("Tile")
+        );
+        return [...next, ...resourceLines];
+      });
+    });
+      let map: maplibregl.Map;
+      try {
+        map = new maplibregl.Map({
+          container: mapRef.current,
+          style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+          center: [0, 15],
+          zoom: 1.4,
+          attributionControl: false,
+          transformRequest: (url, resourceType) => {
+            if (resourceType === "Style" && !styleRequested.current) {
+              styleRequested.current = true;
+              setMapStatus("Requesting style...");
+            }
+            return { url };
+          }
+        });
+      } catch (err) {
+        setMapError(err instanceof Error ? err.message : "Map initialization failed.");
+        setMapStatus("Map init failed.");
+        mapInitRef.current = false;
+        return;
+      }
+      setMapStatus("Map instance created.");
+      map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+      map.on("styledata", () => {
+        styleDataSeenRef.current = true;
+        setMapStatus("Loading style and tiles...");
+      });
+      const initLayers = () => {
+        if (layersReadyRef.current) return;
+        layersReadyRef.current = true;
+        map.addSource("tracker-points", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] }
+        });
+        map.addLayer({
+          id: "tracker-points-glow",
+          type: "circle",
+          source: "tracker-points",
+          paint: {
+            "circle-radius": 6,
+            "circle-color": "#48f1a6",
+            "circle-opacity": 0.12
+          }
+        });
+        map.addLayer({
+          id: "tracker-points-layer",
+          type: "circle",
+          source: "tracker-points",
+          paint: {
+            "circle-radius": 3,
+            "circle-color": [
+              "match",
+              ["get", "kind"],
+              "ship",
+              "#8892a0",
+              "#48f1a6"
+            ],
+            "circle-opacity": 0.8
+          }
+        });
+        map.on("mouseenter", "tracker-points-layer", () => {
+          map.getCanvas().style.cursor = "pointer";
+        });
+        map.on("mouseleave", "tracker-points-layer", () => {
+          map.getCanvas().style.cursor = "";
+        });
+        map.on("click", "tracker-points-layer", (event) => {
+          const feature = event.features?.[0];
+          const id = feature?.properties?.id as string | undefined;
+          if (id) {
+            setSelectedId(id);
+            setFeedOpen(true);
+          }
+        });
+        map.addSource("history-line", {
+          type: "geojson",
+          data: {
+            type: "Feature",
+            geometry: { type: "LineString", coordinates: [] },
+            properties: {}
+          }
+        });
+        map.addLayer({
+          id: "history-line-layer",
+          type: "line",
+          source: "history-line",
+          paint: {
+            "line-color": "#48f1a6",
+            "line-width": 2,
+            "line-opacity": 0.8
+          }
+        });
+      };
+      map.on("style.load", () => {
+        styleLoaded.current = true;
+        setMapStatus("Style loaded.");
+        if (!mapReady) {
+          setMapReady(true);
+          mapReadyRef.current = true;
+          setMapError(null);
+          mapErrorRef.current = null;
+          initLayers();
         }
-      }
-    }, 6000);
-    const onResize = () => map.resize();
-    window.addEventListener("resize", onResize);
+      });
+      map.on("render", () => {
+        if (mapReady) {
+          setMapStatus("Rendering map.");
+        }
+      });
+      map.on("load", () => {
+        setMapReady(true);
+        mapReadyRef.current = true;
+        setMapError(null);
+        mapErrorRef.current = null;
+        setMapStatus("Map ready.");
+        map.resize();
+        window.setTimeout(() => map.resize(), 200);
+        initLayers();
+      });
+      map.on("error", (event) => {
+        const message = event?.error?.message;
+        if (!styleFallbackUsed.current) {
+          styleFallbackUsed.current = true;
+          setMapStatus("Primary style blocked. Switching to fallback.");
+          map.setStyle("https://demotiles.maplibre.org/style.json");
+          return;
+        }
+        const detail = message || "Map data unavailable.";
+        setMapError(detail);
+        mapErrorRef.current = detail;
+        setMapStatus("Map error.");
+      });
+      map.on("idle", () => {
+        if (!mapError) {
+          setMapError(null);
+          setMapStatus("Map idle.");
+        }
+      });
+      mapInstance.current = map;
+      timeout = window.setTimeout(() => {
+        if (!mapReadyRef.current && !mapErrorRef.current) {
+          if (!styleRequested.current) {
+            setMapStatus("Style request blocked before fetch.");
+          } else if (!styleLoaded.current) {
+            setMapStatus("Style requested but never loaded.");
+          } else {
+            setMapStatus("Map load timeout. Check CSP/worker settings.");
+          }
+          if (
+            styleLoaded.current ||
+            (styleDataSeenRef.current && map.isStyleLoaded && map.isStyleLoaded())
+          ) {
+            setMapReady(true);
+            mapReadyRef.current = true;
+            setMapError(null);
+            mapErrorRef.current = null;
+            initLayers();
+            map.resize();
+            map.triggerRepaint();
+          }
+        }
+      }, 6000);
+      const onResize = () => map.resize();
+      mapResizeHandler.current = onResize;
+      window.addEventListener("resize", onResize);
+    };
+    initMap();
     return () => {
+      window.cancelAnimationFrame(raf);
       window.clearTimeout(timeout);
-      window.removeEventListener("resize", onResize);
-      map.remove();
     };
   }, []);
+
+  useEffect(() => {
+    return () => {
+      mapActiveRef.current = false;
+      if (mapResizeHandler.current) {
+        window.removeEventListener("resize", mapResizeHandler.current);
+      }
+      mapInstance.current?.remove();
+      mapInstance.current = null;
+      mapInitRef.current = false;
+      setMapReady(false);
+      mapReadyRef.current = false;
+      setMapError(null);
+      mapErrorRef.current = null;
+      setMapStatus("Initializing map...");
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!mapInstance.current || !mapReady) return;
+    mapInstance.current.resize();
+  }, [mapSize.height, mapSize.width, mapReady]);
+
+  useEffect(() => {
+    if (!mapInstance.current || !mapOpen) return;
+    const handle = window.setTimeout(() => mapInstance.current?.resize(), 200);
+    return () => window.clearTimeout(handle);
+  }, [mapOpen]);
 
   useEffect(() => {
     if (!leafletRef.current || leafletMap.current) return;
@@ -581,23 +702,32 @@ export default function Trackers() {
           open={mapOpen}
           onToggle={() => setMapOpen((prev) => !prev)}
         >
-          <div className="relative h-[420px] overflow-hidden rounded-2xl border border-slate-800/60 bg-ink-950/60 scanline">
-            <div ref={mapRef} className="absolute inset-0" />
+          <div
+            ref={mapRef}
+            className="relative h-[420px] overflow-hidden rounded-2xl border border-slate-800/60 bg-ink-950/60 scanline"
+          >
             {!mapReady && !mapError ? (
-              <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-400 bg-ink-950/60">
+              <div className="absolute inset-0 z-10 flex items-center justify-center text-xs text-slate-400 bg-ink-950/60">
                 Loading map feed...
               </div>
             ) : null}
             {mapError ? (
-              <div className="absolute inset-0 flex items-center justify-center text-xs text-amber-300 bg-ink-950/60">
+              <div className="absolute inset-0 z-10 flex items-center justify-center text-xs text-amber-300 bg-ink-950/60">
                 {mapError}
               </div>
             ) : null}
-            <div className="absolute bottom-3 left-3 rounded-lg border border-emerald-400/20 bg-ink-950/80 px-3 py-2 text-xs text-emerald-300">
+            <div className="absolute bottom-3 left-3 z-10 rounded-lg border border-emerald-400/20 bg-ink-950/80 px-3 py-2 text-xs text-emerald-300">
               {filteredPoints.length ? `${filteredPoints.length} live entities` : "Awaiting live feed"}
             </div>
-            <div className="absolute bottom-3 right-3 rounded-lg border border-slate-800/60 bg-ink-950/80 px-3 py-2 text-[11px] text-slate-400">
-              {mapStatus}
+            <div className="absolute bottom-3 right-3 z-10 rounded-lg border border-slate-800/60 bg-ink-950/80 px-3 py-2 text-[11px] text-slate-400">
+              <p>{mapStatus}</p>
+              {mapDiagnostics.length ? (
+                <div className="mt-1 space-y-0.5">
+                  {mapDiagnostics.map((item) => (
+                    <p key={item}>{item}</p>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </div>
           <div className="mt-4 rounded-2xl border border-slate-800/60 bg-ink-950/40 p-4">

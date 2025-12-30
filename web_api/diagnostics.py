@@ -14,7 +14,14 @@ def feed_status() -> Dict[str, object]:
     flight_urls = [item.strip() for item in os.getenv("FLIGHT_DATA_URL", "").split(",") if item.strip()]
     flight_paths = [item.strip() for item in os.getenv("FLIGHT_DATA_PATH", "").split(",") if item.strip()]
     shipping_url = os.getenv("SHIPPING_DATA_URL")
-    opensky_creds = bool(os.getenv("OPENSKY_USERNAME") and os.getenv("OPENSKY_PASSWORD"))
+    opensky_basic = bool(os.getenv("OPENSKY_USERNAME") and os.getenv("OPENSKY_PASSWORD"))
+    opensky_oauth = bool(os.getenv("OPENSKY_CLIENT_ID") and os.getenv("OPENSKY_CLIENT_SECRET"))
+    opensky_creds = opensky_basic or opensky_oauth
+    auth_mode = "anonymous"
+    if opensky_oauth:
+        auth_mode = "oauth"
+    elif opensky_basic:
+        auth_mode = "basic"
     return {
         "flights": {
             "url_sources": len(flight_urls),
@@ -26,6 +33,9 @@ def feed_status() -> Dict[str, object]:
         },
         "opensky": {
             "credentials_set": opensky_creds,
+            "auth_mode": auth_mode,
+            "basic_credentials": opensky_basic,
+            "oauth_credentials": opensky_oauth,
         },
     }
 

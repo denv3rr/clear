@@ -1,6 +1,6 @@
 import maplibregl from "maplibre-gl/dist/maplibre-gl-csp";
-import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-csp-worker.js?url";
+import MapLibreWorker from "maplibre-gl/dist/maplibre-gl-csp-worker?worker";
 
-maplibregl.setWorkerUrl(maplibreWorkerUrl);
+maplibregl.workerClass = MapLibreWorker;
 
 export default maplibregl;

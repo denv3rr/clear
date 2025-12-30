@@ -26,6 +26,42 @@ function cacheKey(path: string) {
   return `${API_BASE}${path}`;
 }
 
+function applyDemoOverrides(path: string) {
+  if (typeof window === "undefined") return path;
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get("demo_empty");
+  if (!raw) return path;
+  const targets = new Set(
+    raw
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+  );
+  if (!targets.size) return path;
+  const url = new URL(path, "http://mock.local");
+  if (targets.has("clients") && url.pathname === "/api/clients") {
+    url.searchParams.set("empty", "true");
+  }
+  if (targets.has("news") && url.pathname === "/api/intel/news") {
+    url.searchParams.set("empty", "true");
+  }
+  if (targets.has("trackers") && url.pathname === "/api/trackers/snapshot") {
+    url.searchParams.set("empty", "true");
+  }
+  if (targets.has("summary") && url.pathname === "/api/intel/summary") {
+    url.searchParams.set("empty", "true");
+  }
+  return `${url.pathname}${url.search}`;
+}
+
+function isDemoOverride(): boolean {
+  if (typeof window === "undefined") return false;
+  if (!import.meta.env.DEV) return false;
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get("demo");
+  return raw === "true" || raw === "1";
+}
+
 async function parseJson<T>(response: Response): Promise<T> {
   const text = await response.text();
   try {
@@ -74,8 +110,9 @@ export async function apiGet<T>(path: string, ttl = 0, signal?: AbortSignal): Pr
     }
     throw new Error("Tracker updates paused.");
   }
-  if (DEMO_MODE) {
-    const payload = getMockResponse(path) as T;
+  const demoMode = DEMO_MODE || isDemoOverride();
+  if (demoMode) {
+    const payload = getMockResponse(applyDemoOverrides(path)) as T;
     if (ttl > 0) {
       cache.set(key, { ts: Date.now(), ttl, data: payload });
     }
@@ -109,7 +146,7 @@ export async function apiGet<T>(path: string, ttl = 0, signal?: AbortSignal): Pr
 type WriteMethod = "POST" | "PATCH" | "PUT" | "DELETE";
 
 async function apiWrite<T>(path: string, method: WriteMethod, body?: unknown): Promise<T> {
-  if (DEMO_MODE) {
+  if (DEMO_MODE || isDemoOverride()) {
     throw new Error("Demo mode: write operations are disabled.");
   }
   const headers: Record<string, string> = { "Content-Type": "application/json" };

@@ -34,6 +34,8 @@ class SystemHost:
     Retrieves and stores system information for the session context,
     now including detailed hardware/performance metrics.
     """
+    _METRICS_CACHE: Optional[Dict[str, Optional[float]]] = None
+    _METRICS_TS: float = 0.0
 
     @staticmethod
     def get_info():
@@ -111,6 +113,12 @@ class SystemHost:
 
     @staticmethod
     def get_metrics(path: Optional[str] = None) -> Dict[str, Optional[float]]:
+        now = datetime.now().timestamp()
+        if (
+            SystemHost._METRICS_CACHE is not None
+            and (now - SystemHost._METRICS_TS) < 1.5
+        ):
+            return dict(SystemHost._METRICS_CACHE)
         metrics: Dict[str, Optional[float]] = {
             "cpu_percent": None,
             "mem_percent": None,
@@ -146,4 +154,6 @@ class SystemHost:
         except Exception:
             metrics["disk_total_gb"] = None
 
+        SystemHost._METRICS_CACHE = dict(metrics)
+        SystemHost._METRICS_TS = now
         return metrics

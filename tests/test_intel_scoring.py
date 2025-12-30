@@ -1,6 +1,8 @@
 import unittest
+from unittest import mock
 
 from modules.market_data.intel import (
+    MarketIntel,
     _aggregate_news_metrics,
     _impact_for_conflict,
     _impact_for_weather,
@@ -58,6 +60,36 @@ class TestIntelScoring(unittest.TestCase):
         self.assertEqual(metrics["count"], 3)
         self.assertGreaterEqual(metrics["risk_score"], 0)
         self.assertIn("markets", metrics["category_counts"])
+
+    def test_news_metrics_empty_series(self):
+        metrics = _aggregate_news_metrics([])
+        self.assertEqual(metrics["count"], 0)
+        self.assertEqual(metrics["series"], [])
+        self.assertEqual(metrics["emotion_series"], [])
+
+    def test_combined_report_omits_series_without_news(self):
+        intel = MarketIntel()
+        weather_stub = {
+            "risk_score": 4,
+            "risk_level": "Moderate",
+            "confidence": "Medium",
+            "signals": [],
+            "impacts": [],
+            "sections": [],
+        }
+        conflict_stub = {
+            "risk_score": 5,
+            "risk_level": "Moderate",
+            "confidence": "Medium",
+            "signals": [],
+            "impacts": [],
+            "sections": [],
+        }
+        with mock.patch.object(intel, "fetch_news_signals", return_value={"items": []}), mock.patch.object(
+            intel, "weather_report", return_value=weather_stub
+        ), mock.patch.object(intel, "conflict_report", return_value=conflict_stub):
+            report = intel.combined_report("Global")
+        self.assertEqual(report["risk_series"], [])
 
 
 if __name__ == "__main__":

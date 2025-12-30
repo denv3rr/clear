@@ -211,6 +211,21 @@ def _aggregate_news_metrics(items: List[Dict[str, object]]) -> Dict[str, object]
     region_counts: Dict[str, int] = {}
     subregion_counts: Dict[str, Dict[str, int]] = {}
 
+    if not items:
+        return {
+            "count": 0,
+            "sentiment_avg": 0.0,
+            "negative_ratio": 0.0,
+            "category_counts": {},
+            "emotion_counts": {},
+            "region_counts": {},
+            "subregion_counts": {},
+            "timestamp_ratio": 0.0,
+            "risk_score": 0,
+            "series": [],
+            "emotion_series": [],
+        }
+
     for item in items:
         totals["count"] += 1
         sentiment = float(item.get("sentiment", 0.0) or 0.0)
@@ -271,8 +286,6 @@ def _aggregate_news_metrics(items: List[Dict[str, object]]) -> Dict[str, object]
     for bucket in buckets:
         bucket_items = bucket["items"]
         if not bucket_items:
-            series.append({"label": "No data", "value": 0.0, "count": 0})
-            emotion_series.append({"label": "No data", "emotions": {}})
             continue
         bucket_sentiment = sum(
             float(item.get("sentiment", 0.0) or 0.0) for item in bucket_items
@@ -1175,11 +1188,12 @@ class MarketIntel:
                 "rows": [[source, ""] for source in sorted(set(sources))],
             })
         risk_series = []
-        for point in news_metrics.get("series", []):
-            sentiment = float(point.get("value", 0.0) or 0.0)
-            negative_ratio = float(point.get("negative_ratio", 0.0) or 0.0)
-            value = min(10.0, max(0.0, (negative_ratio * 6.0) + (max(0.0, -sentiment) * 4.0)))
-            risk_series.append({"label": point.get("label", ""), "value": round(value, 2)})
+        if news_filtered:
+            for point in news_metrics.get("series", []):
+                sentiment = float(point.get("value", 0.0) or 0.0)
+                negative_ratio = float(point.get("negative_ratio", 0.0) or 0.0)
+                value = min(10.0, max(0.0, (negative_ratio * 6.0) + (max(0.0, -sentiment) * 4.0)))
+                risk_series.append({"label": point.get("label", ""), "value": round(value, 2)})
         return {
             "title": "Global Impact Report",
             "summary": summary,
