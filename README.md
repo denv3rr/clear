@@ -90,6 +90,7 @@ python clearctl.py start
 
 ```pwsh
 python clearctl.py start
+python clearctl.py stop
 ```
 
 If npm is not found, install Node.js first (includes npm) and retry:
@@ -99,7 +100,8 @@ If npm is not found, install Node.js first (includes npm) and retry:
 - macOS: `brew install node`
 - Linux: https://nodejs.org/en/download/package-manager
 
-## Web Demo (GitHub Pages)
+<!--
+## Demo (GitHub Pages)
 
 The web demo uses deterministic mock data and hash routing for GitHub Pages.
 
@@ -114,6 +116,7 @@ The workflow deploys via `GH_PAGES_TOKEN`, which must be stored as a repository
 secret in this repo with `public_repo` (or full `repo`) scope. The destination
 repo (`denv3rr/denv3rr.github.io`) should have Pages set to the `main` branch
 root.
+-->
 
 ## Launcher Commands
 
