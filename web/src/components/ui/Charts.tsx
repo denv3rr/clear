@@ -55,9 +55,9 @@ export function AreaSparkline({
           <YAxis hide domain={["auto", "auto"]} />
           <Tooltip
             contentStyle={{
-              background: "#0b0e13",
-              border: "1px solid #1f2937",
-              color: "#e2e8f0"
+              background: "var(--slate-900)",
+              border: "1px solid var(--slate-700)",
+              color: "var(--slate-100)"
             }}
           />
           <Area type="monotone" dataKey="value" stroke={color} fill="url(#sparkGlow)" />
@@ -85,13 +85,13 @@ export function DistributionBars({
     <div className="chart-panel" style={{ width: "100%", height }}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={series}>
-          <XAxis dataKey="label" stroke="#334155" tick={{ fill: "#94a3b8", fontSize: 10 }} />
-          <YAxis stroke="#334155" tick={{ fill: "#94a3b8", fontSize: 10 }} allowDecimals={false} />
+          <XAxis dataKey="label" stroke="var(--slate-700)" tick={{ fill: "var(--slate-100)", fontSize: 10 }} />
+          <YAxis stroke="var(--slate-700)" tick={{ fill: "var(--slate-100)", fontSize: 10 }} allowDecimals={false} />
           <Tooltip
             contentStyle={{
-              background: "#0b0e13",
-              border: "1px solid #1f2937",
-              color: "#e2e8f0"
+              background: "var(--slate-900)",
+              border: "1px solid var(--slate-700)",
+              color: "var(--slate-100)"
             }}
           />
           <Bar dataKey="count" fill={color} radius={[6, 6, 0, 0]} />
@@ -134,22 +134,22 @@ export function MeterBar({
             layout="vertical"
             margin={{ top: 6, right: 12, left: 12, bottom: 6 }}
           >
-            <CartesianGrid stroke="#0f172a" strokeDasharray="2 4" />
+            <CartesianGrid stroke="var(--slate-900)" strokeDasharray="2 4" />
             <XAxis type="number" domain={[0, max]} hide />
             <YAxis type="category" dataKey="name" hide />
             <Tooltip
               formatter={(val) => [`${Number(val).toFixed(1)}%`, "Load"]}
               contentStyle={{
-                background: "#0b0e13",
-                border: "1px solid #1f2937",
-                color: "#e2e8f0"
+                background: "var(--slate-900)",
+                border: "1px solid var(--slate-700)",
+                color: "var(--slate-100)"
               }}
             />
             <Bar
               dataKey="value"
               fill={color}
               radius={[8, 8, 8, 8]}
-              background={{ fill: "#0f172a" }}
+              background={{ fill: "var(--slate-900)" }}
             />
           </BarChart>
         </ResponsiveContainer>

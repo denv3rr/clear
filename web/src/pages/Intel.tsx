@@ -297,8 +297,8 @@ export default function Intel() {
                           </linearGradient>
                         </defs>
                         <CartesianGrid stroke="var(--slate-700)" strokeDasharray="3 3" />
-                        <XAxis dataKey="label" tick={{ fill: "var(--slate-300)", fontSize: 10 }} />
-                        <YAxis tick={{ fill: "var(--slate-300)", fontSize: 10 }} domain={[0, 10]} />
+                        <XAxis dataKey="label" tick={{ fill: "var(--slate-100)", fontSize: 10 }} />
+                        <YAxis tick={{ fill: "var(--slate-100)", fontSize: 10 }} domain={[0, 10]} />
                         <Tooltip contentStyle={{ background: "var(--slate-900)", borderRadius: 8, borderColor: "var(--slate-700)" }} />
                         <Area type="monotone" dataKey="value" stroke="var(--green-500)" fill="url(#riskFill)" strokeWidth={2} />
                       </AreaChart>
@@ -317,8 +317,8 @@ export default function Intel() {
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={emotionSeries}>
                         <CartesianGrid stroke="var(--slate-700)" strokeDasharray="3 3" />
-                        <XAxis dataKey="label" tick={{ fill: "var(--slate-300)", fontSize: 10 }} />
-                        <YAxis tick={{ fill: "var(--slate-300)", fontSize: 10 }} />
+                        <XAxis dataKey="label" tick={{ fill: "var(--slate-100)", fontSize: 10 }} />
+                        <YAxis tick={{ fill: "var(--slate-100)", fontSize: 10 }} />
                         <Tooltip contentStyle={{ background: "var(--slate-900)", borderRadius: 8, borderColor: "var(--slate-700)" }} />
                         {topEmotions.map((emotion, index) => (
                           <Bar

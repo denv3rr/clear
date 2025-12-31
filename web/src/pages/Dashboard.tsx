@@ -592,11 +592,11 @@ export default function Dashboard() {
               <XAxis
                 dataKey="day"
                 stroke="var(--slate-700)"
-                tick={{ fill: "var(--slate-300)", fontSize: 12 }}
+                tick={{ fill: "var(--slate-100)", fontSize: 12 }}
               />
               <YAxis
                 stroke="var(--slate-700)"
-                tick={{ fill: "var(--slate-300)", fontSize: 12 }}
+                tick={{ fill: "var(--slate-100)", fontSize: 12 }}
               />
               <Tooltip
                 contentStyle={{
