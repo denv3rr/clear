@@ -90,13 +90,13 @@ export default function System() {
           <div className="flex space-x-2">
             <button
               onClick={onSetApiKey}
-              className="rounded-lg border border-slate-800/60 bg-ink-950/80 px-3 py-1 text-xs text-slate-300 hover:border-emerald-400/40"
+              className="rounded-lg border border-slate-700 bg-slate-950/80 px-3 py-1 text-xs text-slate-100 hover:border-green-400/40"
             >
               Set API Key
             </button>
             <button
               onClick={clearApiKey}
-              className="rounded-lg border border-slate-800/60 bg-ink-950/80 px-3 py-1 text-xs text-slate-300 hover:border-emerald-400/40"
+              className="rounded-lg border border-slate-700 bg-slate-950/80 px-3 py-1 text-xs text-slate-100 hover:border-green-400/40"
             >
               Clear API Key
             </button>
@@ -107,39 +107,39 @@ export default function System() {
         <ErrorBanner messages={errorMessages} onRetry={refresh} />
       </div>
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-4 gap-4">
-        <KpiCard label="Clients" value={`${data?.clients?.clients ?? 0}`} tone="text-emerald-300" />
-        <KpiCard label="Accounts" value={`${data?.clients?.accounts ?? 0}`} tone="text-slate-200" />
-        <KpiCard label="Holdings" value={`${data?.clients?.holdings ?? 0}`} tone="text-slate-200" />
-        <KpiCard label="Tracker Signals" value={`${data?.trackers?.count ?? 0}`} tone="text-emerald-300" />
+        <KpiCard label="Clients" value={`${data?.clients?.clients ?? 0}`} tone="text-green-300" />
+        <KpiCard label="Accounts" value={`${data?.clients?.accounts ?? 0}`} tone="text-slate-100" />
+        <KpiCard label="Holdings" value={`${data?.clients?.holdings ?? 0}`} tone="text-slate-100" />
+        <KpiCard label="Tracker Signals" value={`${data?.trackers?.count ?? 0}`} tone="text-green-300" />
       </div>
       <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 text-sm">
-        <div className="rounded-xl border border-slate-800/60 p-4">
-          <p className="text-slate-200 font-medium">Data Management</p>
+        <div className="rounded-xl border border-slate-700 p-4">
+          <p className="text-slate-100 font-medium">Data Management</p>
           <div className="mt-3 space-y-2">
             <button
               onClick={onNormalize}
-              className="w-full rounded-lg border border-slate-800/60 px-3 py-2 text-left text-slate-300 hover:border-emerald-400/40"
+              className="w-full rounded-lg border border-slate-700 px-3 py-2 text-left text-slate-100 hover:border-green-400/40"
             >
               Normalize Lot Timestamps
             </button>
             <button
               onClick={onClearCache}
-              className="w-full rounded-lg border border-slate-800/60 px-3 py-2 text-left text-slate-300 hover:border-emerald-400/40"
+              className="w-full rounded-lg border border-slate-700 px-3 py-2 text-left text-slate-100 hover:border-green-400/40"
             >
               Clear Report Cache
             </button>
           </div>
         </div>
-        <div className="rounded-xl border border-slate-800/60 p-4">
-          <p className="text-slate-200 font-medium">API Key</p>
+        <div className="rounded-xl border border-slate-700 p-4">
+          <p className="text-slate-100 font-medium">API Key</p>
           <div className="mt-3 space-y-2">
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-300">
               Current key: {getApiKey() ? "********" : "Not set"}
             </p>
           </div>
         </div>
       </div>
-      <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6 text-sm text-slate-300">
+      <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6 text-sm text-slate-100">
         <div className="space-y-2">
           <p className="text-slate-100 font-medium">System</p>
           <p>User: {data?.system?.user || "—"}</p>
@@ -178,15 +178,15 @@ export default function System() {
         </div>
         <div className="space-y-2">
           <p className="text-slate-100 font-medium">Utilization</p>
-          <p className="text-xs text-slate-400">CPU Load</p>
+          <p className="text-xs text-slate-300">CPU Load</p>
           <MeterBar value={cpuPercent ?? 0} height={70} max={100} />
-          <p className="text-xs text-slate-400 mt-3">Memory Load</p>
+          <p className="text-xs text-slate-300 mt-3">Memory Load</p>
           <MeterBar value={memPercent ?? 0} height={70} max={100} />
-          <p className="text-xs text-slate-400 mt-3">Disk Usage</p>
+          <p className="text-xs text-slate-300 mt-3">Disk Usage</p>
           <MeterBar value={diskPercent ?? 0} height={70} max={100} />
-          <p className="text-xs text-slate-400 mt-3">Swap Load</p>
-          <MeterBar value={swapPercent ?? 0} height={70} max={100} color="#a3e635" />
-          <div className="mt-3 text-xs text-slate-400 space-y-1">
+          <p className="text-xs text-slate-300 mt-3">Swap Load</p>
+          <MeterBar value={swapPercent ?? 0} height={70} max={100} color="var(--green-300)" />
+          <div className="mt-3 text-xs text-slate-300 space-y-1">
             <p>Total: {metrics?.disk_total_gb?.toFixed(2) ?? "—"} GB</p>
             <p>Used: {metrics?.disk_used_gb?.toFixed(2) ?? "—"} GB</p>
             <p>Free: {metrics?.disk_free_gb?.toFixed(2) ?? "—"} GB</p>

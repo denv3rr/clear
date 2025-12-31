@@ -255,7 +255,7 @@ export default function Dashboard() {
           source: "tracker-points",
           paint: {
             "circle-radius": 6,
-            "circle-color": "#48f1a6",
+            "circle-color": "var(--green-500)",
             "circle-opacity": 0.12
           }
         });
@@ -270,7 +270,7 @@ export default function Dashboard() {
               ["get", "kind"],
               "ship",
               "#8892a0",
-              "#48f1a6"
+              "var(--green-500)"
             ],
             "circle-opacity": 0.8
           }
@@ -406,7 +406,7 @@ export default function Dashboard() {
       (point) => Number.isFinite(point.lat) && Number.isFinite(point.lon)
     );
     points.slice(0, 200).forEach((point) => {
-      const color = point.kind === "ship" ? "#8892a0" : "#48f1a6";
+      const color = point.kind === "ship" ? "#8892a0" : "var(--green-500)";
       L.circleMarker([point.lat, point.lon], {
         radius: 4,
         color,
@@ -484,24 +484,24 @@ export default function Dashboard() {
         value: activeSnapshot
           ? `${activeSnapshot.points.filter((p) => p.kind === "flight").length}`
           : "—",
-        tone: "text-neon-500"
+        tone: "text-green-500"
       },
       {
         label: "Vessel Lanes",
         value: activeSnapshot
           ? `${activeSnapshot.points.filter((p) => p.kind === "ship").length}`
           : "—",
-        tone: "text-sky-300"
+        tone: "text-green-400"
       },
       {
         label: "Risk Score",
         value: intelSummary?.risk_score !== undefined ? `${intelSummary.risk_score}/10` : "—",
-        tone: "text-ember-500"
+        tone: "text-green-300"
       },
       {
         label: "Last Update",
         value: lastUpdated,
-        tone: "text-emerald-300"
+        tone: "text-green-300"
       }
     ],
     [intelSummary, activeSnapshot, lastUpdated]
@@ -546,7 +546,7 @@ export default function Dashboard() {
       <Reveal>
         <header className="flex items-center justify-between">
           <div>
-            <p className="tag text-xs text-slate-400">GLOBAL OVERVIEW</p>
+            <p className="tag text-xs text-slate-300">GLOBAL OVERVIEW</p>
             <h2 className="text-3xl font-semibold">Overview</h2>
           </div>
         </header>
@@ -585,31 +585,31 @@ export default function Dashboard() {
             <AreaChart data={riskSeries}>
               <defs>
                 <linearGradient id="riskGlow" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#48f1a6" stopOpacity={0.7} />
-                  <stop offset="100%" stopColor="#48f1a6" stopOpacity={0.11} />
+                  <stop offset="0%" stopColor="var(--green-500)" stopOpacity={0.7} />
+                  <stop offset="100%" stopColor="var(--green-500)" stopOpacity={0.11} />
                 </linearGradient>
               </defs>
               <XAxis
                 dataKey="day"
-                stroke="#334155"
-                tick={{ fill: "#94a3b8", fontSize: 12 }}
+                stroke="var(--slate-700)"
+                tick={{ fill: "var(--slate-300)", fontSize: 12 }}
               />
               <YAxis
-                stroke="#334155"
-                tick={{ fill: "#94a3b8", fontSize: 12 }}
+                stroke="var(--slate-700)"
+                tick={{ fill: "var(--slate-300)", fontSize: 12 }}
               />
               <Tooltip
                 contentStyle={{
-                  background: "#0b0e13",
-                  border: "1px solid #1f2937",
-                  color: "#e2e8f0"
+                  background: "var(--slate-900)",
+                  border: "1px solid var(--slate-700)",
+                  color: "var(--slate-100)"
                 }}
               />
-              <Area type="monotone" dataKey="value" stroke="#48f1a6" fill="url(#riskGlow)" />
+              <Area type="monotone" dataKey="value" stroke="var(--green-500)" fill="url(#riskGlow)" />
             </AreaChart>
           </ResponsiveContainer>
         ) : (
-          <div className="flex h-full items-center justify-center text-xs text-slate-500">
+          <div className="flex h-full items-center justify-center text-xs text-slate-400">
             No risk series available.
           </div>
         )}
@@ -625,27 +625,27 @@ export default function Dashboard() {
       <SectionHeader label="MAPS" title="Flight + Maritime Layer" right={mapFallback ? "Leaflet" : "MapLibre GL"} />
       <div
         ref={mapRef}
-        className="mt-4 h-[300px] rounded-2xl overflow-hidden border border-slate-800 relative"
+        className="mt-4 h-[300px] rounded-2xl overflow-hidden border border-slate-700 relative"
       >
         {mapFallback ? (
           <div ref={leafletRef} className="absolute inset-0" />
         ) : null}
         {!mapReady && !mapError && !mapFallback ? (
-          <div className="absolute inset-0 z-10 flex items-center justify-center text-xs text-slate-400 bg-ink-950/40">
+          <div className="absolute inset-0 z-10 flex items-center justify-center text-xs text-slate-300 bg-slate-950/40">
             Loading map...
           </div>
         ) : null}
         {noPoints ? (
-          <div className="absolute inset-0 z-10 flex items-center justify-center text-xs text-slate-400 bg-ink-950/40">
+          <div className="absolute inset-0 z-10 flex items-center justify-center text-xs text-slate-300 bg-slate-950/40">
             No tracker points in snapshot.
           </div>
         ) : null}
         {mapError && !mapFallback ? (
-          <div className="absolute inset-0 z-10 flex items-center justify-center text-xs text-amber-300 bg-ink-950/40">
+          <div className="absolute inset-0 z-10 flex items-center justify-center text-xs text-amber-300 bg-slate-950/40">
             {mapError}
           </div>
         ) : null}
-        <div className="absolute bottom-3 right-3 z-10 rounded-lg border border-slate-800/60 bg-ink-950/80 px-3 py-2 text-[11px] text-slate-400">
+        <div className="absolute bottom-3 right-3 z-10 rounded-lg border border-slate-700 bg-slate-950/80 px-3 py-2 text-[11px] text-slate-300">
           <p>{mapFallback ? leafletStatus : mapStatus}</p>
           {!mapFallback && mapDiagnostics.length ? (
             <div className="mt-1 space-y-0.5">
@@ -675,7 +675,7 @@ export default function Dashboard() {
       <div className="overflow-x-auto mt-6">
         {trackerRows.length ? (
           <table className="w-full text-sm">
-            <thead className="text-slate-400 border-b border-slate-800">
+            <thead className="text-slate-300 border-b border-slate-700">
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id}>
                   {headerGroup.headers.map((header) => (
@@ -688,9 +688,9 @@ export default function Dashboard() {
             </thead>
             <tbody>
               {table.getRowModel().rows.map((row) => (
-                <tr key={row.id} className="border-b border-slate-900/60">
+                <tr key={row.id} className="border-b border-slate-800/60">
                   {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="py-3 pr-4 text-slate-200">
+                    <td key={cell.id} className="py-3 pr-4 text-slate-100">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}
@@ -699,7 +699,7 @@ export default function Dashboard() {
             </tbody>
           </table>
         ) : (
-          <p className="text-xs text-slate-500">No live tracker data available.</p>
+          <p className="text-xs text-slate-400">No live tracker data available.</p>
         )}
       </div>
     </Collapsible>

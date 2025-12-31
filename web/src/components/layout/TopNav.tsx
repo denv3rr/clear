@@ -21,7 +21,7 @@ export function TopNav({ items, onToggleContext, onToggleAssistant }: TopNavProp
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <header className="border-b border-slate-900/80 bg-ink-950/95 backdrop-blur">
+    <header className="border-b border-slate-700 bg-slate-950/95 backdrop-blur">
       <div className="flex min-w-0 items-center gap-6 py-4 pl-6 pr-6 md:pl-10 md:pr-10 lg:pl-[68px] lg:pr-12">
         <div className="flex items-center gap-3">
           <button
@@ -29,7 +29,7 @@ export function TopNav({ items, onToggleContext, onToggleAssistant }: TopNavProp
             aria-label="Toggle navigation"
             aria-expanded={mobileOpen}
             onClick={() => setMobileOpen((prev) => !prev)}
-            className="lg:hidden rounded-full border border-slate-800/80 p-2 text-slate-300 hover:border-slate-700 hover:text-white"
+            className="lg:hidden rounded-full border border-slate-700 p-2 text-slate-100 hover:border-green-500 hover:text-green-500"
           >
             {mobileOpen ? <X size={18} /> : <Menu size={18} />}
           </button>
@@ -48,8 +48,8 @@ export function TopNav({ items, onToggleContext, onToggleAssistant }: TopNavProp
                   [
                     "flex items-center gap-2 rounded-full px-4 py-2 text-sm transition",
                     isActive
-                      ? "bg-slate-900/80 text-white"
-                      : "text-slate-300 hover:bg-slate-900/50"
+                      ? "bg-slate-800 text-green-500"
+                      : "text-slate-300 hover:bg-slate-800"
                   ].join(" ")
                 }
               >
@@ -69,8 +69,8 @@ export function TopNav({ items, onToggleContext, onToggleAssistant }: TopNavProp
                   [
                     "flex items-center gap-2 rounded-full px-3 py-2 text-xs transition",
                     isActive
-                      ? "bg-slate-900/80 text-white"
-                      : "text-slate-300 hover:bg-slate-900/50"
+                      ? "bg-slate-800 text-green-500"
+                      : "text-slate-300 hover:bg-slate-800"
                   ].join(" ")
                 }
               >
@@ -80,7 +80,7 @@ export function TopNav({ items, onToggleContext, onToggleAssistant }: TopNavProp
             ))}
           </div>
           <button
-            className="hidden lg:inline-flex rounded-full border border-slate-800/80 px-4 py-2 text-xs text-slate-300 hover:border-slate-700 hover:text-white"
+            className="hidden lg:inline-flex rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-100 hover:border-green-500 hover:text-green-500"
             type="button"
             onClick={onToggleAssistant}
           >
@@ -88,7 +88,7 @@ export function TopNav({ items, onToggleContext, onToggleAssistant }: TopNavProp
             Assistant
           </button>
           <button
-            className="hidden lg:inline-flex rounded-full border border-slate-800/80 px-4 py-2 text-xs text-slate-300 hover:border-slate-700 hover:text-white"
+            className="hidden lg:inline-flex rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-100 hover:border-green-500 hover:text-green-500"
             type="button"
             onClick={onToggleContext}
           >
@@ -97,7 +97,7 @@ export function TopNav({ items, onToggleContext, onToggleAssistant }: TopNavProp
         </div>
       </div>
       {mobileOpen ? (
-        <div className="lg:hidden border-t border-slate-900/70 bg-ink-950/95">
+        <div className="lg:hidden border-t border-slate-700 bg-slate-950/95">
           <div className="px-6 py-4 space-y-4">
             <nav className="space-y-2">
               {primaryItems.map(({ label, icon: Icon, path }) => (
@@ -109,8 +109,8 @@ export function TopNav({ items, onToggleContext, onToggleAssistant }: TopNavProp
                     [
                       "flex items-center gap-2 rounded-xl px-4 py-2 text-sm transition",
                       isActive
-                        ? "bg-slate-900/80 text-white"
-                        : "text-slate-300 hover:bg-slate-900/50"
+                        ? "bg-slate-800 text-green-500"
+                        : "text-slate-300 hover:bg-slate-800"
                     ].join(" ")
                   }
                 >
@@ -119,7 +119,7 @@ export function TopNav({ items, onToggleContext, onToggleAssistant }: TopNavProp
                 </NavLink>
               ))}
             </nav>
-            <div className="border-t border-slate-900/70 pt-3 space-y-2">
+            <div className="border-t border-slate-700 pt-3 space-y-2">
               {utilityItems.map(({ label, icon: Icon, path }) => (
                 <NavLink
                   key={label}
@@ -129,8 +129,8 @@ export function TopNav({ items, onToggleContext, onToggleAssistant }: TopNavProp
                     [
                       "flex items-center gap-2 rounded-xl px-4 py-2 text-sm transition",
                       isActive
-                        ? "bg-slate-900/80 text-white"
-                        : "text-slate-300 hover:bg-slate-900/50"
+                        ? "bg-slate-800 text-green-500"
+                        : "text-slate-300 hover:bg-slate-800"
                     ].join(" ")
                   }
                 >
@@ -139,7 +139,7 @@ export function TopNav({ items, onToggleContext, onToggleAssistant }: TopNavProp
                 </NavLink>
               ))}
               <button
-                className="w-full rounded-xl border border-slate-800/80 px-4 py-2 text-left text-sm text-slate-300 hover:border-slate-700 hover:text-white"
+                className="w-full rounded-xl border border-slate-700 px-4 py-2 text-left text-sm text-slate-100 hover:border-green-500 hover:text-green-500"
                 type="button"
                 onClick={() => {
                   onToggleAssistant?.();
@@ -149,7 +149,7 @@ export function TopNav({ items, onToggleContext, onToggleAssistant }: TopNavProp
                 Assistant
               </button>
               <button
-                className="w-full rounded-xl border border-slate-800/80 px-4 py-2 text-left text-sm text-slate-300 hover:border-slate-700 hover:text-white"
+                className="w-full rounded-xl border border-slate-700 px-4 py-2 text-left text-sm text-slate-100 hover:border-green-500 hover:text-green-500"
                 type="button"
                 onClick={() => {
                   onToggleContext?.();

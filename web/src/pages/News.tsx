@@ -113,7 +113,7 @@ export default function News() {
         >
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div>
-              <label htmlFor="news-region" className="text-xs text-slate-400">
+              <label htmlFor="news-region" className="text-xs text-slate-300">
                 Region
               </label>
               <select
@@ -121,7 +121,7 @@ export default function News() {
                 name="news-region"
                 value={region}
                 onChange={(event) => setRegion(event.target.value)}
-                className="mt-1 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                className="mt-1 w-full rounded-xl bg-slate-950/60 border border-slate-700 px-3 py-2 text-sm text-slate-100"
               >
                 {regionOptions.map((option) => (
                   <option key={option} value={option}>
@@ -131,7 +131,7 @@ export default function News() {
               </select>
             </div>
             <div>
-              <label htmlFor="news-industry" className="text-xs text-slate-400">
+              <label htmlFor="news-industry" className="text-xs text-slate-300">
                 Industry
               </label>
               <select
@@ -139,7 +139,7 @@ export default function News() {
                 name="news-industry"
                 value={industry}
                 onChange={(event) => setIndustry(event.target.value)}
-                className="mt-1 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                className="mt-1 w-full rounded-xl bg-slate-950/60 border border-slate-700 px-3 py-2 text-sm text-slate-100"
               >
                 <option value="all">All</option>
                 {industryOptions.map((option) => (
@@ -150,7 +150,7 @@ export default function News() {
               </select>
             </div>
             <div>
-              <label htmlFor="news-limit" className="text-xs text-slate-400">
+              <label htmlFor="news-limit" className="text-xs text-slate-300">
                 Limit
               </label>
               <input
@@ -169,13 +169,13 @@ export default function News() {
                   const clamped = Math.max(5, Math.min(100, raw));
                   setLimit(clamped);
                 }}
-                className="mt-1 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                className="mt-1 w-full rounded-xl bg-slate-950/60 border border-slate-700 px-3 py-2 text-sm text-slate-100"
               />
             </div>
           </div>
           <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4 items-end">
             <div className="lg:col-span-2">
-              <label htmlFor="news-tickers" className="text-xs text-slate-400">
+              <label htmlFor="news-tickers" className="text-xs text-slate-300">
                 Ticker Focus (comma-separated)
               </label>
               <input
@@ -183,21 +183,21 @@ export default function News() {
                 name="news-tickers"
                 value={tickers}
                 onChange={(event) => setTickers(event.target.value)}
-                className="mt-1 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                className="mt-1 w-full rounded-xl bg-slate-950/60 border border-slate-700 px-3 py-2 text-sm text-slate-100"
                 placeholder="AAPL, MSFT, XOM"
               />
             </div>
             <button
               type="button"
               onClick={() => setForceToken((prev) => prev + 1)}
-              className="rounded-xl border border-emerald-400/70 px-4 py-2 text-xs text-emerald-200"
+              className="rounded-xl border border-green-400/70 px-4 py-2 text-xs text-green-200"
             >
               Refresh News Now
             </button>
           </div>
           {sourceOptions.length ? (
             <div className="mt-4">
-              <p className="text-xs text-slate-400">Sources</p>
+              <p className="text-xs text-slate-300">Sources</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {sourceOptions.map((source) => (
                   <button
@@ -206,8 +206,8 @@ export default function News() {
                     onClick={() => toggleSource(source)}
                     className={`rounded-full border px-3 py-1 text-[11px] ${
                       sources.includes(source)
-                        ? "border-emerald-400/70 text-emerald-200"
-                        : "border-slate-800/60 text-slate-400"
+                        ? "border-green-400/70 text-green-200"
+                        : "border-slate-700 text-slate-300"
                     }`}
                   >
                     {source}
@@ -218,19 +218,19 @@ export default function News() {
           ) : null}
         </Collapsible>
 
-        <div className="rounded-xl border border-slate-800/60 p-4">
-          <p className="text-xs text-slate-400 mb-2">Feed Health</p>
-          <p className="text-sm text-emerald-300">{data?.cached ? "Cached feed" : "Live fetch"}</p>
+        <div className="rounded-xl border border-slate-700 p-4">
+          <p className="text-xs text-slate-300 mb-2">Feed Health</p>
+          <p className="text-sm text-green-300">{data?.cached ? "Cached feed" : "Live fetch"}</p>
           {data?.skipped?.length ? (
             <p className="text-xs text-amber-300 mt-2">Skipped: {data.skipped.join(", ")}</p>
           ) : (
-            <p className="text-xs text-slate-500 mt-2">No sources skipped.</p>
+            <p className="text-xs text-slate-400 mt-2">No sources skipped.</p>
           )}
           {data?.health ? (
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-slate-400">
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-slate-300">
               {Object.entries(data.health).map(([source, health]) => (
-                <div key={source} className="rounded-lg border border-slate-900/60 p-2">
-                  <p className="text-slate-200">{source}</p>
+                <div key={source} className="rounded-lg border border-slate-800/60 p-2">
+                  <p className="text-slate-100">{source}</p>
                   <p>Failures: {health.fail_count ?? 0}</p>
                 </div>
               ))}
@@ -242,42 +242,42 @@ export default function News() {
           <p>No news items available.</p>
         ) : (
           items.map((item) => (
-            <div key={`${item.title}-${item.source}`} className="border-b border-slate-900/60 pb-4">
+            <div key={`${item.title}-${item.source}`} className="border-b border-slate-800/60 pb-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-slate-100 font-medium">{item.title}</p>
                 {item.published_ts ? (
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[11px] text-slate-400">
                     {formatAge(item.published_ts)}
                   </p>
                 ) : null}
               </div>
-              <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-slate-400">
+              <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-slate-300">
                 <span>{item.source || "Unknown source"}</span>
                 {item.published_ts ? (
                   <span>{formatTimestamp(item.published_ts)}</span>
                 ) : null}
               </div>
               {(item.regions?.length || item.industries?.length || item.tags?.length) ? (
-                <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-400">
+                <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-300">
                   {(item.regions || []).slice(0, 2).map((region) => (
-                    <span key={`region-${region}`} className="rounded-full border border-slate-800/70 px-2 py-0.5">
+                    <span key={`region-${region}`} className="rounded-full border border-slate-700 px-2 py-0.5">
                       {region}
                     </span>
                   ))}
                   {(item.industries || []).slice(0, 2).map((industry) => (
-                    <span key={`industry-${industry}`} className="rounded-full border border-slate-800/70 px-2 py-0.5">
+                    <span key={`industry-${industry}`} className="rounded-full border border-slate-700 px-2 py-0.5">
                       {industry}
                     </span>
                   ))}
                   {(item.tags || []).slice(0, 3).map((tag) => (
-                    <span key={`tag-${tag}`} className="rounded-full border border-slate-800/70 px-2 py-0.5">
+                    <span key={`tag-${tag}`} className="rounded-full border border-slate-700 px-2 py-0.5">
                       {tag}
                     </span>
                   ))}
                 </div>
               ) : null}
               {item.url && (
-                <a className="mt-2 inline-flex text-xs text-emerald-300" href={item.url} target="_blank" rel="noreferrer">
+                <a className="mt-2 inline-flex text-xs text-green-300" href={item.url} target="_blank" rel="noreferrer">
                   Open source
                 </a>
               )}

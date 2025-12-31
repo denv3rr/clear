@@ -29,7 +29,7 @@ export function AppShell({ children }: AppShellProps) {
   }
 
   return (
-    <div className="min-h-screen text-slate-100 overflow-x-hidden">
+    <div className="min-h-screen text-slate-100 overflow-x-hidden bg-black">
       <TopNav
         items={navItems}
         onToggleContext={() => setContextOpen((prev) => !prev)}

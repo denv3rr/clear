@@ -108,16 +108,16 @@ export default function Reports() {
                 }}
                 className={`w-full rounded-xl border px-4 py-3 text-left ${
                   selectedId === client.client_id
-                    ? "border-emerald-400/60 text-slate-100"
-                    : "border-slate-800/60 text-slate-300"
+                    ? "border-green-400/60 text-green-100"
+                    : "border-slate-700 text-slate-100"
                 }`}
               >
                 <p className="font-medium">{client.name}</p>
-                <p className="text-xs text-slate-400">{client.accounts_count} accounts</p>
+                <p className="text-xs text-slate-300">{client.accounts_count} accounts</p>
               </button>
             ))
           ) : (
-            <p className="text-xs text-slate-500">No client profiles loaded.</p>
+            <p className="text-xs text-slate-400">No client profiles loaded.</p>
           )}
         </div>
         <div className="lg:col-span-2 space-y-4">
@@ -129,7 +129,7 @@ export default function Reports() {
           >
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
               <div>
-                <label htmlFor="report-format" className="text-xs text-slate-400">
+                <label htmlFor="report-format" className="text-xs text-slate-300">
                   Format
                 </label>
                 <select
@@ -137,14 +137,14 @@ export default function Reports() {
                   name="report-format"
                   value={format}
                   onChange={(event) => setFormat(event.target.value as "md" | "json")}
-                  className="mt-1 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                  className="mt-1 w-full rounded-xl bg-slate-950/60 border border-slate-700 px-3 py-2 text-sm text-slate-100"
                 >
                   <option value="md">Markdown</option>
                   <option value="json">JSON</option>
                 </select>
               </div>
               <div>
-                <label htmlFor="report-scope" className="text-xs text-slate-400">
+                <label htmlFor="report-scope" className="text-xs text-slate-300">
                   Scope
                 </label>
                 <select
@@ -152,7 +152,7 @@ export default function Reports() {
                   name="report-scope"
                   value={selectedAccount}
                   onChange={(event) => setSelectedAccount(event.target.value)}
-                  className="mt-1 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                  className="mt-1 w-full rounded-xl bg-slate-950/60 border border-slate-700 px-3 py-2 text-sm text-slate-100"
                 >
                   <option value="portfolio">Client Portfolio</option>
                   {(clientDetail?.accounts || []).map((account) => (
@@ -163,7 +163,7 @@ export default function Reports() {
                 </select>
               </div>
               <div className="flex items-end gap-3">
-                <label htmlFor="report-detail" className="text-xs text-slate-400">
+                <label htmlFor="report-detail" className="text-xs text-slate-300">
                   Detailed
                 </label>
                 <button
@@ -171,14 +171,14 @@ export default function Reports() {
                   type="button"
                   onClick={() => setDetail((prev) => !prev)}
                   className={`rounded-xl border px-3 py-2 text-xs ${
-                    detail ? "border-emerald-400/70 text-emerald-200" : "border-slate-800/60 text-slate-400"
+                    detail ? "border-green-400/70 text-green-200" : "border-slate-700 text-slate-300"
                   }`}
                 >
                   {detail ? "On" : "Off"}
                 </button>
               </div>
-              <div className="rounded-xl border border-slate-800/60 p-3">
-                <p className="text-xs text-slate-400">Interval</p>
+              <div className="rounded-xl border border-slate-700 p-3">
+                <p className="text-xs text-slate-300">Interval</p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {intervals.map((opt) => (
                     <button
@@ -187,8 +187,8 @@ export default function Reports() {
                       onClick={() => setInterval(opt)}
                       className={`rounded-full border px-3 py-1 text-[11px] ${
                         interval === opt
-                          ? "border-emerald-400/70 text-emerald-200"
-                          : "border-slate-800/60 text-slate-400"
+                          ? "border-green-400/70 text-green-200"
+                          : "border-slate-700 text-slate-300"
                       }`}
                     >
                       {opt}
@@ -202,24 +202,24 @@ export default function Reports() {
             <button
               onClick={runReport}
               disabled={!selectedId || loading}
-              className="px-4 py-2 rounded-lg border border-emerald-400/40 text-emerald-200 hover:bg-emerald-400/10 disabled:opacity-40"
+              className="px-4 py-2 rounded-lg border border-green-400/40 text-green-200 hover:bg-green-400/10 disabled:opacity-40"
             >
               Generate Report
             </button>
           </div>
-          <div className="rounded-xl border border-slate-800/60 bg-ink-950/50 p-4 min-h-[220px]">
+          <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4 min-h-[220px]">
             {loading ? (
-              <p className="text-xs text-slate-300">Generating report...</p>
+              <p className="text-xs text-slate-100">Generating report...</p>
             ) : report ? (
               format === "json" ? (
-                <pre className="text-xs text-slate-200 whitespace-pre-wrap">{report}</pre>
+                <pre className="text-xs text-slate-100 whitespace-pre-wrap">{report}</pre>
               ) : (
-                <div className="markdown text-sm text-slate-200">
+                <div className="markdown text-sm text-slate-100">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{report}</ReactMarkdown>
                 </div>
               )
             ) : (
-              <p className="text-xs text-slate-300">Select a client to generate reports.</p>
+              <p className="text-xs text-slate-100">Select a client to generate reports.</p>
             )}
           </div>
         </div>

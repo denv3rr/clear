@@ -423,7 +423,7 @@ export default function Trackers() {
           source: "tracker-points",
           paint: {
             "circle-radius": 6,
-            "circle-color": "#48f1a6",
+            "circle-color": "var(--green-500)",
             "circle-opacity": 0.12
           }
         });
@@ -438,7 +438,7 @@ export default function Trackers() {
               ["get", "kind"],
               "ship",
               "#8892a0",
-              "#48f1a6"
+              "var(--green-500)"
             ],
             "circle-opacity": 0.8
           }
@@ -470,7 +470,7 @@ export default function Trackers() {
           type: "line",
           source: "history-line",
           paint: {
-            "line-color": "#48f1a6",
+            "line-color": "var(--green-500)",
             "line-width": 2,
             "line-opacity": 0.8
           }
@@ -695,29 +695,29 @@ export default function Trackers() {
           onToggle={() => setRiskOpen((prev) => !prev)}
         >
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-            <KpiCard label="Active Flights" value={`${riskTotals.counts.flights}`} tone="text-emerald-300" />
-            <KpiCard label="Active Ships" value={`${riskTotals.counts.ships}`} tone="text-slate-200" />
-            <KpiCard label="Signal Density" value={`${points.length}`} tone="text-slate-200" />
+            <KpiCard label="Active Flights" value={`${riskTotals.counts.flights}`} tone="text-green-300" />
+            <KpiCard label="Active Ships" value={`${riskTotals.counts.ships}`} tone="text-slate-100" />
+            <KpiCard label="Signal Density" value={`${points.length}`} tone="text-slate-100" />
           </div>
           <div className="mt-5 grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <div className="rounded-xl border border-slate-800/60 p-4">
-              <p className="text-xs text-slate-400 mb-2">Dominant Categories</p>
+            <div className="rounded-xl border border-slate-700 p-4">
+              <p className="text-xs text-slate-300 mb-2">Dominant Categories</p>
               <div className="space-y-2">
                 {riskTotals.topCategories.length ? (
                   riskTotals.topCategories.map(([category, count]) => (
                     <div key={category} className="flex items-center justify-between">
-                      <span className="text-slate-200">{category}</span>
-                      <span className="text-emerald-300">{count}</span>
+                      <span className="text-slate-100">{category}</span>
+                      <span className="text-green-300">{count}</span>
                     </div>
                   ))
                 ) : (
-                  <p className="text-xs text-slate-500">No active categories yet.</p>
+                  <p className="text-xs text-slate-400">No active categories yet.</p>
                 )}
               </div>
             </div>
-            <div className="rounded-xl border border-slate-800/60 p-4">
-              <p className="text-xs text-slate-400 mb-2">System Status</p>
-              <p className="text-sm text-emerald-300">
+            <div className="rounded-xl border border-slate-700 p-4">
+              <p className="text-xs text-slate-300 mb-2">System Status</p>
+              <p className="text-sm text-green-300">
                 {connected ? "Live stream connected" : "Streaming offline - polling snapshots"}
               </p>
               {(data?.warnings || []).length > 0 ? (
@@ -727,7 +727,7 @@ export default function Trackers() {
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-slate-500 mt-2">No feed warnings detected.</p>
+                <p className="text-xs text-slate-400 mt-2">No feed warnings detected.</p>
               )}
             </div>
           </div>
@@ -741,22 +741,22 @@ export default function Trackers() {
         >
           <div
             ref={mapRef}
-            className="relative h-[420px] overflow-hidden rounded-2xl border border-slate-800/60 bg-ink-950/60 scanline"
+            className="relative h-[420px] overflow-hidden rounded-2xl border border-slate-700 bg-slate-950/60 scanline"
           >
             {!mapReady && !mapError ? (
-              <div className="absolute inset-0 z-10 flex items-center justify-center text-xs text-slate-400 bg-ink-950/60">
+              <div className="absolute inset-0 z-10 flex items-center justify-center text-xs text-slate-300 bg-slate-950/60">
                 Loading map feed...
               </div>
             ) : null}
             {mapError ? (
-              <div className="absolute inset-0 z-10 flex items-center justify-center text-xs text-amber-300 bg-ink-950/60">
+              <div className="absolute inset-0 z-10 flex items-center justify-center text-xs text-amber-300 bg-slate-950/60">
                 {mapError}
               </div>
             ) : null}
-            <div className="absolute bottom-3 left-3 z-10 rounded-lg border border-emerald-400/20 bg-ink-950/80 px-3 py-2 text-xs text-emerald-300">
+            <div className="absolute bottom-3 left-3 z-10 rounded-lg border border-green-400/20 bg-slate-950/80 px-3 py-2 text-xs text-green-300">
               {filteredPoints.length ? `${filteredPoints.length} live entities` : "Awaiting live feed"}
             </div>
-            <div className="absolute bottom-3 right-3 z-10 rounded-lg border border-slate-800/60 bg-ink-950/80 px-3 py-2 text-[11px] text-slate-400">
+            <div className="absolute bottom-3 right-3 z-10 rounded-lg border border-slate-700 bg-slate-950/80 px-3 py-2 text-[11px] text-slate-300">
               <p>{mapStatus}</p>
               {mapDiagnostics.length ? (
                 <div className="mt-1 space-y-0.5">
@@ -767,11 +767,11 @@ export default function Trackers() {
               ) : null}
             </div>
           </div>
-          <div className="mt-4 rounded-2xl border border-slate-800/60 bg-ink-950/40 p-4">
-            <p className="text-xs text-slate-400 mb-3">Leaflet Debug Map</p>
-            <div className="relative h-[260px] overflow-hidden rounded-xl border border-slate-800/60">
+          <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-950/40 p-4">
+            <p className="text-xs text-slate-300 mb-3">Leaflet Debug Map</p>
+            <div className="relative h-[260px] overflow-hidden rounded-xl border border-slate-700">
               <div ref={leafletRef} className="absolute inset-0" />
-              <div className="absolute bottom-2 right-2 rounded-lg border border-slate-800/60 bg-ink-950/80 px-2 py-1 text-[11px] text-slate-400">
+              <div className="absolute bottom-2 right-2 rounded-lg border border-slate-700 bg-slate-950/80 px-2 py-1 text-[11px] text-slate-300">
                 {leafletStatus}
               </div>
             </div>
@@ -787,7 +787,7 @@ export default function Trackers() {
           <div className="space-y-4">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
               <div>
-                <label htmlFor="tracker-mode" className="text-xs text-slate-400">
+                <label htmlFor="tracker-mode" className="text-xs text-slate-300">
                   Mode
                 </label>
                 <select
@@ -795,7 +795,7 @@ export default function Trackers() {
                   name="tracker-mode"
                   value={mode}
                   onChange={(event) => setMode(event.target.value as typeof mode)}
-                  className="mt-1 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                  className="mt-1 w-full rounded-xl bg-slate-950/60 border border-slate-700 px-3 py-2 text-sm text-slate-100"
                 >
                   <option value="combined">Combined</option>
                   <option value="flights">Flights</option>
@@ -803,7 +803,7 @@ export default function Trackers() {
                 </select>
               </div>
               <div>
-                <label htmlFor="tracker-category" className="text-xs text-slate-400">
+                <label htmlFor="tracker-category" className="text-xs text-slate-300">
                   Category
                 </label>
                 <select
@@ -811,7 +811,7 @@ export default function Trackers() {
                   name="tracker-category"
                   value={categoryFilter}
                   onChange={(event) => setCategoryFilter(event.target.value)}
-                  className="mt-1 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                  className="mt-1 w-full rounded-xl bg-slate-950/60 border border-slate-700 px-3 py-2 text-sm text-slate-100"
                 >
                   {categories.map((category) => (
                     <option key={category} value={category}>
@@ -826,8 +826,8 @@ export default function Trackers() {
                   onClick={() => setIncludeCommercial((prev) => !prev)}
                   className={`rounded-xl border px-3 py-2 text-xs ${
                     includeCommercial
-                      ? "border-emerald-400/70 text-emerald-200"
-                      : "border-slate-800/60 text-slate-400"
+                      ? "border-green-400/70 text-green-200"
+                      : "border-slate-700 text-slate-300"
                   }`}
                 >
                   Commercial {includeCommercial ? "On" : "Off"}
@@ -837,8 +837,8 @@ export default function Trackers() {
                   onClick={() => setIncludePrivate((prev) => !prev)}
                   className={`rounded-xl border px-3 py-2 text-xs ${
                     includePrivate
-                      ? "border-emerald-400/70 text-emerald-200"
-                      : "border-slate-800/60 text-slate-400"
+                      ? "border-green-400/70 text-green-200"
+                      : "border-slate-700 text-slate-300"
                   }`}
                 >
                   Private {includePrivate ? "On" : "Off"}
@@ -847,7 +847,7 @@ export default function Trackers() {
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
               <div>
-                <label htmlFor="tracker-country" className="text-xs text-slate-400">
+                <label htmlFor="tracker-country" className="text-xs text-slate-300">
                   Country
                 </label>
                 <input
@@ -855,12 +855,12 @@ export default function Trackers() {
                   name="tracker-country"
                   value={countryFilter}
                   onChange={(event) => setCountryFilter(event.target.value)}
-                  className="mt-1 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                  className="mt-1 w-full rounded-xl bg-slate-950/60 border border-slate-700 px-3 py-2 text-sm text-slate-100"
                   placeholder="United States"
                 />
               </div>
               <div>
-                <label htmlFor="tracker-operator" className="text-xs text-slate-400">
+                <label htmlFor="tracker-operator" className="text-xs text-slate-300">
                   Operator
                 </label>
                 <input
@@ -868,12 +868,12 @@ export default function Trackers() {
                   name="tracker-operator"
                   value={operatorFilter}
                   onChange={(event) => setOperatorFilter(event.target.value)}
-                  className="mt-1 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                  className="mt-1 w-full rounded-xl bg-slate-950/60 border border-slate-700 px-3 py-2 text-sm text-slate-100"
                   placeholder="AAL / American"
                 />
               </div>
               <div>
-                <label htmlFor="tracker-id" className="text-xs text-slate-400">
+                <label htmlFor="tracker-id" className="text-xs text-slate-300">
                   Identifier
                 </label>
                 <input
@@ -881,7 +881,7 @@ export default function Trackers() {
                   name="tracker-id"
                   value={idFilter}
                   onChange={(event) => setIdFilter(event.target.value)}
-                  className="mt-1 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                  className="mt-1 w-full rounded-xl bg-slate-950/60 border border-slate-700 px-3 py-2 text-sm text-slate-100"
                   placeholder="Flight / tail / ICAO24"
                 />
               </div>
@@ -894,12 +894,12 @@ export default function Trackers() {
               name="tracker-search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              className="w-full rounded-xl bg-ink-950/60 border border-slate-800 px-4 py-2 text-sm text-slate-200"
+              className="w-full rounded-xl bg-slate-950/60 border border-slate-700 px-4 py-2 text-sm text-slate-100"
               placeholder="Search flight number, operator, tail, ICAO24..."
             />
             {query.trim().length > 1 && (
-              <div className="rounded-xl border border-slate-800/60 p-4 space-y-4">
-                <p className="text-xs text-slate-400 mb-2">
+              <div className="rounded-xl border border-slate-700 p-4 space-y-4">
+                <p className="text-xs text-slate-300 mb-2">
                   Search Results {filteredSearchResults ? `(${filteredSearchResults.count})` : "(...)"}
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -907,10 +907,10 @@ export default function Trackers() {
                     <button
                       key={point.id}
                       onClick={() => setSelectedId(point.id)}
-                      className="rounded-lg border border-slate-800/60 p-3 text-left hover:border-emerald-400/40"
+                      className="rounded-lg border border-slate-700 p-3 text-left hover:border-green-400/40"
                     >
                       <p className="text-slate-100 font-medium">{point.label}</p>
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs text-slate-300">
                         {point.kind.toUpperCase()} • {point.category} • {point.operator_name || point.operator || "-"}
                       </p>
                     </button>
@@ -918,7 +918,7 @@ export default function Trackers() {
                 </div>
                 {history && (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                    <div className="text-xs text-slate-400 space-y-2">
+                    <div className="text-xs text-slate-300 space-y-2">
                       <p>History points: {history.summary?.points ?? history.history.length}</p>
                       {history.summary?.distance_km ? (
                         <p>Route distance: {history.summary.distance_km.toFixed(2)} km</p>
@@ -940,9 +940,9 @@ export default function Trackers() {
                       ) : null}
                       {history.summary?.route_hint ? <p>Route: {history.summary.route_hint}</p> : null}
                     </div>
-                    <div className="text-xs text-slate-400 space-y-2">
+                    <div className="text-xs text-slate-300 space-y-2">
                       {detail?.point && (
-                        <div className="rounded-lg border border-slate-800/60 p-3 text-xs text-slate-300 space-y-1">
+                        <div className="rounded-lg border border-slate-700 p-3 text-xs text-slate-100 space-y-1">
                           <p className="text-slate-100 font-medium">{detail.point.label}</p>
                           <p>{detail.point.operator_name || detail.point.operator || "-"} {detail.point.flight_number || ""}</p>
                           <p>ICAO24: {detail.point.icao24 || "-"}</p>
@@ -972,9 +972,9 @@ export default function Trackers() {
             )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {filteredPoints.slice(0, 12).map((point) => (
-                <div key={`${point.kind}-${point.label}`} className="rounded-xl border border-slate-800/60 p-4">
+                <div key={`${point.kind}-${point.label}`} className="rounded-xl border border-slate-700 p-4">
                   <p className="text-slate-100 font-medium">{point.label}</p>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-slate-300">
                     {point.kind.toUpperCase()} • {point.category} • {point.country || "unknown"}
                   </p>
                 </div>

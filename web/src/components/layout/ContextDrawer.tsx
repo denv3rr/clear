@@ -49,10 +49,10 @@ export function ContextDrawer({ variant = "inline", onClose }: ContextDrawerProp
   const panel = (
     <div className={panelClass}>
       <div className="flex items-center justify-between">
-        <p className="tag text-xs text-emerald-300">SYSTEM STATUS</p>
+        <p className="tag text-xs text-green-300">SYSTEM STATUS</p>
         {variant === "overlay" ? (
           <button
-            className="text-xs text-slate-400 hover:text-emerald-300"
+            className="text-xs text-slate-200 hover:text-green-300"
             type="button"
             onClick={onClose}
           >
@@ -64,7 +64,7 @@ export function ContextDrawer({ variant = "inline", onClose }: ContextDrawerProp
         <span
           className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.2em] ${
             status === "Online"
-              ? "border-emerald-500/50 text-emerald-200"
+              ? "border-green-500/50 text-green-200"
               : "border-rose-500/60 text-rose-300"
           }`}
         >
@@ -72,7 +72,7 @@ export function ContextDrawer({ variant = "inline", onClose }: ContextDrawerProp
         </span>
       ) : null}
       <div>
-        <p className="text-sm text-slate-400 mt-1">
+        <p className="text-sm text-slate-300 mt-1">
           Trackers: {trackerCount} • Warnings: {warningCount}
         </p>
         {paused ? (
@@ -80,29 +80,29 @@ export function ContextDrawer({ variant = "inline", onClose }: ContextDrawerProp
             Tracker updates paused.
           </p>
         ) : null}
-        <p className="text-[11px] text-slate-500 mt-2">
+        <p className="text-[11px] text-slate-400 mt-2">
           {feedConfigured
             ? "Flight feed configured"
             : openskyConfigured
             ? "OpenSky credentials active"
             : "OpenSky anonymous mode"}
         </p>
-        <p className="text-[11px] text-slate-500">
+        <p className="text-[11px] text-slate-400">
           {diagnostics?.system?.hostname
             ? `${diagnostics.system.hostname} • ${diagnostics.system.platform || "system"}`
             : "System info pending."}
         </p>
       </div>
-      <div className="rounded-xl border border-slate-900/70 px-3 py-2 text-[11px] text-slate-400">
+      <div className="rounded-xl border border-slate-700 px-3 py-2 text-[11px] text-slate-300">
         {warningCount > 0 ? "Recent tracker warnings detected." : "All systems nominal."}
       </div>
       <div className="space-y-2">
-        <p className="text-[11px] text-slate-500 uppercase tracking-[0.2em]">Tracker Controls</p>
+        <p className="text-[11px] text-slate-400 uppercase tracking-[0.2em]">Tracker Controls</p>
         <button
           className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs transition ${
             paused
               ? "border-amber-400/70 text-amber-200 hover:border-amber-300"
-              : "border-slate-800/70 text-slate-300 hover:border-slate-700 hover:text-white"
+              : "border-slate-700 text-slate-100 hover:border-green-500 hover:text-green-500"
           }`}
           type="button"
           onClick={toggle}
@@ -111,58 +111,58 @@ export function ContextDrawer({ variant = "inline", onClose }: ContextDrawerProp
           {paused ? "Resume Trackers" : "Pause Trackers"}
         </button>
       </div>
-      <div className="grid grid-cols-2 gap-3 text-[11px] text-slate-400">
+      <div className="grid grid-cols-2 gap-3 text-[11px] text-slate-300">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">CPU</p>
+          <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">CPU</p>
           <MeterBar value={metrics?.cpu_percent ?? 0} height={40} />
         </div>
         <div>
-          <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Memory</p>
+          <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Memory</p>
           <MeterBar value={metrics?.mem_percent ?? 0} height={40} color="#36c9f8" />
         </div>
         <div>
-          <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Disk</p>
+          <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Disk</p>
           <MeterBar value={metrics?.disk_percent ?? 0} height={40} color="#f5b94c" />
         </div>
         <div>
-          <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Swap</p>
+          <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Swap</p>
           <MeterBar value={metrics?.swap_percent ?? 0} height={40} color="#a3e635" />
         </div>
       </div>
       {trackerWarnings.length ? (
-        <div className="rounded-xl border border-slate-800/70 px-3 py-2 text-[11px] text-slate-400">
+        <div className="rounded-xl border border-slate-700 px-3 py-2 text-[11px] text-slate-300">
           {trackerWarnings[0]}
         </div>
       ) : null}
       <div className="space-y-2">
-        <p className="text-[11px] text-slate-500 uppercase tracking-[0.2em]">Quick Actions</p>
+        <p className="text-[11px] text-slate-400 uppercase tracking-[0.2em]">Quick Actions</p>
         <div className="flex flex-wrap gap-2 text-xs">
           <NavLink
             to="/trackers"
-            className="rounded-full border border-slate-800/70 px-3 py-1 text-slate-300 hover:text-white"
+            className="rounded-full border border-slate-700 px-3 py-1 text-slate-100 hover:text-green-500"
           >
             Live Trackers
           </NavLink>
           <NavLink
             to="/news"
-            className="rounded-full border border-slate-800/70 px-3 py-1 text-slate-300 hover:text-white"
+            className="rounded-full border border-slate-700 px-3 py-1 text-slate-100 hover:text-green-500"
           >
             News Feed
           </NavLink>
           <NavLink
             to="/reports"
-            className="rounded-full border border-slate-800/70 px-3 py-1 text-slate-300 hover:text-white"
+            className="rounded-full border border-slate-700 px-3 py-1 text-slate-100 hover:text-green-500"
           >
             Reports
           </NavLink>
         </div>
       </div>
-      <div className="flex items-center gap-2 text-xs text-slate-400">
-        <NavLink to="/tools" className="hover:text-white">
+      <div className="flex items-center gap-2 text-xs text-slate-300">
+        <NavLink to="/tools" className="hover:text-green-500">
           Diagnostics
         </NavLink>
         <span>•</span>
-        <NavLink to="/settings" className="hover:text-white">
+        <NavLink to="/settings" className="hover:text-green-500">
           Settings
         </NavLink>
       </div>
@@ -172,7 +172,7 @@ export function ContextDrawer({ variant = "inline", onClose }: ContextDrawerProp
   if (variant === "overlay") {
     return (
       <div
-        className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center sm:justify-end"
+        className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 backdrop-blur-sm sm:items-center sm:justify-end"
         onClick={onClose}
       >
         <div

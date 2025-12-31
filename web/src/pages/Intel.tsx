@@ -183,15 +183,15 @@ export default function Intel() {
       </div>
       <div className="mt-6 space-y-4 text-sm text-slate-300">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <KpiCard label="Risk Level" value={data?.risk_level || "Loading"} tone="text-emerald-300" />
-          <KpiCard label="Risk Score" value={data?.risk_score !== undefined ? `${data.risk_score}/10` : "—"} tone="text-slate-200" />
-          <KpiCard label="Confidence" value={data?.confidence || "—"} tone="text-slate-200" />
+          <KpiCard label="Risk Level" value={data?.risk_level || "Loading"} tone="text-green-300" />
+          <KpiCard label="Risk Score" value={data?.risk_score !== undefined ? `${data.risk_score}/10` : "—"} tone="text-slate-100" />
+          <KpiCard label="Confidence" value={data?.confidence || "—"} tone="text-slate-100" />
         </div>
 
         <Collapsible title="Filters" meta={`${region} • ${industry}`} open={filtersOpen} onToggle={() => setFiltersOpen((prev) => !prev)}>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div>
-              <label htmlFor="intel-region" className="text-xs text-slate-400">
+              <label htmlFor="intel-region" className="text-xs text-slate-300">
                 Region
               </label>
               <select
@@ -199,7 +199,7 @@ export default function Intel() {
                 name="intel-region"
                 value={region}
                 onChange={(event) => setRegion(event.target.value)}
-                className="mt-1 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                className="mt-1 w-full rounded-xl bg-slate-950/60 border border-slate-700 px-3 py-2 text-sm text-slate-100"
               >
                 {regionOptions.map((option) => (
                   <option key={option} value={option}>
@@ -209,7 +209,7 @@ export default function Intel() {
               </select>
             </div>
             <div>
-              <label htmlFor="intel-industry" className="text-xs text-slate-400">
+              <label htmlFor="intel-industry" className="text-xs text-slate-300">
                 Industry
               </label>
               <select
@@ -217,7 +217,7 @@ export default function Intel() {
                 name="intel-industry"
                 value={industry}
                 onChange={(event) => setIndustry(event.target.value)}
-                className="mt-1 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                className="mt-1 w-full rounded-xl bg-slate-950/60 border border-slate-700 px-3 py-2 text-sm text-slate-100"
               >
                 <option value="all">All</option>
                 {industryOptions.map((option) => (
@@ -228,7 +228,7 @@ export default function Intel() {
               </select>
             </div>
             <div>
-              <p className="text-xs text-slate-400">Categories</p>
+              <p className="text-xs text-slate-300">Categories</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {(meta?.categories || []).map((category) => (
                   <button
@@ -237,8 +237,8 @@ export default function Intel() {
                     onClick={() => toggleCategory(category)}
                     className={`rounded-full border px-3 py-1 text-[11px] ${
                       categories.includes(category)
-                        ? "border-emerald-400/70 text-emerald-200"
-                        : "border-slate-800/60 text-slate-400"
+                        ? "border-green-400/70 text-green-200"
+                        : "border-slate-700 text-slate-300"
                     }`}
                   >
                     {category}
@@ -248,7 +248,7 @@ export default function Intel() {
             </div>
           </div>
           <div className="mt-4">
-            <p className="text-xs text-slate-400">Sources</p>
+            <p className="text-xs text-slate-300">Sources</p>
             <div className="mt-2 flex flex-wrap gap-2">
               {(meta?.sources || []).map((source) => (
                 <button
@@ -257,8 +257,8 @@ export default function Intel() {
                   onClick={() => toggleSource(source)}
                   className={`rounded-full border px-3 py-1 text-[11px] ${
                     sources.includes(source)
-                      ? "border-emerald-400/70 text-emerald-200"
-                      : "border-slate-800/60 text-slate-400"
+                      ? "border-green-400/70 text-green-200"
+                      : "border-slate-700 text-slate-300"
                   }`}
                 >
                   {source}
@@ -275,8 +275,8 @@ export default function Intel() {
           onToggle={() => setFusionOpen((prev) => !prev)}
         >
           <div className="space-y-4">
-            <div className="rounded-xl border border-slate-800/60 p-4">
-              <p className="text-xs text-slate-400 mb-2">Summary</p>
+            <div className="rounded-xl border border-slate-700 p-4">
+              <p className="text-xs text-slate-300 mb-2">Summary</p>
               <div className="space-y-2">
                 {(data?.summary || ["No intel payload yet."]).map((line) => (
                   <p key={line}>{line}</p>
@@ -284,80 +284,80 @@ export default function Intel() {
               </div>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <div className="rounded-xl border border-slate-800/60 p-4">
-                <p className="text-xs text-slate-400 mb-2">Global Risk Trend</p>
+              <div className="rounded-xl border border-slate-700 p-4">
+                <p className="text-xs text-slate-300 mb-2">Global Risk Trend</p>
                 {showTrendData ? (
                   <div className="h-40 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={data.risk_series}>
                         <defs>
                           <linearGradient id="riskFill" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.6} />
-                            <stop offset="95%" stopColor="#0f172a" stopOpacity={0.1} />
+                            <stop offset="5%" stopColor="var(--green-500)" stopOpacity={0.6} />
+                            <stop offset="95%" stopColor="var(--slate-900)" stopOpacity={0.1} />
                           </linearGradient>
                         </defs>
-                        <CartesianGrid stroke="#1f2937" strokeDasharray="3 3" />
-                        <XAxis dataKey="label" tick={{ fill: "#94a3b8", fontSize: 10 }} />
-                        <YAxis tick={{ fill: "#94a3b8", fontSize: 10 }} domain={[0, 10]} />
-                        <Tooltip contentStyle={{ background: "#0f172a", borderRadius: 8, borderColor: "#1f2937" }} />
-                        <Area type="monotone" dataKey="value" stroke="#10b981" fill="url(#riskFill)" strokeWidth={2} />
+                        <CartesianGrid stroke="var(--slate-700)" strokeDasharray="3 3" />
+                        <XAxis dataKey="label" tick={{ fill: "var(--slate-300)", fontSize: 10 }} />
+                        <YAxis tick={{ fill: "var(--slate-300)", fontSize: 10 }} domain={[0, 10]} />
+                        <Tooltip contentStyle={{ background: "var(--slate-900)", borderRadius: 8, borderColor: "var(--slate-700)" }} />
+                        <Area type="monotone" dataKey="value" stroke="var(--green-500)" fill="url(#riskFill)" strokeWidth={2} />
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-slate-400">
                     Time trend unavailable (missing timestamps).
                   </p>
                 )}
               </div>
-              <div className="rounded-xl border border-slate-800/60 p-4">
-                <p className="text-xs text-slate-400 mb-2">Emotion Trend</p>
+              <div className="rounded-xl border border-slate-700 p-4">
+                <p className="text-xs text-slate-300 mb-2">Emotion Trend</p>
                 {showTrendData && emotionSeries.length > 0 ? (
                   <div className="h-40 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={emotionSeries}>
-                        <CartesianGrid stroke="#1f2937" strokeDasharray="3 3" />
-                        <XAxis dataKey="label" tick={{ fill: "#94a3b8", fontSize: 10 }} />
-                        <YAxis tick={{ fill: "#94a3b8", fontSize: 10 }} />
-                        <Tooltip contentStyle={{ background: "#0f172a", borderRadius: 8, borderColor: "#1f2937" }} />
+                        <CartesianGrid stroke="var(--slate-700)" strokeDasharray="3 3" />
+                        <XAxis dataKey="label" tick={{ fill: "var(--slate-300)", fontSize: 10 }} />
+                        <YAxis tick={{ fill: "var(--slate-300)", fontSize: 10 }} />
+                        <Tooltip contentStyle={{ background: "var(--slate-900)", borderRadius: 8, borderColor: "var(--slate-700)" }} />
                         {topEmotions.map((emotion, index) => (
                           <Bar
                             key={emotion}
                             dataKey={emotion}
                             stackId="emotion"
-                            fill={index === 0 ? "#38bdf8" : index === 1 ? "#fbbf24" : "#f97316"}
+                            fill={index === 0 ? "var(--green-400)" : index === 1 ? "var(--green-300)" : "var(--green-200)"}
                           />
                         ))}
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-slate-400">
                     Time trend unavailable (missing timestamps).
                   </p>
                 )}
               </div>
-              <div className="rounded-xl border border-slate-800/60 p-4">
-                <p className="text-xs text-slate-400 mb-2">Category Mix</p>
+              <div className="rounded-xl border border-slate-700 p-4">
+                <p className="text-xs text-slate-300 mb-2">Category Mix</p>
                 {categoryMix.length > 0 ? (
-                  <div className="space-y-2 text-xs text-slate-300">
+                  <div className="space-y-2 text-xs text-slate-100">
                     {categoryMix.slice(0, 6).map(([category, count]) => (
                       <div key={category} className="flex items-center justify-between">
-                        <span className="text-slate-400">{category}</span>
-                        <span className="text-slate-200">{count}</span>
+                        <span className="text-slate-300">{category}</span>
+                        <span className="text-slate-100">{count}</span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-500">No category mix available yet.</p>
+                  <p className="text-xs text-slate-400">No category mix available yet.</p>
                 )}
                 {emotionMix.length > 0 ? (
-                  <div className="mt-4 space-y-2 text-xs text-slate-300">
-                    <p className="text-xs text-slate-400">Emotion Mix</p>
+                  <div className="mt-4 space-y-2 text-xs text-slate-100">
+                    <p className="text-xs text-slate-300">Emotion Mix</p>
                     {emotionMix.slice(0, 6).map(([emotion, count]) => (
                       <div key={emotion} className="flex items-center justify-between">
-                        <span className="text-slate-400">{emotion}</span>
-                        <span className="text-slate-200">{count}</span>
+                        <span className="text-slate-300">{emotion}</span>
+                        <span className="text-slate-100">{count}</span>
                       </div>
                     ))}
                   </div>
@@ -365,47 +365,47 @@ export default function Intel() {
               </div>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="rounded-xl border border-slate-800/60 p-4">
-                <p className="text-xs text-slate-400 mb-2">Regional Coverage</p>
+              <div className="rounded-xl border border-slate-700 p-4">
+                <p className="text-xs text-slate-300 mb-2">Regional Coverage</p>
                 {regionMix.length > 0 ? (
-                  <div className="space-y-2 text-xs text-slate-300">
+                  <div className="space-y-2 text-xs text-slate-100">
                     {regionMix.slice(0, 6).map(([regionName, count]) => (
                       <div key={regionName} className="flex items-center justify-between">
-                        <span className="text-slate-400">{regionName}</span>
-                        <span className="text-slate-200">{count}</span>
+                        <span className="text-slate-300">{regionName}</span>
+                        <span className="text-slate-100">{count}</span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-500">No regional coverage data yet.</p>
+                  <p className="text-xs text-slate-400">No regional coverage data yet.</p>
                 )}
               </div>
-              <div className="rounded-xl border border-slate-800/60 p-4">
-                <p className="text-xs text-slate-400 mb-2">Subregional Coverage</p>
+              <div className="rounded-xl border border-slate-700 p-4">
+                <p className="text-xs text-slate-300 mb-2">Subregional Coverage</p>
                 {subregionMix.length > 0 ? (
-                  <div className="space-y-2 text-xs text-slate-300">
+                  <div className="space-y-2 text-xs text-slate-100">
                     {subregionMix.slice(0, 6).map(([label, count]) => (
                       <div key={label} className="flex items-center justify-between">
-                        <span className="text-slate-400">{label}</span>
-                        <span className="text-slate-200">{count}</span>
+                        <span className="text-slate-300">{label}</span>
+                        <span className="text-slate-100">{count}</span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-500">No subregional coverage data yet.</p>
+                  <p className="text-xs text-slate-400">No subregional coverage data yet.</p>
                 )}
               </div>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {(data?.sections || []).slice(0, 4).map((section) => (
-                <div key={section.title} className="rounded-xl border border-slate-800/60 p-4">
-                  <p className="text-xs text-slate-400 mb-2">{section.title}</p>
+                <div key={section.title} className="rounded-xl border border-slate-700 p-4">
+                  <p className="text-xs text-slate-300 mb-2">{section.title}</p>
                   {renderRows(section.rows as (string[] | string)[])}
                 </div>
               ))}
             </div>
-            <div className="rounded-xl border border-slate-800/60 p-4">
-              <p className="text-xs text-slate-400 mb-2">News Metrics</p>
+            <div className="rounded-xl border border-slate-700 p-4">
+              <p className="text-xs text-slate-300 mb-2">News Metrics</p>
               {renderRows([
                 ["Articles", String(data?.news?.count ?? 0)],
                 ["Sentiment avg", String(data?.news?.sentiment_avg ?? 0)],
@@ -428,15 +428,15 @@ export default function Intel() {
           onToggle={() => setWeatherOpen((prev) => !prev)}
         >
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="rounded-xl border border-slate-800/60 p-4">
-              <p className="text-xs text-slate-400 mb-2">Summary</p>
+            <div className="rounded-xl border border-slate-700 p-4">
+              <p className="text-xs text-slate-300 mb-2">Summary</p>
               {(weather?.summary || ["No weather payload yet."]).map((line) => (
                 <p key={line}>{line}</p>
               ))}
             </div>
             {(weather?.sections || []).map((section) => (
-              <div key={section.title} className="rounded-xl border border-slate-800/60 p-4">
-                <p className="text-xs text-slate-400 mb-2">{section.title}</p>
+              <div key={section.title} className="rounded-xl border border-slate-700 p-4">
+                <p className="text-xs text-slate-300 mb-2">{section.title}</p>
                 {renderRows(section.rows as (string[] | string)[])}
               </div>
             ))}
@@ -450,15 +450,15 @@ export default function Intel() {
           onToggle={() => setConflictOpen((prev) => !prev)}
         >
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="rounded-xl border border-slate-800/60 p-4">
-              <p className="text-xs text-slate-400 mb-2">Summary</p>
+            <div className="rounded-xl border border-slate-700 p-4">
+              <p className="text-xs text-slate-300 mb-2">Summary</p>
               {(conflict?.summary || ["No conflict payload yet."]).map((line) => (
                 <p key={line}>{line}</p>
               ))}
             </div>
             {(conflict?.sections || []).map((section) => (
-              <div key={section.title} className="rounded-xl border border-slate-800/60 p-4">
-                <p className="text-xs text-slate-400 mb-2">{section.title}</p>
+              <div key={section.title} className="rounded-xl border border-slate-700 p-4">
+                <p className="text-xs text-slate-300 mb-2">{section.title}</p>
                 {renderRows(section.rows as (string[] | string)[])}
               </div>
             ))}
