@@ -298,6 +298,7 @@ def _start(args: argparse.Namespace) -> int:
 
         webbrowser.open(f"http://127.0.0.1:{args.ui_port}/")
     if args.foreground:
+        print(">> Application is running in the foreground. Press Ctrl+C to stop.")
         try:
             while True:
                 safe_sleep(0.5)

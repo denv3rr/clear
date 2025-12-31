@@ -19,12 +19,28 @@ class ClearApp:
         self.running = True
         self.menu = MainMenu()
         
-        # PERFORMANCE FIX: Eagerly instantiate all major modules once.
-        # This prevents costly re-initialization (e.g., re-initializing YahooWrapper
-        # and its large caches) every time the user returns to the main menu.
-        self.market_feed = MarketFeed()
-        self.client_manager = ClientManager()
-        self.settings_module = SettingsModule()
+        self._market_feed: Optional[MarketFeed] = None
+        self._client_manager: Optional[ClientManager] = None
+        self._settings_module: Optional[SettingsModule] = None
+
+    @property
+    def market_feed(self) -> MarketFeed:
+        if self._market_feed is None:
+            self._market_feed = MarketFeed()
+        return self._market_feed
+
+    @property
+    def client_manager(self) -> ClientManager:
+        if self._client_manager is None:
+            self._client_manager = ClientManager()
+        return self._client_manager
+
+    @property
+    def settings_module(self) -> SettingsModule:
+        if self._settings_module is None:
+            self._settings_module = SettingsModule()
+        return self._settings_module
+
 
     def run(self):
         """The Main Event Loop."""

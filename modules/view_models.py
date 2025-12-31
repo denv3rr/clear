@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List
+from core.models import Client, Account
 
-from modules.client_mgr.client_model import Client, Account
 from modules.client_mgr.toolkit import (
     FinancialToolkit,
     RegimeModels,
@@ -36,12 +36,10 @@ def _manual_value(manual_holdings: List[Dict[str, Any]]) -> float:
 
 def account_summary(account: Account) -> Dict[str, Any]:
     return {
-        "account_id": account.account_id,
-        "account_name": account.account_name,
+        "account_id": account.id,
+        "account_name": account.name,
         "account_type": account.account_type,
         "holdings_count": _holdings_count(account.holdings),
-        "manual_value": _manual_value(account.manual_holdings),
-        "tags": list(account.tags or []),
     }
 
 
@@ -55,29 +53,23 @@ def account_detail(account: Account) -> Dict[str, Any]:
     return {
         **account_summary(account),
         "holdings": holdings,
-        "manual_holdings": list(account.manual_holdings or []),
-        "tax_settings": dict(account.tax_settings or {}),
-        "custodian": account.custodian,
-        "ownership_type": account.ownership_type,
     }
 
 
 def client_summary(client: Client) -> Dict[str, Any]:
     holdings_count = sum(_holdings_count(acc.holdings) for acc in client.accounts)
     return {
-        "client_id": client.client_id,
+        "client_id": client.id,
         "name": client.name,
         "risk_profile": client.risk_profile,
         "accounts_count": len(client.accounts),
         "holdings_count": holdings_count,
-        "reporting_currency": (client.tax_profile or {}).get("reporting_currency", "USD"),
     }
 
 
 def client_detail(client: Client) -> Dict[str, Any]:
     return {
         **client_summary(client),
-        "tax_profile": dict(client.tax_profile or {}),
         "accounts": [account_detail(account) for account in client.accounts],
     }
 

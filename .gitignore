@@ -34,6 +34,7 @@ notes.txt
 plan.md
 agent.ps1
 AGENTS.md
+GEMINI.md
 data/clients.json
 data/intel_news.json
 data/news_health.json

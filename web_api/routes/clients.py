@@ -4,9 +4,10 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
-from modules.client_mgr.data_handler import DataHandler
-from modules.client_mgr.client_model import Account, Client
+from core.database import SessionLocal
+from core import models
 from modules.view_models import (
     account_dashboard,
     account_detail,
@@ -20,6 +21,14 @@ from web_api.auth import require_api_key
 from web_api.view_model import attach_meta, validate_payload
 
 router = APIRouter()
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 class ClientPayload(BaseModel):
@@ -52,23 +61,23 @@ class AccountUpdatePayload(BaseModel):
     tax_settings: Optional[Dict[str, Any]] = None
 
 
-def _find_client(clients: List[Client], client_id: str) -> Client:
-    for client in clients:
-        if client.client_id == client_id:
-            return client
-    raise HTTPException(status_code=404, detail="Client not found")
+def _find_client(db: Session, client_id: int) -> models.Client:
+    client = db.query(models.Client).filter(models.Client.id == client_id).first()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return client
 
 
-def _find_account(client: Client, account_id: str) -> Account:
-    for account in client.accounts:
-        if account.account_id == account_id:
-            return account
-    raise HTTPException(status_code=404, detail="Account not found")
+def _find_account(db: Session, client_id: int, account_id: int) -> models.Account:
+    account = db.query(models.Account).filter(models.Account.id == account_id, models.Account.client_id == client_id).first()
+    if account is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return account
 
 
 @router.get("/api/clients")
-def clients_index(_auth: None = Depends(require_api_key)):
-    clients = DataHandler.load_clients()
+def clients_index(_auth: None = Depends(require_api_key), db: Session = Depends(get_db)):
+    clients = db.query(models.Client).all()
     payload = {"clients": list_clients(clients)}
     warnings = validate_payload(payload, required_keys=("clients",), warnings=[])
     if not payload["clients"]:
@@ -76,15 +85,14 @@ def clients_index(_auth: None = Depends(require_api_key)):
     return attach_meta(
         payload,
         route="/api/clients",
-        source="clients",
+        source="database",
         warnings=warnings,
     )
 
 
 @router.get("/api/clients/{client_id}")
-def client_view(client_id: str, _auth: None = Depends(require_api_key)):
-    clients = DataHandler.load_clients()
-    client = _find_client(clients, client_id)
+def client_view(client_id: int, _auth: None = Depends(require_api_key), db: Session = Depends(get_db)):
+    client = _find_client(db, client_id)
     payload = client_detail(client)
     warnings = validate_payload(payload, required_keys=("client_id", "accounts"), warnings=[])
     if not payload.get("accounts"):
@@ -92,52 +100,43 @@ def client_view(client_id: str, _auth: None = Depends(require_api_key)):
     return attach_meta(
         payload,
         route="/api/clients/{client_id}",
-        source="clients",
+        source="database",
         warnings=warnings,
     )
 
 
 @router.post("/api/clients")
-def client_create(payload: ClientPayload, _auth: None = Depends(require_api_key)):
-    clients = DataHandler.load_clients()
+def client_create(payload: ClientPayload, _auth: None = Depends(require_api_key), db: Session = Depends(get_db)):
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=422, detail="Client name required")
+    
     risk_profile = payload.risk_profile.strip() if payload.risk_profile else ""
-    tax_profile = payload.tax_profile or {}
-    client = Client(
+    
+    client = models.Client(
         name=name,
         risk_profile=risk_profile or "Not Assessed",
-        risk_profile_source="manual" if risk_profile else "auto",
-        tax_profile={
-            "residency_country": tax_profile.get("residency_country", ""),
-            "tax_country": tax_profile.get("tax_country", ""),
-            "reporting_currency": tax_profile.get("reporting_currency", "USD"),
-            "treaty_country": tax_profile.get("treaty_country", ""),
-            "tax_id": tax_profile.get("tax_id", ""),
-        },
-        accounts=[],
     )
-    clients.append(client)
-    DataHandler.save_clients(clients)
+    db.add(client)
+    db.commit()
     response = client_detail(client)
     warnings = validate_payload(response, required_keys=("client_id",), warnings=[])
     return attach_meta(
         response,
         route="/api/clients",
-        source="clients",
+        source="database",
         warnings=warnings,
     )
 
 
 @router.patch("/api/clients/{client_id}")
 def client_update(
-    client_id: str,
+    client_id: int,
     payload: ClientUpdatePayload,
     _auth: None = Depends(require_api_key),
+    db: Session = Depends(get_db)
 ):
-    clients = DataHandler.load_clients()
-    client = _find_client(clients, client_id)
+    client = _find_client(db, client_id)
     if payload.name is not None:
         name = payload.name.strip()
         if not name:
@@ -147,210 +146,175 @@ def client_update(
         cleaned = payload.risk_profile.strip()
         if cleaned:
             client.risk_profile = cleaned
-            client.risk_profile_source = "manual"
         else:
             client.risk_profile = "Not Assessed"
-            client.risk_profile_source = "auto"
-    if payload.tax_profile is not None:
-        profile = client.tax_profile or {}
-        for key, value in payload.tax_profile.items():
-            profile[key] = value
-        client.tax_profile = profile
-    DataHandler.save_clients(clients)
+    db.commit()
+    db.refresh(client)
     response = client_detail(client)
     warnings = validate_payload(response, required_keys=("client_id",), warnings=[])
     return attach_meta(
         response,
         route="/api/clients/{client_id}",
-        source="clients",
+        source="database",
         warnings=warnings,
     )
 
 
 @router.get("/api/clients/{client_id}/dashboard")
 def client_dashboard_view(
-    client_id: str,
+    client_id: int,
     interval: str = Query("1M", pattern="^(1W|1M|3M|6M|1Y)$"),
     _auth: None = Depends(require_api_key),
+    db: Session = Depends(get_db)
 ):
-    clients = DataHandler.load_clients()
-    for client in clients:
-        if client.client_id == client_id:
-            payload = portfolio_dashboard(client, interval=interval)
-            warnings = list(payload.get("warnings", []) or [])
-            warnings = validate_payload(
-                payload,
-                required_keys=("client", "interval", "totals", "holdings", "history"),
-                warnings=warnings,
-            )
-            if not payload.get("holdings"):
-                warnings.append("Client dashboard has no holdings.")
-            return attach_meta(
-                payload,
-                route="/api/clients/{client_id}/dashboard",
-                source="clients",
-                warnings=warnings,
-            )
-    raise HTTPException(status_code=404, detail="Client not found")
+    client = _find_client(db, client_id)
+    payload = portfolio_dashboard(client, interval=interval)
+    warnings = list(payload.get("warnings", []) or [])
+    warnings = validate_payload(
+        payload,
+        required_keys=("client", "interval", "totals", "holdings", "history"),
+        warnings=warnings,
+    )
+    if not payload.get("holdings"):
+        warnings.append("Client dashboard has no holdings.")
+    return attach_meta(
+        payload,
+        route="/api/clients/{client_id}/dashboard",
+        source="database",
+        warnings=warnings,
+    )
 
 
 @router.post("/api/clients/{client_id}/accounts")
 def account_create(
-    client_id: str,
+    client_id: int,
     payload: AccountPayload,
     _auth: None = Depends(require_api_key),
+    db: Session = Depends(get_db)
 ):
-    clients = DataHandler.load_clients()
-    client = _find_client(clients, client_id)
+    client = _find_client(db, client_id)
     name = payload.account_name.strip()
     if not name:
         raise HTTPException(status_code=422, detail="Account name required")
-    account = Account(
-        account_name=name,
+    account = models.Account(
+        name=name,
         account_type=payload.account_type or "Taxable",
-        ownership_type=payload.ownership_type or "Individual",
-        custodian=payload.custodian or "",
-        tags=payload.tags or [],
-        tax_settings=payload.tax_settings or {
-            "jurisdiction": "",
-            "account_currency": "USD",
-            "withholding_rate": None,
-            "tax_exempt": False,
-        },
+        client_id=client.id,
     )
-    client.accounts.append(account)
-    DataHandler.save_clients(clients)
+    db.add(account)
+    db.commit()
+    db.refresh(account)
     payload = {"client": client_detail(client), "account": account_detail(account)}
     warnings = validate_payload(payload, required_keys=("client", "account"), warnings=[])
     return attach_meta(
         payload,
         route="/api/clients/{client_id}/accounts",
-        source="clients",
+        source="database",
         warnings=warnings,
     )
 
 
 @router.patch("/api/clients/{client_id}/accounts/{account_id}")
 def account_update(
-    client_id: str,
-    account_id: str,
+    client_id: int,
+    account_id: int,
     payload: AccountUpdatePayload,
     _auth: None = Depends(require_api_key),
+    db: Session = Depends(get_db)
 ):
-    clients = DataHandler.load_clients()
-    client = _find_client(clients, client_id)
-    account = _find_account(client, account_id)
+    client = _find_client(db, client_id)
+    account = _find_account(db, client_id, account_id)
     if payload.account_name is not None:
         name = payload.account_name.strip()
         if not name:
             raise HTTPException(status_code=422, detail="Account name required")
-        account.account_name = name
+        account.name = name
     if payload.account_type is not None:
         account.account_type = payload.account_type
-    if payload.ownership_type is not None:
-        account.ownership_type = payload.ownership_type
-    if payload.custodian is not None:
-        account.custodian = payload.custodian
-    if payload.tags is not None:
-        account.tags = payload.tags
-    if payload.tax_settings is not None:
-        settings = account.tax_settings or {}
-        for key, value in payload.tax_settings.items():
-            settings[key] = value
-        account.tax_settings = settings
-    DataHandler.save_clients(clients)
+    db.commit()
+    db.refresh(account)
     payload = {"client": client_detail(client), "account": account_detail(account)}
     warnings = validate_payload(payload, required_keys=("client", "account"), warnings=[])
     return attach_meta(
         payload,
         route="/api/clients/{client_id}/accounts/{account_id}",
-        source="clients",
+        source="database",
         warnings=warnings,
     )
 
 
 @router.get("/api/clients/{client_id}/accounts/{account_id}/dashboard")
 def account_dashboard_view(
-    client_id: str,
-    account_id: str,
+    client_id: int,
+    account_id: int,
     interval: str = Query("1M", pattern="^(1W|1M|3M|6M|1Y)$"),
     _auth: None = Depends(require_api_key),
+    db: Session = Depends(get_db)
 ):
-    clients = DataHandler.load_clients()
-    for client in clients:
-        if client.client_id == client_id:
-            for account in client.accounts:
-                if account.account_id == account_id:
-                    payload = account_dashboard(client, account, interval=interval)
-                    warnings = list(payload.get("warnings", []) or [])
-                    warnings = validate_payload(
-                        payload,
-                        required_keys=("client", "account", "interval", "totals", "holdings", "history"),
-                        warnings=warnings,
-                    )
-                    if not payload.get("holdings"):
-                        warnings.append("Account dashboard has no holdings.")
-                    return attach_meta(
-                        payload,
-                        route="/api/clients/{client_id}/accounts/{account_id}/dashboard",
-                        source="clients",
-                        warnings=warnings,
-                    )
-            raise HTTPException(status_code=404, detail="Account not found")
-    raise HTTPException(status_code=404, detail="Client not found")
+    client = _find_client(db, client_id)
+    account = _find_account(db, client_id, account_id)
+    payload = account_dashboard(client, account, interval=interval)
+    warnings = list(payload.get("warnings", []) or [])
+    warnings = validate_payload(
+        payload,
+        required_keys=("client", "account", "interval", "totals", "holdings", "history"),
+        warnings=warnings,
+    )
+    if not payload.get("holdings"):
+        warnings.append("Account dashboard has no holdings.")
+    return attach_meta(
+        payload,
+        route="/api/clients/{client_id}/accounts/{account_id}/dashboard",
+        source="database",
+        warnings=warnings,
+    )
 
 
 @router.get("/api/clients/{client_id}/patterns")
 def client_patterns_view(
-    client_id: str,
+    client_id: int,
     interval: str = Query("1M", pattern="^(1W|1M|3M|6M|1Y)$"),
     _auth: None = Depends(require_api_key),
+    db: Session = Depends(get_db)
 ):
-    clients = DataHandler.load_clients()
-    for client in clients:
-        if client.client_id == client_id:
-            payload = client_patterns(client, interval=interval)
-            warnings = validate_payload(
-                payload,
-                required_keys=("interval", "scope", "label"),
-                warnings=[],
-            )
-            if payload.get("error"):
-                warnings.append("Client patterns returned error.")
-            return attach_meta(
-                payload,
-                route="/api/clients/{client_id}/patterns",
-                source="clients",
-                warnings=warnings,
-            )
-    raise HTTPException(status_code=404, detail="Client not found")
+    client = _find_client(db, client_id)
+    payload = client_patterns(client, interval=interval)
+    warnings = validate_payload(
+        payload,
+        required_keys=("interval", "scope", "label"),
+        warnings=[],
+    )
+    if payload.get("error"):
+        warnings.append("Client patterns returned error.")
+    return attach_meta(
+        payload,
+        route="/api/clients/{client_id}/patterns",
+        source="database",
+        warnings=warnings,
+    )
 
 
 @router.get("/api/clients/{client_id}/accounts/{account_id}/patterns")
 def account_patterns_view(
-    client_id: str,
-    account_id: str,
+    client_id: int,
+    account_id: int,
     interval: str = Query("1M", pattern="^(1W|1M|3M|6M|1Y)$"),
     _auth: None = Depends(require_api_key),
+    db: Session = Depends(get_db)
 ):
-    clients = DataHandler.load_clients()
-    for client in clients:
-        if client.client_id == client_id:
-            for account in client.accounts:
-                if account.account_id == account_id:
-                    payload = account_patterns(client, account, interval=interval)
-                    warnings = validate_payload(
-                        payload,
-                        required_keys=("interval", "scope", "label"),
-                        warnings=[],
-                    )
-                    if payload.get("error"):
-                        warnings.append("Account patterns returned error.")
-                    return attach_meta(
-                        payload,
-                        route="/api/clients/{client_id}/accounts/{account_id}/patterns",
-                        source="clients",
-                        warnings=warnings,
-                    )
-            raise HTTPException(status_code=404, detail="Account not found")
-    raise HTTPException(status_code=404, detail="Client not found")
+    client = _find_client(db, client_id)
+    account = _find_account(db, client_id, account_id)
+    payload = account_patterns(client, account, interval=interval)
+    warnings = validate_payload(
+        payload,
+        required_keys=("interval", "scope", "label"),
+        warnings=[],
+    )
+    if payload.get("error"):
+        warnings.append("Account patterns returned error.")
+    return attach_meta(
+        payload,
+        route="/api/clients/{client_id}/accounts/{account_id}/patterns",
+        source="database",
+        warnings=warnings,
+    )

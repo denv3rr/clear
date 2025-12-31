@@ -52,11 +52,30 @@ class ClientManager:
     def __init__(self):
         self.console = Console()
         self.clients: List[Client] = DataHandler.load_clients()
-        self.valuation_engine = ValuationEngine()
-        self.tax_engine = TaxEngine()
-        self.trackers = GlobalTrackers()
+        self._valuation_engine: Optional[ValuationEngine] = None
+        self._tax_engine: Optional[TaxEngine] = None
+        self._trackers: Optional[GlobalTrackers] = None
         self._list_val_cache = {}
         self._settings_file = os.path.join(os.getcwd(), "config", "settings.json")
+
+    @property
+    def valuation_engine(self) -> ValuationEngine:
+        if self._valuation_engine is None:
+            self._valuation_engine = ValuationEngine()
+        return self._valuation_engine
+
+    @property
+    def tax_engine(self) -> TaxEngine:
+        if self._tax_engine is None:
+            self._tax_engine = TaxEngine()
+        return self._tax_engine
+
+    @property
+    def trackers(self) -> GlobalTrackers:
+        if self._trackers is None:
+            self._trackers = GlobalTrackers()
+        return self._trackers
+
 
     # =========================================================================
     # MAIN LOOP & LIST VIEW

@@ -22,13 +22,24 @@ class ValuationEngine:
 
     def __init__(
         self,
-        finnhub_client: Optional[FinnhubWrapper] = None,
-        yahoo_client: Optional[YahooWrapper] = None,
         logger: Any = None
     ):
-        self.finnhub = finnhub_client if finnhub_client is not None else FinnhubWrapper()
-        self.yahoo = yahoo_client if yahoo_client is not None else YahooWrapper()
+        self._finnhub: Optional[FinnhubWrapper] = None
+        self._yahoo: Optional[YahooWrapper] = None
         self.logger = logger
+
+    @property
+    def finnhub(self) -> FinnhubWrapper:
+        if self._finnhub is None:
+            self._finnhub = FinnhubWrapper()
+        return self._finnhub
+
+    @property
+    def yahoo(self) -> YahooWrapper:
+        if self._yahoo is None:
+            self._yahoo = YahooWrapper()
+        return self._yahoo
+
 
     def _log(self, level: str, message: str) -> None:
         if self.logger is None:
