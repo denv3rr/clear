@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
-import maplibregl from "../lib/maplibre";
+import { loadMapLibre } from "../lib/maplibre";
+import type { MapLibre } from "../lib/maplibre";
 import { Card } from "../components/ui/Card";
 import { Collapsible } from "../components/ui/Collapsible";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
@@ -95,15 +96,16 @@ type TrackerDetail = {
 export default function Trackers() {
   const [mode, setMode] = useState<"combined" | "flights" | "ships">("combined");
   const [categoryFilter, setCategoryFilter] = useState("all");
-  const [includeCommercial, setIncludeCommercial] = useState(false);
-  const [includePrivate, setIncludePrivate] = useState(false);
+  const [includeCommercial, setIncludeCommercial] = useState(true);
+  const [includePrivate, setIncludePrivate] = useState(true);
   const [countryFilter, setCountryFilter] = useState("");
   const [operatorFilter, setOperatorFilter] = useState("");
   const [idFilter, setIdFilter] = useState("");
   const {
     data: streamData,
     connected,
-    error: streamError
+    error: streamError,
+    warnings: streamWarnings
   } = useTrackerStream<TrackerSnapshot>({
     interval: 5,
     mode
@@ -112,8 +114,11 @@ export default function Trackers() {
   const {
     data: pollData,
     error: pollError,
+    warnings: pollWarnings,
     refresh: refreshPoll
-  } = useApi<TrackerSnapshot>(`/api/trackers/snapshot?mode=${mode}`, { interval: 20000 });
+  } = useApi<TrackerSnapshot>(`/api/trackers/snapshot?mode=${mode}`, {
+    interval: 20000
+  });
   const data = streamData || pollData;
   const points = data?.points || [];
   const [query, setQuery] = useState("");
@@ -121,7 +126,8 @@ export default function Trackers() {
   const [detail, setDetail] = useState<TrackerDetail | null>(null);
   const history = detail ? { id: detail.id, history: detail.history, summary: detail.summary } : null;
   const { ref: mapRef, size: mapSize } = useMeasuredSize<HTMLDivElement>();
-  const mapInstance = useRef<maplibregl.Map | null>(null);
+  const mapInstance = useRef<MapLibre["Map"] | null>(null);
+  const [maplibre, setMapLibre] = useState<MapLibre | null>(null);
   const styleFallbackUsed = useRef(false);
   const styleRequested = useRef(false);
   const styleLoaded = useRef(false);
@@ -145,7 +151,11 @@ export default function Trackers() {
     const kindParam = mode === "combined" ? "" : `&kind=${mode === "ships" ? "ship" : "flight"}`;
     return `/api/trackers/search?q=${encodeURIComponent(query)}&limit=12&mode=${mode}${kindParam}`;
   }, [query, mode]);
-  const { data: searchResults, error: searchError } = useApi<SearchResult>(searchPath, {
+  const {
+    data: searchResults,
+    error: searchError,
+    warnings: searchWarnings
+  } = useApi<SearchResult>(searchPath, {
     enabled: query.trim().length > 1
   });
   const filteredSearchResults = useMemo(() => {
@@ -170,8 +180,11 @@ export default function Trackers() {
           pollError.includes("401") || pollError.includes("403") ? ` (${authHint})` : ""
         }`
       : null,
+    ...pollWarnings.map((warning) => `Tracker snapshot: ${warning}`),
     streamError ? `Tracker stream failed: ${streamError}` : null,
-    searchError ? `Search failed: ${searchError}` : null
+    ...streamWarnings.map((warning) => `Tracker stream: ${warning}`),
+    searchError ? `Search failed: ${searchError}` : null,
+    ...searchWarnings.map((warning) => `Search: ${warning}`)
   ].filter(Boolean) as string[];
   const filteredPoints = useMemo(() => {
     let next = points;
@@ -293,11 +306,35 @@ export default function Trackers() {
   const mapResizeHandler = useRef<(() => void) | null>(null);
 
   useEffect(() => {
+    let mounted = true;
+    loadMapLibre()
+      .then((lib) => {
+        if (mounted) {
+          setMapLibre(lib);
+        }
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setMapError("Map engine failed to load.");
+        setMapStatus("Map engine failed.");
+        setMapFallback(true);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [maplibre]);
+
+  useEffect(() => {
     let raf = 0;
     let timeout = 0;
     const initMap = () => {
       if (mapInitRef.current || mapInstance.current) return;
       if (!mapRef.current) {
+        raf = window.requestAnimationFrame(initMap);
+        return;
+      }
+      if (!maplibre) {
+        setMapStatus("Loading map engine...");
         raf = window.requestAnimationFrame(initMap);
         return;
       }
@@ -320,7 +357,7 @@ export default function Trackers() {
       }
       setMapStatus("Booting map engine...");
     const diagnostics: string[] = [];
-    diagnostics.push(checkWorkerClass(maplibregl));
+    diagnostics.push(checkWorkerClass(maplibre));
     setMapDiagnostics(diagnostics);
     mapActiveRef.current = true;
     const styleUrl =
@@ -345,9 +382,9 @@ export default function Trackers() {
         return [...next, ...resourceLines];
       });
     });
-      let map: maplibregl.Map;
+      let map: MapLibre["Map"];
       try {
-        map = new maplibregl.Map({
+        map = new maplibre.Map({
           container: mapRef.current,
           style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
           center: [0, 15],
@@ -368,7 +405,7 @@ export default function Trackers() {
         return;
       }
       setMapStatus("Map instance created.");
-      map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+      map.addControl(new maplibre.NavigationControl({ visualizePitch: true }), "top-right");
       map.on("styledata", () => {
         styleDataSeenRef.current = true;
         setMapStatus("Loading style and tiles...");
@@ -572,7 +609,7 @@ export default function Trackers() {
   useEffect(() => {
     if (!mapInstance.current || !mapReady) return;
     const map = mapInstance.current;
-    const source = map.getSource("tracker-points") as maplibregl.GeoJSONSource | undefined;
+    const source = map.getSource("tracker-points") as MapLibre["GeoJSONSource"] | undefined;
     if (!source) return;
     source.setData(trackerGeojson);
   }, [trackerGeojson, mapReady]);
@@ -622,12 +659,12 @@ export default function Trackers() {
       geometry: { type: "LineString", coordinates: coords },
       properties: {}
     };
-    const source = map.getSource("history-line") as maplibregl.GeoJSONSource;
+    const source = map.getSource("history-line") as MapLibre["GeoJSONSource"];
     source.setData(feature);
     if (coords.length >= 2) {
       const bounds = coords.reduce(
         (box, coord) => box.extend(coord as [number, number]),
-        new maplibregl.LngLatBounds(coords[0] as [number, number], coords[0] as [number, number])
+        new maplibre.LngLatBounds(coords[0] as [number, number], coords[0] as [number, number])
       );
       map.fitBounds(bounds, { padding: 80, maxZoom: 6 });
     }

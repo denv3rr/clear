@@ -160,7 +160,15 @@ export default function News() {
                 min={5}
                 max={100}
                 value={limit}
-                onChange={(event) => setLimit(Number(event.target.value) || 25)}
+                onChange={(event) => {
+                  const raw = Number(event.target.value);
+                  if (!Number.isFinite(raw)) {
+                    setLimit(25);
+                    return;
+                  }
+                  const clamped = Math.max(5, Math.min(100, raw));
+                  setLimit(clamped);
+                }}
                 className="mt-1 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
               />
             </div>

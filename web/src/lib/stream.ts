@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { DEMO_MODE, getMockTrackerSnapshot } from "./mockData";
+import { extractWarnings, getApiBase, getApiKey, isDemoOverride } from "./api";
 import { useTrackerPause } from "./trackerPause";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
-const ENV_API_KEY = import.meta.env.VITE_API_KEY;
+const API_BASE = getApiBase();
 
 type StreamOptions = {
   interval?: number;
@@ -16,6 +16,7 @@ export function useTrackerStream<T>(options: StreamOptions = {}) {
   const [data, setData] = useState<T | null>(null);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
   const socketRef = useRef<WebSocket | null>(null);
   const { paused } = useTrackerPause();
 
@@ -25,33 +26,28 @@ export function useTrackerStream<T>(options: StreamOptions = {}) {
       setError(null);
       return;
     }
-    if (DEMO_MODE) {
+    if (DEMO_MODE || isDemoOverride()) {
       setConnected(true);
       setError(null);
       setData(getMockTrackerSnapshot(mode) as T);
+      setWarnings([]);
       if (!interval) return;
       const timer = setInterval(() => {
         setData(getMockTrackerSnapshot(mode) as T);
+        setWarnings([]);
       }, interval * 1000);
       return () => clearInterval(timer);
     }
     const params = new URLSearchParams();
     params.set("mode", mode);
     params.set("interval", String(interval));
-    try {
-      const apiKey = localStorage.getItem("clear_api_key");
-      if (apiKey) {
-        params.set("api_key", apiKey);
-      } else if (ENV_API_KEY) {
-        params.set("api_key", ENV_API_KEY);
-      }
-    } catch {
-      if (ENV_API_KEY) {
-        params.set("api_key", ENV_API_KEY);
-      }
-      // ignore
+    const apiKey = getApiKey();
+    if (apiKey) {
+      params.set("api_key", apiKey);
     }
-    const wsUrl = API_BASE.replace("http", "ws") + `/ws/trackers?${params.toString()}`;
+    const baseUrl = new URL(API_BASE);
+    const wsProtocol = baseUrl.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${wsProtocol}//${baseUrl.host}/ws/trackers?${params.toString()}`;
     const ws = new WebSocket(wsUrl);
     socketRef.current = ws;
 
@@ -76,9 +72,11 @@ export function useTrackerStream<T>(options: StreamOptions = {}) {
       try {
         const payload = JSON.parse(event.data) as T;
         setData(payload);
+        setWarnings(extractWarnings(payload));
       } catch {
         setConnected(false);
         setError("WebSocket payload parsing failed.");
+        setWarnings([]);
       }
     };
 
@@ -87,5 +85,5 @@ export function useTrackerStream<T>(options: StreamOptions = {}) {
     };
   }, [enabled, interval, mode, paused]);
 
-  return { data, connected, error };
+  return { data, connected, error, warnings };
 }

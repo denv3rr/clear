@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from modules.client_mgr.data_handler import DataHandler
 from modules.reporting.engine import ReportEngine
 from web_api.auth import require_api_key
+from web_api.view_model import attach_meta, validate_payload
 
 router = APIRouter()
 
@@ -27,7 +28,19 @@ def client_report(
                 interval=interval,
                 detailed=detail,
             )
-            return {"format": fmt, "content": report.content, "payload": report.payload.__dict__}
+            payload = report.payload.__dict__ if report.payload else {}
+            response = {"format": fmt, "content": report.content, "payload": payload}
+            warnings = validate_payload(
+                response,
+                required_keys=("format", "content", "payload"),
+                non_empty_keys=("content",),
+            )
+            return attach_meta(
+                response,
+                route="/api/reports/client/{client_id}",
+                source="report_engine",
+                warnings=warnings,
+            )
     raise HTTPException(status_code=404, detail="Client not found")
 
 
@@ -51,6 +64,18 @@ def account_report(
                         output_format=fmt,
                         interval=interval,
                     )
-                    return {"format": fmt, "content": report.content, "payload": report.payload.__dict__}
+                    payload = report.payload.__dict__ if report.payload else {}
+                    response = {"format": fmt, "content": report.content, "payload": payload}
+                    warnings = validate_payload(
+                        response,
+                        required_keys=("format", "content", "payload"),
+                        non_empty_keys=("content",),
+                    )
+                    return attach_meta(
+                        response,
+                        route="/api/reports/client/{client_id}/accounts/{account_id}",
+                        source="report_engine",
+                        warnings=warnings,
+                    )
             raise HTTPException(status_code=404, detail="Account not found")
     raise HTTPException(status_code=404, detail="Client not found")

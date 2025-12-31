@@ -20,6 +20,10 @@ type CacheEntry<T> = {
   data: T;
 };
 
+type ApiMeta = {
+  warnings?: string[];
+};
+
 const cache = new Map<string, CacheEntry<unknown>>();
 
 function cacheKey(path: string) {
@@ -54,12 +58,19 @@ function applyDemoOverrides(path: string) {
   return `${url.pathname}${url.search}`;
 }
 
-function isDemoOverride(): boolean {
+export function isDemoOverride(): boolean {
   if (typeof window === "undefined") return false;
   if (!import.meta.env.DEV) return false;
   const params = new URLSearchParams(window.location.search);
   const raw = params.get("demo");
   return raw === "true" || raw === "1";
+}
+
+export function extractWarnings(payload: unknown): string[] {
+  if (!payload || typeof payload !== "object") return [];
+  const meta = (payload as { meta?: ApiMeta }).meta;
+  if (!meta || !Array.isArray(meta.warnings)) return [];
+  return meta.warnings.filter((item): item is string => typeof item === "string");
 }
 
 async function parseJson<T>(response: Response): Promise<T> {
@@ -190,6 +201,7 @@ export function useApi<T>(path: string, options: UseApiOptions = {}) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState<boolean>(enabled);
   const [error, setError] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const { paused } = useTrackerPause();
   const trackerPaused = paused && path.startsWith("/api/trackers");
@@ -203,9 +215,11 @@ export function useApi<T>(path: string, options: UseApiOptions = {}) {
         setLoading(true);
         const payload = await apiGet<T>(path, ttl, abortRef.current.signal);
         setData(payload);
+        setWarnings(extractWarnings(payload));
         setError(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unknown error");
+        setWarnings([]);
       } finally {
         setLoading(false);
       }
@@ -226,5 +240,5 @@ export function useApi<T>(path: string, options: UseApiOptions = {}) {
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  return { data, loading, error, refresh: fetchData };
+  return { data, loading, error, warnings, refresh: fetchData };
 }

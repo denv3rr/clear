@@ -9,7 +9,12 @@ type SurfaceProps = {
 
 function normalizeGrid(data?: number[][]) {
   if (!data || data.length === 0) return { max: 0, rows: [] as number[][] };
-  const rows = data.map((row) => row.map((value) => (Number.isFinite(value) ? Number(value) : 0)));
+  const rows = data.map((row) =>
+    row.map((value) => {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric : 0;
+    })
+  );
   const max = rows.reduce((acc, row) => Math.max(acc, ...row), 0);
   return { max, rows };
 }

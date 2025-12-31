@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query
 
 from modules.market_data.trackers import GlobalTrackers
 from web_api.auth import require_api_key
+from web_api.view_model import attach_meta, validate_payload
 
 router = APIRouter()
 
@@ -16,7 +17,22 @@ def tracker_snapshot(
     _auth: None = Depends(require_api_key),
 ):
     trackers = GlobalTrackers()
-    return trackers.get_snapshot(mode=mode)
+    payload = trackers.get_snapshot(mode=mode)
+    warnings = list(payload.get("warnings", []) or [])
+    if payload.get("count", 0) == 0:
+        warnings.append("No tracker points returned.")
+    warnings = validate_payload(
+        payload,
+        required_keys=("mode", "count", "points"),
+        non_empty_keys=("points",),
+        warnings=warnings,
+    )
+    return attach_meta(
+        payload,
+        route="/api/trackers/snapshot",
+        source="trackers",
+        warnings=warnings,
+    )
 
 
 @router.get("/api/trackers/search")
@@ -31,7 +47,20 @@ def tracker_search(
     trackers = GlobalTrackers()
     snapshot = trackers.get_snapshot(mode=mode)
     field_list = [item.strip() for item in (fields or "").split(",") if item.strip()] or None
-    return trackers.search_snapshot(snapshot, query=q, fields=field_list, kind=kind, limit=limit)
+    payload = trackers.search_snapshot(snapshot, query=q, fields=field_list, kind=kind, limit=limit)
+    warnings = validate_payload(
+        payload,
+        required_keys=("query", "count", "points"),
+        warnings=[],
+    )
+    if payload.get("count", 0) == 0:
+        warnings.append("No tracker matches found.")
+    return attach_meta(
+        payload,
+        route="/api/trackers/search",
+        source="trackers",
+        warnings=warnings,
+    )
 
 
 @router.get("/api/trackers/history/{tracker_id}")
@@ -40,7 +69,20 @@ def tracker_history(
     _auth: None = Depends(require_api_key),
 ):
     trackers = GlobalTrackers()
-    return trackers.get_history(tracker_id)
+    payload = trackers.get_history(tracker_id)
+    warnings = validate_payload(
+        payload if isinstance(payload, dict) else {},
+        required_keys=("id", "history"),
+        warnings=[],
+    )
+    if isinstance(payload, dict) and not payload.get("history"):
+        warnings.append("No tracker history available.")
+    return attach_meta(
+        payload if isinstance(payload, dict) else {"history": [], "meta": {}},
+        route="/api/trackers/history",
+        source="trackers",
+        warnings=warnings,
+    )
 
 
 @router.get("/api/trackers/detail/{tracker_id}")
@@ -49,4 +91,17 @@ def tracker_detail(
     _auth: None = Depends(require_api_key),
 ):
     trackers = GlobalTrackers()
-    return trackers.get_detail(tracker_id, allow_refresh=False)
+    payload = trackers.get_detail(tracker_id, allow_refresh=False)
+    warnings = validate_payload(
+        payload if isinstance(payload, dict) else {},
+        required_keys=("id", "point", "history", "summary"),
+        warnings=[],
+    )
+    if isinstance(payload, dict) and not payload.get("point"):
+        warnings.append("Tracker detail unavailable.")
+    return attach_meta(
+        payload if isinstance(payload, dict) else {"point": None, "meta": {}},
+        route="/api/trackers/detail",
+        source="trackers",
+        warnings=warnings,
+    )

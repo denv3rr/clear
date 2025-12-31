@@ -10,15 +10,21 @@ type AppShellProps = {
 };
 
 export function AppShell({ children }: AppShellProps) {
-  const { error: healthError, refresh } = useApi<{ status: string }>(
+  const { error: healthError, warnings: healthWarnings, refresh } = useApi<{
+    status: string;
+  }>(
     "/api/health",
     { interval: 60000 }
   );
   const [contextOpen, setContextOpen] = useState(false);
   const apiBase = getApiBase();
-  const healthMessage = healthError
-    ? `API health check failed (${apiBase}): ${healthError}`
-    : null;
+  const healthMessages: string[] = [];
+  if (healthError) {
+    healthMessages.push(`API health check failed (${apiBase}): ${healthError}`);
+  }
+  for (const warning of healthWarnings) {
+    healthMessages.push(`API health warning: ${warning}`);
+  }
 
   return (
     <div className="min-h-screen text-slate-100 overflow-x-hidden">
@@ -28,10 +34,7 @@ export function AppShell({ children }: AppShellProps) {
       />
       <div className="flex min-h-screen min-w-0">
         <main className="flex-1 min-w-0 px-6 py-8 md:px-10 lg:px-12 space-y-10 overflow-x-hidden">
-          <ErrorBanner
-            messages={healthMessage ? [healthMessage] : []}
-            onRetry={refresh}
-          />
+          <ErrorBanner messages={healthMessages} onRetry={refresh} />
           {children}
         </main>
       </div>

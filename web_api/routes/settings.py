@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends
 
 from web_api.auth import require_api_key
 from web_api.diagnostics import feed_status, system_snapshot
+from web_api.view_model import attach_meta, validate_payload
 
 router = APIRouter()
 
@@ -40,10 +41,24 @@ def _redact_settings(settings: Dict[str, object]) -> Dict[str, object]:
 def settings_view(_auth: None = Depends(require_api_key)):
     payload = _load_settings_payload()
     system = system_snapshot()
-    return {
+    response = {
         "settings": _redact_settings(payload.get("settings", {})),
         "error": payload.get("error"),
         "feeds": feed_status(),
         "system": system.get("system"),
         "system_metrics": system.get("metrics"),
     }
+    warnings = validate_payload(
+        response,
+        required_keys=("settings", "feeds", "system", "system_metrics"),
+        warnings=[],
+    )
+    if payload.get("error"):
+        warnings.append("Settings payload error.")
+    return attach_meta(
+        response,
+        route="/api/settings",
+        source="settings",
+        warnings=warnings,
+        status="error" if warnings else "ok",
+    )

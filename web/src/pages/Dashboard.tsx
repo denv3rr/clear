@@ -14,7 +14,8 @@ import {
   YAxis
 } from "recharts";
 import L from "leaflet";
-import maplibregl from "../lib/maplibre";
+import { loadMapLibre } from "../lib/maplibre";
+import type { MapLibre } from "../lib/maplibre";
 import { Collapsible } from "../components/ui/Collapsible";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { KpiCard } from "../components/ui/KpiCard";
@@ -82,7 +83,8 @@ const columns: ColumnDef<TrackerRow>[] = [
 
 export default function Dashboard() {
   const { ref: mapRef, size: mapSize } = useMeasuredSize<HTMLDivElement>();
-  const mapInstance = useRef<maplibregl.Map | null>(null);
+  const mapInstance = useRef<MapLibre["Map"] | null>(null);
+  const [maplibre, setMapLibre] = useState<MapLibre | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapStatus, setMapStatus] = useState("Initializing map...");
@@ -107,7 +109,8 @@ export default function Dashboard() {
   const {
     data: trackerStream,
     connected: streamConnected,
-    error: streamError
+    error: streamError,
+    warnings: streamWarnings
   } = useTrackerStream<TrackerSnapshot>({
     interval: 5,
     mode: "combined"
@@ -115,6 +118,7 @@ export default function Dashboard() {
   const {
     data: trackerSnapshot,
     error: trackerError,
+    warnings: trackerWarnings,
     refresh: refreshTrackers
   } = useApi<TrackerSnapshot>("/api/trackers/snapshot?mode=combined", {
     interval: 20000
@@ -122,6 +126,7 @@ export default function Dashboard() {
   const {
     data: intelSummary,
     error: intelError,
+    warnings: intelWarnings,
     refresh: refreshIntel
   } = useApi<IntelSummary>("/api/intel/summary?region=Global", {
     interval: 30000
@@ -133,11 +138,35 @@ export default function Dashboard() {
   const mapResizeHandler = useRef<(() => void) | null>(null);
 
   useEffect(() => {
+    let mounted = true;
+    loadMapLibre()
+      .then((lib) => {
+        if (mounted) {
+          setMapLibre(lib);
+        }
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setMapError("Map engine failed to load.");
+        setMapStatus("Map engine failed.");
+        setMapFallback(true);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [maplibre]);
+
+  useEffect(() => {
     let raf = 0;
     let timeout = 0;
     const initMap = () => {
       if (mapInitRef.current || mapInstance.current) return;
       if (!mapRef.current) {
+        raf = window.requestAnimationFrame(initMap);
+        return;
+      }
+      if (!maplibre) {
+        setMapStatus("Loading map engine...");
         raf = window.requestAnimationFrame(initMap);
         return;
       }
@@ -160,7 +189,7 @@ export default function Dashboard() {
       }
       setMapStatus("Booting map engine...");
       const diagnostics: string[] = [];
-      diagnostics.push(checkWorkerClass(maplibregl));
+      diagnostics.push(checkWorkerClass(maplibre));
       setMapDiagnostics(diagnostics);
       mapActiveRef.current = true;
       const styleUrl =
@@ -185,9 +214,9 @@ export default function Dashboard() {
           return [...next, ...resourceLines];
         });
       });
-      let map: maplibregl.Map;
+      let map: MapLibre["Map"];
       try {
-        map = new maplibregl.Map({
+        map = new maplibre.Map({
           container: mapRef.current,
           style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
           center: [0, 15],
@@ -208,7 +237,7 @@ export default function Dashboard() {
         return;
       }
       setMapStatus("Map instance created.");
-      map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+      map.addControl(new maplibre.NavigationControl({ visualizePitch: true }), "top-right");
       map.on("styledata", () => {
         styleDataSeenRef.current = true;
         setMapStatus("Loading style and tiles...");
@@ -396,7 +425,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (!mapInstance.current || !mapReady || !activeSnapshot?.points) return;
     const map = mapInstance.current;
-    const source = map.getSource("tracker-points") as maplibregl.GeoJSONSource | undefined;
+    const source = map.getSource("tracker-points") as MapLibre["GeoJSONSource"] | undefined;
     if (!source) return;
     const features = activeSnapshot.points
       .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lon))
@@ -499,14 +528,17 @@ export default function Dashboard() {
             : ""
         }`
       : null,
+    ...trackerWarnings.map((warning) => `Tracker snapshot: ${warning}`),
     streamError ? `Tracker stream failed: ${streamError}` : null,
+    ...streamWarnings.map((warning) => `Tracker stream: ${warning}`),
     intelError
       ? `Intel summary failed: ${intelError}${
           intelError.includes("401") || intelError.includes("403")
             ? ` (${authHint})`
             : ""
         }`
-      : null
+      : null,
+    ...intelWarnings.map((warning) => `Intel summary: ${warning}`)
   ].filter(Boolean) as string[];
 
   return (

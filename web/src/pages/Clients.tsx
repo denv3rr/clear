@@ -345,12 +345,17 @@ export default function Clients() {
   const activeHoldings = dashboard?.holdings || [];
   const riskMetrics = dashboard?.risk?.metrics || {};
   const riskMetricRows = Object.keys(metricLabels)
-    .filter((key) => key in riskMetrics)
-    .map((key) => ({
-      key,
-      label: metricLabels[key],
-      value: Number(riskMetrics[key])
-    }));
+    .map((key) => {
+      if (!(key in riskMetrics)) return null;
+      const value = Number(riskMetrics[key]);
+      if (!Number.isFinite(value)) return null;
+      return {
+        key,
+        label: metricLabels[key],
+        value
+      };
+    })
+    .filter(Boolean) as { key: string; label: string; value: number }[];
   const authHint = "Check CLEAR_WEB_API_KEY + localStorage clear_api_key.";
   const errorMessages = [
     indexError

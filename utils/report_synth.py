@@ -3,6 +3,7 @@ import json
 import os
 import re
 import time
+from collections import Counter
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
@@ -58,6 +59,7 @@ def _tokenize(text: str) -> List[str]:
 
 def _score_text(text: str) -> Dict[str, object]:
     tokens = _tokenize(text)
+    token_counts = Counter(tokens)
     total = len(tokens)
     emotion_counts = {k: 0 for k in EMOTION_LEXICON}
     triggers = {k: [] for k in EMOTION_LEXICON}
@@ -67,8 +69,8 @@ def _score_text(text: str) -> Dict[str, object]:
 
     for emotion, words in EMOTION_LEXICON.items():
         for word in words:
-            if word in tokens:
-                count = tokens.count(word)
+            count = token_counts.get(word, 0)
+            if count:
                 emotion_counts[emotion] += count
                 triggers[emotion].append(word)
 

@@ -218,8 +218,8 @@ class TrackerProviders:
     @staticmethod
     def fetch_flights(limit: int = 200) -> Tuple[List[TrackerPoint], List[str]]:
         warnings: List[str] = []
-        include_commercial = os.getenv("CLEAR_INCLUDE_COMMERCIAL", "0") == "1"
-        include_private = os.getenv("CLEAR_INCLUDE_PRIVATE", "0") == "1"
+        include_commercial = os.getenv("CLEAR_INCLUDE_COMMERCIAL", "1") == "1"
+        include_private = os.getenv("CLEAR_INCLUDE_PRIVATE", "1") == "1"
         urls = TrackerProviders._parse_sources(os.getenv("FLIGHT_DATA_URL"))
         data_paths = TrackerProviders._parse_sources(os.getenv("FLIGHT_DATA_PATH"))
         rows_by_source: List[Tuple[List[Dict[str, Any]], str]] = []
@@ -937,7 +937,10 @@ class GlobalTrackers:
     ) -> Panel:
         snapshot = snapshot or self.get_snapshot(mode=mode)
         points = snapshot.get("points", [])
-        warnings: List[str] = snapshot.get("warnings", [])
+        warnings: List[str] = list(snapshot.get("warnings", []) or [])
+        meta = snapshot.get("meta") if isinstance(snapshot.get("meta"), dict) else {}
+        warnings.extend(meta.get("warnings", []) or [])
+        warnings = list(dict.fromkeys(warnings))
         no_shipping = any("no vessel feed" in str(w).lower() for w in warnings)
 
         table = Table(box=box.MINIMAL_DOUBLE_HEAD, expand=True)

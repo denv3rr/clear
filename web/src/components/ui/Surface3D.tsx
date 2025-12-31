@@ -1,8 +1,16 @@
-import { useState } from "react";
-import createPlotlyComponent from "react-plotly.js/factory";
-import Plotly from "plotly.js-dist-min";
+import { useEffect, useMemo, useState } from "react";
+import type { ComponentType } from "react";
 
-const Plot = createPlotlyComponent(Plotly);
+type PlotComponent = ComponentType<Record<string, unknown>>;
+
+async function loadPlotComponent(): Promise<PlotComponent> {
+  const [{ default: Plotly }, { default: createPlotlyComponent }] =
+    await Promise.all([
+      import("plotly.js-dist-min"),
+      import("react-plotly.js/factory")
+    ]);
+  return createPlotlyComponent(Plotly) as PlotComponent;
+}
 
 type Surface3DProps = {
   title: string;
@@ -31,8 +39,29 @@ export function Surface3D({
   className = ""
 }: Surface3DProps) {
   const [expanded, setExpanded] = useState(false);
+  const [Plot, setPlot] = useState<PlotComponent | null>(null);
   const hasData = Array.isArray(z) && z.length > 0 && Array.isArray(z[0]) && z[0].length > 0;
   const expandedHeight = Math.max(height + 280, 520);
+  const shouldLoadPlot = hasData;
+
+  useEffect(() => {
+    if (!shouldLoadPlot || Plot) return;
+    let mounted = true;
+    loadPlotComponent()
+      .then((component) => {
+        if (mounted) {
+          setPlot(() => component);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setPlot(null);
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [Plot, shouldLoadPlot]);
   const data = hasData
     ? [
         {
@@ -60,8 +89,44 @@ export function Surface3D({
       ]
     : [];
 
-  const renderPlot = (plotHeight: number) =>
-    hasData ? (
+  const sceneLayout = useMemo(
+    () => ({
+      bgcolor: "rgba(0,0,0,0)",
+      xaxis: {
+        showgrid: true,
+        gridcolor: "rgba(72,241,166,0.08)",
+        zerolinecolor: "rgba(72,241,166,0.2)",
+        color: "#94a3b8"
+      },
+      yaxis: {
+        showgrid: true,
+        gridcolor: "rgba(72,241,166,0.08)",
+        zerolinecolor: "rgba(72,241,166,0.2)",
+        color: "#94a3b8"
+      },
+      zaxis: {
+        showgrid: true,
+        gridcolor: "rgba(72,241,166,0.08)",
+        zerolinecolor: "rgba(72,241,166,0.2)",
+        color: "#94a3b8"
+      },
+      camera: {
+        eye: { x: 1.15, y: 1.15, z: 0.9 },
+        center: { x: 0, y: 0, z: 0 }
+      },
+      aspectratio: { x: 1, y: 1, z: 0.6 }
+    }),
+    []
+  );
+
+  const renderPlot = (plotHeight: number) => {
+    if (!hasData) {
+      return <div className="surface-empty">Surface data unavailable.</div>;
+    }
+    if (!Plot) {
+      return <div className="surface-empty">Loading 3D surface...</div>;
+    }
+    return (
       <Plot
         data={data as any}
         layout={{
@@ -70,41 +135,15 @@ export function Surface3D({
           margin: { l: 0, r: 0, t: 0, b: 0 },
           paper_bgcolor: "rgba(0,0,0,0)",
           plot_bgcolor: "rgba(0,0,0,0)",
-          scene: {
-            bgcolor: "rgba(0,0,0,0)",
-            xaxis: {
-              showgrid: true,
-              gridcolor: "rgba(72,241,166,0.08)",
-              zerolinecolor: "rgba(72,241,166,0.2)",
-              color: "#94a3b8"
-            },
-            yaxis: {
-              showgrid: true,
-              gridcolor: "rgba(72,241,166,0.08)",
-              zerolinecolor: "rgba(72,241,166,0.2)",
-              color: "#94a3b8"
-            },
-            zaxis: {
-              showgrid: true,
-              gridcolor: "rgba(72,241,166,0.08)",
-              zerolinecolor: "rgba(72,241,166,0.2)",
-              color: "#94a3b8"
-            },
-            camera: {
-              eye: { x: 1.15, y: 1.15, z: 0.9 },
-              center: { x: 0, y: 0, z: 0 }
-            },
-            aspectratio: { x: 1, y: 1, z: 0.6 }
-          },
+          scene: sceneLayout,
           dragmode: "orbit"
         }}
         config={{ displayModeBar: false, responsive: true, scrollZoom: true }}
         style={{ width: "100%", height: "100%" }}
         useResizeHandler
       />
-    ) : (
-      <div className="surface-empty">Surface data unavailable.</div>
     );
+  };
 
   return (
     <>

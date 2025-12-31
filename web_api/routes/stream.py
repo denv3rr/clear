@@ -7,6 +7,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from modules.market_data.trackers import GlobalTrackers
 from web_api.auth import require_websocket_key
+from web_api.view_model import attach_meta, validate_payload
 
 router = APIRouter()
 
@@ -23,6 +24,19 @@ async def trackers_stream(websocket: WebSocket, mode: Optional[str] = None, inte
     try:
         while True:
             payload = trackers.get_snapshot(mode=stream_mode)
+            warnings = list(payload.get("warnings", []) or [])
+            warnings = validate_payload(
+                payload,
+                required_keys=("mode", "count", "points"),
+                non_empty_keys=("points",),
+                warnings=warnings,
+            )
+            attach_meta(
+                payload,
+                route="/ws/trackers",
+                source="trackers_stream",
+                warnings=warnings,
+            )
             await websocket.send_json(payload)
             await asyncio.sleep(stream_interval)
     except WebSocketDisconnect:

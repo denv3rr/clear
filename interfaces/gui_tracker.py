@@ -545,7 +545,10 @@ class TrackerGuiWindow(QMainWindow):
         payload = json.dumps(rows)
         self.map_view.page().runJavaScript(f"window.setTrackerPoints({json.dumps(payload)});")
 
-        warn = " | ".join(snapshot.get("warnings", [])[:2])
+        meta = snapshot.get("meta", {}) if isinstance(snapshot.get("meta"), dict) else {}
+        warning_list = list(snapshot.get("warnings", []) or [])
+        warning_list.extend(meta.get("warnings", []) or [])
+        warn = " | ".join(dict.fromkeys(warning_list)[:2])
         last = time.strftime("%H:%M:%S", time.localtime(time.time()))
         count = snapshot.get("count", len(rows))
         status = f"Mode: {self._mode} | Filter: {self._category_filter} | Points: {count} | Updated: {last}"
