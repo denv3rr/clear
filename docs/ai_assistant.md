@@ -47,3 +47,5 @@
 3) Add UI chat drawer with history + export.
 4) Add CLI command that mirrors API payloads.
 5) Add tests for schema validation and deterministic output constraints.
+
+For the agent-based architecture, please consult the `agents/` folder.

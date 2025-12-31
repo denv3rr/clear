@@ -77,14 +77,15 @@ async function parseJson<T>(response: Response): Promise<T> {
   const text = await response.text();
   try {
     return JSON.parse(text) as T;
-  } catch {
-    throw new Error("Invalid JSON response");
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "Unknown error";
+    throw new Error(`Invalid JSON response: ${detail}`);
   }
 }
 
 export function getApiKey(): string | null {
   try {
-    return localStorage.getItem("clear_api_key");
+    return localStorage.getItem("clear_api_key") || ENV_API_KEY || null;
   } catch {
     return ENV_API_KEY || null;
   }
@@ -130,7 +131,7 @@ export async function apiGet<T>(path: string, ttl = 0, signal?: AbortSignal): Pr
     return payload;
   }
   const headers: Record<string, string> = {};
-  const apiKey = getApiKey() || ENV_API_KEY;
+  const apiKey = getApiKey();
   if (apiKey) {
     headers["X-API-Key"] = apiKey;
   }
@@ -161,7 +162,7 @@ async function apiWrite<T>(path: string, method: WriteMethod, body?: unknown): P
     throw new Error("Demo mode: write operations are disabled.");
   }
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  const apiKey = getApiKey() || ENV_API_KEY;
+  const apiKey = getApiKey();
   if (apiKey) {
     headers["X-API-Key"] = apiKey;
   }

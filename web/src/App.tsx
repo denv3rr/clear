@@ -5,8 +5,7 @@ import Dashboard from "./pages/Dashboard";
 import Intel from "./pages/Intel";
 import News from "./pages/News";
 import Reports from "./pages/Reports";
-import Settings from "./pages/Settings";
-import Tools from "./pages/Tools";
+import System from "./pages/System";
 import Trackers from "./pages/Trackers";
 
 export default function App() {
@@ -19,8 +18,7 @@ export default function App() {
         <Route path="/intel" element={<Intel />} />
         <Route path="/news" element={<News />} />
         <Route path="/reports" element={<Reports />} />
-        <Route path="/tools" element={<Tools />} />
-        <Route path="/settings" element={<Settings />} />
+        <Route path="/system" element={<System />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AppShell>

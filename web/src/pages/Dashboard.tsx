@@ -570,138 +570,141 @@ export default function Dashboard() {
       </Reveal>
 
       <Reveal delay={0.2}>
-        <section className="grid grid-cols-1 gap-6">
-          <Collapsible
-            title="Global Patterns"
-            meta={intelSummary?.risk_level || "Live"}
-            open={riskOpen}
-            onToggle={() => setRiskOpen((prev) => !prev)}
-          >
-            <SectionHeader label="RISK SIGNALS" title="Global Patterns" />
-            <div className="mt-4 h-52">
-              {hasRiskSeries ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={riskSeries}>
-                    <defs>
-                      <linearGradient id="riskGlow" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#48f1a6" stopOpacity={0.7} />
-                        <stop offset="100%" stopColor="#48f1a6" stopOpacity={0.11} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis
-                      dataKey="day"
-                      stroke="#334155"
-                      tick={{ fill: "#94a3b8", fontSize: 12 }}
-                    />
-                    <YAxis
-                      stroke="#334155"
-                      tick={{ fill: "#94a3b8", fontSize: 12 }}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        background: "#0b0e13",
-                        border: "1px solid #1f2937",
-                        color: "#e2e8f0"
-                      }}
-                    />
-                    <Area type="monotone" dataKey="value" stroke="#48f1a6" fill="url(#riskGlow)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex h-full items-center justify-center text-xs text-slate-500">
-                  No risk series available.
-                </div>
-              )}
-            </div>
-          </Collapsible>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <div className="lg:col-span-2 space-y-6">
+    <Collapsible
+      title="Global Patterns"
+      meta={intelSummary?.risk_level || "Live"}
+      open={riskOpen}
+      onToggle={() => setRiskOpen((prev) => !prev)}
+    >
+      <SectionHeader label="RISK SIGNALS" title="Global Patterns" />
+      <div className="mt-4 h-52">
+        {hasRiskSeries ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={riskSeries}>
+              <defs>
+                <linearGradient id="riskGlow" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#48f1a6" stopOpacity={0.7} />
+                  <stop offset="100%" stopColor="#48f1a6" stopOpacity={0.11} />
+                </linearGradient>
+              </defs>
+              <XAxis
+                dataKey="day"
+                stroke="#334155"
+                tick={{ fill: "#94a3b8", fontSize: 12 }}
+              />
+              <YAxis
+                stroke="#334155"
+                tick={{ fill: "#94a3b8", fontSize: 12 }}
+              />
+              <Tooltip
+                contentStyle={{
+                  background: "#0b0e13",
+                  border: "1px solid #1f2937",
+                  color: "#e2e8f0"
+                }}
+              />
+              <Area type="monotone" dataKey="value" stroke="#48f1a6" fill="url(#riskGlow)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="flex h-full items-center justify-center text-xs text-slate-500">
+            No risk series available.
+          </div>
+        )}
+      </div>
+    </Collapsible>
 
-          <Collapsible
-            title="Flight + Maritime Map"
-            meta={mapFallback ? "Leaflet" : "MapLibre GL"}
-            open={mapOpen}
-            onToggle={() => setMapOpen((prev) => !prev)}
-          >
-            <SectionHeader label="MAPS" title="Flight + Maritime Layer" right={mapFallback ? "Leaflet" : "MapLibre GL"} />
-            <div
-              ref={mapRef}
-              className="mt-4 h-[300px] rounded-2xl overflow-hidden border border-slate-800 relative"
-            >
-              {mapFallback ? (
-                <div ref={leafletRef} className="absolute inset-0" />
-              ) : null}
-              {!mapReady && !mapError && !mapFallback ? (
-                <div className="absolute inset-0 z-10 flex items-center justify-center text-xs text-slate-400 bg-ink-950/40">
-                  Loading map...
-                </div>
-              ) : null}
-              {noPoints ? (
-                <div className="absolute inset-0 z-10 flex items-center justify-center text-xs text-slate-400 bg-ink-950/40">
-                  No tracker points in snapshot.
-                </div>
-              ) : null}
-              {mapError && !mapFallback ? (
-                <div className="absolute inset-0 z-10 flex items-center justify-center text-xs text-amber-300 bg-ink-950/40">
-                  {mapError}
-                </div>
-              ) : null}
-              <div className="absolute bottom-3 right-3 z-10 rounded-lg border border-slate-800/60 bg-ink-950/80 px-3 py-2 text-[11px] text-slate-400">
-                <p>{mapFallback ? leafletStatus : mapStatus}</p>
-                {!mapFallback && mapDiagnostics.length ? (
-                  <div className="mt-1 space-y-0.5">
-                    {mapDiagnostics.map((item) => (
-                      <p key={item}>{item}</p>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
+    <Collapsible
+      title="Flight + Maritime Map"
+      meta={mapFallback ? "Leaflet" : "MapLibre GL"}
+      open={mapOpen}
+      onToggle={() => setMapOpen((prev) => !prev)}
+    >
+      <SectionHeader label="MAPS" title="Flight + Maritime Layer" right={mapFallback ? "Leaflet" : "MapLibre GL"} />
+      <div
+        ref={mapRef}
+        className="mt-4 h-[300px] rounded-2xl overflow-hidden border border-slate-800 relative"
+      >
+        {mapFallback ? (
+          <div ref={leafletRef} className="absolute inset-0" />
+        ) : null}
+        {!mapReady && !mapError && !mapFallback ? (
+          <div className="absolute inset-0 z-10 flex items-center justify-center text-xs text-slate-400 bg-ink-950/40">
+            Loading map...
+          </div>
+        ) : null}
+        {noPoints ? (
+          <div className="absolute inset-0 z-10 flex items-center justify-center text-xs text-slate-400 bg-ink-950/40">
+            No tracker points in snapshot.
+          </div>
+        ) : null}
+        {mapError && !mapFallback ? (
+          <div className="absolute inset-0 z-10 flex items-center justify-center text-xs text-amber-300 bg-ink-950/40">
+            {mapError}
+          </div>
+        ) : null}
+        <div className="absolute bottom-3 right-3 z-10 rounded-lg border border-slate-800/60 bg-ink-950/80 px-3 py-2 text-[11px] text-slate-400">
+          <p>{mapFallback ? leafletStatus : mapStatus}</p>
+          {!mapFallback && mapDiagnostics.length ? (
+            <div className="mt-1 space-y-0.5">
+              {mapDiagnostics.map((item) => (
+                <p key={item}>{item}</p>
+              ))}
             </div>
-          </Collapsible>
-
-          <Collapsible
-            title="Live Feed"
-            meta={`${activeSnapshot ? activeSnapshot.count : 0} signals • ${
-              streamConnected ? "Streaming" : "Snapshot"
-            }`}
-            open={feedOpen}
-            onToggle={() => setFeedOpen((prev) => !prev)}
-          >
-            <SectionHeader
-              label="LIVE FEED"
-              title="Tracker Signals"
-              right={activeSnapshot ? `${activeSnapshot.count} signals` : "Loading"}
-            />
-            <div className="overflow-x-auto mt-6">
-              {trackerRows.length ? (
-                <table className="w-full text-sm">
-                  <thead className="text-slate-400 border-b border-slate-800">
-                    {table.getHeaderGroups().map((headerGroup) => (
-                      <tr key={headerGroup.id}>
-                        {headerGroup.headers.map((header) => (
-                          <th key={header.id} className="py-3 text-left font-medium">
-                            {flexRender(header.column.columnDef.header, header.getContext())}
-                          </th>
-                        ))}
-                      </tr>
-                    ))}
-                  </thead>
-                  <tbody>
-                    {table.getRowModel().rows.map((row) => (
-                      <tr key={row.id} className="border-b border-slate-900/60">
-                        {row.getVisibleCells().map((cell) => (
-                          <td key={cell.id} className="py-3 pr-4 text-slate-200">
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
-                <p className="text-xs text-slate-500">No live tracker data available.</p>
-              )}
-            </div>
-          </Collapsible>
-        </section>
+          ) : null}
+        </div>
+      </div>
+    </Collapsible>
+  </div>
+  <div className="lg:col-span-1">
+    <Collapsible
+      title="Live Feed"
+      meta={`${activeSnapshot ? activeSnapshot.count : 0} signals • ${
+        streamConnected ? "Streaming" : "Snapshot"
+      }`}
+      open={feedOpen}
+      onToggle={() => setFeedOpen((prev) => !prev)}
+    >
+      <SectionHeader
+        label="LIVE FEED"
+        title="Tracker Signals"
+        right={activeSnapshot ? `${activeSnapshot.count} signals` : "Loading"}
+      />
+      <div className="overflow-x-auto mt-6">
+        {trackerRows.length ? (
+          <table className="w-full text-sm">
+            <thead className="text-slate-400 border-b border-slate-800">
+              {table.getHeaderGroups().map((headerGroup) => (
+                <tr key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => (
+                    <th key={header.id} className="py-3 text-left font-medium">
+                      {flexRender(header.column.columnDef.header, header.getContext())}
+                    </th>
+                  ))}
+                </tr>
+              ))}
+            </thead>
+            <tbody>
+              {table.getRowModel().rows.map((row) => (
+                <tr key={row.id} className="border-b border-slate-900/60">
+                  {row.getVisibleCells().map((cell) => (
+                    <td key={cell.id} className="py-3 pr-4 text-slate-200">
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="text-xs text-slate-500">No live tracker data available.</p>
+        )}
+      </div>
+    </Collapsible>
+  </div>
+</div>
       </Reveal>
     </>
   );

@@ -737,6 +737,23 @@ class FinancialToolkit:
         put_price = strike_price * math.exp(-risk_free * time_years) * N(-d2) - spot_price * N(-d1)
         return float(call_price), float(put_price)
 
+    @staticmethod
+    def _calculate_max_drawdown(returns: pd.Series) -> float:
+        if returns.empty:
+            return 0.0
+        cumulative_returns = (1 + returns).cumprod()
+        peak = cumulative_returns.expanding(min_periods=1).max()
+        drawdown = (cumulative_returns - peak) / peak
+        return drawdown.min()
+
+    @staticmethod
+    def _calculate_var_cvar(returns: pd.Series, confidence_level: float) -> Tuple[float, float]:
+        if returns.empty:
+            return 0.0, 0.0
+        var = returns.quantile(1 - confidence_level)
+        cvar = returns[returns <= var].mean()
+        return float(var), float(cvar)
+
     def _run_multi_model_dashboard(self):
         """Compute a multi-model risk dashboard for the client's portfolio."""
         self.console.clear()
@@ -1975,6 +1992,10 @@ class FinancialToolkit:
         if downside_std > 0:
             sortino = (avg_daily - rf_daily) / downside_std * (ann_factor ** 0.5)
 
+        max_drawdown = self._calculate_max_drawdown(returns)
+        var_95, cvar_95 = self._calculate_var_cvar(returns, 0.95)
+        var_99, cvar_99 = self._calculate_var_cvar(returns, 0.99)
+
         beta = None
         alpha_annual = None
         r_squared = None
@@ -1997,40 +2018,34 @@ class FinancialToolkit:
 
                 corr = float(np.corrcoef(p, m)[0][1])
                 r_squared = corr * corr
-
-                excess = p - m
-                tracking_error = float(np.std(excess, ddof=1))
+                
+                active_return = returns - benchmark_returns
+                tracking_error = active_return.std() * (ann_factor ** 0.5)
                 if tracking_error > 0:
-                    information_ratio = (avg_daily - avg_m) / tracking_error * (ann_factor ** 0.5)
-
-                if beta and beta != 0:
-                    treynor = (avg_daily - rf_daily) / beta * ann_factor
-
-                std_m = float(np.std(m, ddof=1))
-                if std_daily > 0:
-                    m_squared = ((avg_daily - rf_daily) / std_daily) * std_m * ann_factor + risk_free_annual
-
-        max_drawdown = self._max_drawdown(returns)
-        var_95, cvar_95 = self._historical_var_cvar(returns, 0.95)
-        var_99, cvar_99 = self._historical_var_cvar(returns, 0.99)
-
+                    information_ratio = (returns.mean() - benchmark_returns.mean()) * ann_factor / tracking_error
+                
+                if beta is not None and beta != 0:
+                    treynor = (mean_annual - risk_free_annual) / beta
+                    
+                m_squared = risk_free_annual + sharpe * (benchmark_returns.std() * (ann_factor ** 0.5)) if sharpe is not None else None
+        
         return {
             "mean_annual": mean_annual,
             "vol_annual": vol_annual,
             "sharpe": sharpe,
             "sortino": sortino,
-            "beta": beta,
-            "alpha_annual": alpha_annual,
-            "r_squared": r_squared,
-            "information_ratio": information_ratio,
-            "tracking_error": tracking_error,
-            "treynor": treynor,
-            "m_squared": m_squared,
             "max_drawdown": max_drawdown,
             "var_95": var_95,
             "cvar_95": cvar_95,
             "var_99": var_99,
             "cvar_99": cvar_99,
+            "beta": beta,
+            "alpha_annual": alpha_annual,
+            "r_squared": r_squared,
+            "information_ratio": information_ratio,
+            "treynor": treynor,
+            "m_squared": m_squared,
+            "tracking_error": tracking_error,
         }
 
     def _max_drawdown(self, returns: pd.Series) -> float:

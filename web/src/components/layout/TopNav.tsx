@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink } from "react-router-dom";
-import { Menu, X } from "lucide-react";
+import { Menu, X, Bot } from "lucide-react";
 
 type NavItem = {
   label: string;
@@ -11,10 +11,11 @@ type NavItem = {
 type TopNavProps = {
   items: NavItem[];
   onToggleContext?: () => void;
+  onToggleAssistant?: () => void;
 };
 
-export function TopNav({ items, onToggleContext }: TopNavProps) {
-  const utilityPaths = new Set(["/tools", "/settings"]);
+export function TopNav({ items, onToggleContext, onToggleAssistant }: TopNavProps) {
+  const utilityPaths = new Set(["/system"]);
   const primaryItems = items.filter((item) => !utilityPaths.has(item.path));
   const utilityItems = items.filter((item) => utilityPaths.has(item.path));
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -81,6 +82,14 @@ export function TopNav({ items, onToggleContext }: TopNavProps) {
           <button
             className="hidden lg:inline-flex rounded-full border border-slate-800/80 px-4 py-2 text-xs text-slate-300 hover:border-slate-700 hover:text-white"
             type="button"
+            onClick={onToggleAssistant}
+          >
+            <Bot size={15} className="mr-2" />
+            Assistant
+          </button>
+          <button
+            className="hidden lg:inline-flex rounded-full border border-slate-800/80 px-4 py-2 text-xs text-slate-300 hover:border-slate-700 hover:text-white"
+            type="button"
             onClick={onToggleContext}
           >
             Context
@@ -129,6 +138,16 @@ export function TopNav({ items, onToggleContext }: TopNavProps) {
                   <span>{label}</span>
                 </NavLink>
               ))}
+              <button
+                className="w-full rounded-xl border border-slate-800/80 px-4 py-2 text-left text-sm text-slate-300 hover:border-slate-700 hover:text-white"
+                type="button"
+                onClick={() => {
+                  onToggleAssistant?.();
+                  setMobileOpen(false);
+                }}
+              >
+                Assistant
+              </button>
               <button
                 className="w-full rounded-xl border border-slate-800/80 px-4 py-2 text-left text-sm text-slate-300 hover:border-slate-700 hover:text-white"
                 type="button"

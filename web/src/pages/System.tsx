@@ -3,7 +3,12 @@ import { MeterBar } from "../components/ui/Charts";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { KpiCard } from "../components/ui/KpiCard";
 import { SectionHeader } from "../components/ui/SectionHeader";
-import { useApi } from "../lib/api";
+import {
+  clearApiKey,
+  getApiKey,
+  setApiKey as setApiKeyLocal,
+  useApi
+} from "../lib/api";
 import { useSystemMetrics } from "../lib/systemMetrics";
 
 type DiagnosticsPayload = {
@@ -44,7 +49,7 @@ type HealthPayload = {
   status?: string;
 };
 
-export default function Tools() {
+export default function System() {
   const { data, error, refresh } = useApi<DiagnosticsPayload>("/api/tools/diagnostics", {
     interval: 60000
   });
@@ -61,9 +66,43 @@ export default function Tools() {
       : null
   ].filter(Boolean) as string[];
 
+  const onNormalize = () => {
+    // Implement normalization logic here
+  };
+
+  const onClearCache = () => {
+    // Implement clear cache logic here
+  };
+
+  const onSetApiKey = () => {
+    const key = prompt("Enter API key:");
+    if (key) {
+      setApiKeyLocal(key);
+    }
+  };
+
   return (
     <Card className="rounded-2xl p-5">
-      <SectionHeader label="TOOLS" title="Diagnostics" />
+      <SectionHeader
+        label="SYSTEM"
+        title="System Settings & Diagnostics"
+        right={
+          <div className="flex space-x-2">
+            <button
+              onClick={onSetApiKey}
+              className="rounded-lg border border-slate-800/60 bg-ink-950/80 px-3 py-1 text-xs text-slate-300 hover:border-emerald-400/40"
+            >
+              Set API Key
+            </button>
+            <button
+              onClick={clearApiKey}
+              className="rounded-lg border border-slate-800/60 bg-ink-950/80 px-3 py-1 text-xs text-slate-300 hover:border-emerald-400/40"
+            >
+              Clear API Key
+            </button>
+          </div>
+        }
+      />
       <div className="mt-4">
         <ErrorBanner messages={errorMessages} onRetry={refresh} />
       </div>
@@ -72,6 +111,33 @@ export default function Tools() {
         <KpiCard label="Accounts" value={`${data?.clients?.accounts ?? 0}`} tone="text-slate-200" />
         <KpiCard label="Holdings" value={`${data?.clients?.holdings ?? 0}`} tone="text-slate-200" />
         <KpiCard label="Tracker Signals" value={`${data?.trackers?.count ?? 0}`} tone="text-emerald-300" />
+      </div>
+      <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 text-sm">
+        <div className="rounded-xl border border-slate-800/60 p-4">
+          <p className="text-slate-200 font-medium">Data Management</p>
+          <div className="mt-3 space-y-2">
+            <button
+              onClick={onNormalize}
+              className="w-full rounded-lg border border-slate-800/60 px-3 py-2 text-left text-slate-300 hover:border-emerald-400/40"
+            >
+              Normalize Lot Timestamps
+            </button>
+            <button
+              onClick={onClearCache}
+              className="w-full rounded-lg border border-slate-800/60 px-3 py-2 text-left text-slate-300 hover:border-emerald-400/40"
+            >
+              Clear Report Cache
+            </button>
+          </div>
+        </div>
+        <div className="rounded-xl border border-slate-800/60 p-4">
+          <p className="text-slate-200 font-medium">API Key</p>
+          <div className="mt-3 space-y-2">
+            <p className="text-xs text-slate-400">
+              Current key: {getApiKey() ? "********" : "Not set"}
+            </p>
+          </div>
+        </div>
       </div>
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6 text-sm text-slate-300">
         <div className="space-y-2">

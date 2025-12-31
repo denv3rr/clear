@@ -3,6 +3,7 @@ import { navItems } from "../../config/navigation";
 import { ErrorBanner } from "../ui/ErrorBanner";
 import { getApiBase, useApi } from "../../lib/api";
 import { ContextDrawer } from "./ContextDrawer";
+import { ChatDrawer } from "../ui/ChatDrawer";
 import { TopNav } from "./TopNav";
 
 type AppShellProps = {
@@ -17,6 +18,7 @@ export function AppShell({ children }: AppShellProps) {
     { interval: 60000 }
   );
   const [contextOpen, setContextOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const apiBase = getApiBase();
   const healthMessages: string[] = [];
   if (healthError) {
@@ -31,6 +33,7 @@ export function AppShell({ children }: AppShellProps) {
       <TopNav
         items={navItems}
         onToggleContext={() => setContextOpen((prev) => !prev)}
+        onToggleAssistant={() => setAssistantOpen((prev) => !prev)}
       />
       <div className="flex min-h-screen min-w-0">
         <main className="flex-1 min-w-0 px-6 py-8 md:px-10 lg:px-12 space-y-10 overflow-x-hidden">
@@ -40,6 +43,9 @@ export function AppShell({ children }: AppShellProps) {
       </div>
       {contextOpen ? (
         <ContextDrawer variant="overlay" onClose={() => setContextOpen(false)} />
+      ) : null}
+      {assistantOpen ? (
+        <ChatDrawer onClose={() => setAssistantOpen(false)} />
       ) : null}
     </div>
   );

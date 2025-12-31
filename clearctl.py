@@ -3,33 +3,35 @@ from __future__ import annotations
 import argparse
 import atexit
 import importlib.util
+import json
 import os
 import shutil
 import signal
 import subprocess
-import time
 import sys
+import time
 from pathlib import Path
+from typing import Iterable, Optional
 
 import httpx
+import psutil
 
 from utils.launcher import (
     LOG_DIR,
     RUNTIME_DIR,
     ensure_runtime_dirs,
-    filter_matching_pids,
-    find_pids_by_port,
     filter_existing,
+    find_pids_by_port,
     install_windows_console_handler,
+    pid_cmdline,
     port_in_use,
     process_alive,
     read_pid,
     safe_sleep,
-    wait_for_port,
-    wait_for_exit,
     tail_lines,
     terminate_pid,
-    terminate_pids_by_port,
+    wait_for_exit,
+    wait_for_port,
     wait_for_port_release,
     write_pid,
 )
@@ -39,8 +41,20 @@ WEB_PID = RUNTIME_DIR / "web.pid"
 API_LOG = LOG_DIR / "api.log"
 WEB_LOG = LOG_DIR / "web.log"
 
-DEFAULT_API_PORT = 8000
-DEFAULT_UI_PORT = 5173
+def _load_settings() -> dict:
+    settings_path = Path("config/settings.json")
+    if not settings_path.exists():
+        return {}
+    try:
+        return json.loads(settings_path.read_text())
+    except Exception:
+        return {}
+
+SETTINGS = _load_settings()
+DEFAULT_API_PORT = SETTINGS.get("api_port", 8000)
+DEFAULT_UI_PORT = SETTINGS.get("ui_port", 5173)
+_ACTIVE_ARGS: argparse.Namespace | None = None
+
 _ACTIVE_ARGS: argparse.Namespace | None = None
 
 
@@ -97,14 +111,7 @@ def _find_npm() -> str | None:
 
 
 def _npm_available() -> str | None:
-    npm_path = _find_npm()
-    if not npm_path:
-        return None
-    try:
-        subprocess.check_output([npm_path, "--version"], stderr=subprocess.STDOUT)
-    except Exception:
-        return None
-    return npm_path
+    return _find_npm()
 
 
 def _ensure_node_modules(web_dir: Path, npm_path: str, auto_yes: bool) -> bool:
@@ -179,12 +186,8 @@ def _ensure_playwright(npm_path: str, web_dir: Path, auto_yes: bool) -> bool:
 
 def _health_check(api_port: int) -> bool:
     url = f"http://127.0.0.1:{api_port}/api/health"
-    headers = {}
-    api_key = os.environ.get("CLEAR_WEB_API_KEY")
-    if api_key:
-        headers["X-API-Key"] = api_key
     try:
-        response = httpx.get(url, headers=headers, timeout=2.0, trust_env=False)
+        response = httpx.get(url, timeout=2.0, trust_env=False)
         return response.status_code == 200
     except Exception:
         return False
@@ -216,113 +219,77 @@ def _install_shutdown_handlers(args: argparse.Namespace) -> None:
     install_windows_console_handler(lambda: _stop(args))
 
 
-def _cleanup_existing_processes() -> None:
-    for label, pid_path in (("API", API_PID), ("Web", WEB_PID)):
-        pid = read_pid(pid_path)
-        if pid and process_alive(pid):
-            terminate_pid(pid, timeout=8.0)
-            print(f">> Stopped existing {label} process (pid {pid}).")
-        if pid_path.exists():
-            pid_path.unlink(missing_ok=True)
-    wait_for_port_release(DEFAULT_API_PORT, timeout=10.0)
-    wait_for_port_release(DEFAULT_UI_PORT, timeout=10.0)
 
-
-def _terminate_port_processes(port: int, label: str, auto_yes: bool) -> bool:
-    if not port_in_use(port):
-        return True
-    pids = find_pids_by_port(port)
-    if not pids:
-        print(f">> {label} port {port} in use but owning process not found.")
-        return False
-    tokens = ["uvicorn", "web_api.app:app"] if label == "API" else ["vite"]
-    safe_pids = filter_matching_pids(pids, tokens) if tokens else []
-    remaining = [pid for pid in pids if pid not in safe_pids]
-    for pid in safe_pids:
-        terminate_pid(pid)
-        print(f">> Terminated {label} port process (pid {pid}).")
-    if remaining:
-        pid_list = ", ".join(str(pid) for pid in remaining)
-        if not auto_yes:
-            print(
-                f">> {label} port {port} in use by pid(s) {pid_list}. Terminating."
-            )
-        for pid in remaining:
-            terminate_pid(pid)
-            print(f">> Terminated {label} port process (pid {pid}).")
-    return True
-
-
-def _force_release_ports(ports: Iterable[int], timeout: float = 8.0) -> bool:
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        all_clear = True
-        for port in ports:
-            if port_in_use(port):
-                all_clear = False
-                terminate_pids_by_port(port, None, timeout=4.0)
-        if all_clear:
-            return True
-        safe_sleep(0.2)
-    return all(not port_in_use(port) for port in ports)
 
 
 def _start(args: argparse.Namespace) -> int:
     ensure_runtime_dirs()
-    _cleanup_existing_processes()
     if args.foreground:
         _install_shutdown_handlers(args)
     if not _python_deps_ready(args.yes):
         return 1
-    if not _terminate_port_processes(args.api_port, "API", args.yes):
-        print(f">> API port {args.api_port} already in use.")
-        return 1
-    api_cmd = [
-        sys.executable,
-        "-m",
-        "uvicorn",
-        "web_api.app:app",
-    ]
-    if args.reload:
-        api_cmd.append("--reload")
-    api_cmd.extend(["--port", str(args.api_port)])
-    api_proc = _spawn_process(api_cmd, detach=not args.foreground, log_path=API_LOG)
-    write_pid(API_PID, api_proc.pid)
 
-    try:
-        if not _wait_for_api(args.api_port):
-            print(f">> API failed to start on port {args.api_port}. Check logs: {API_LOG}")
+    api_pid = read_pid(API_PID)
+    if api_pid and process_alive(api_pid):
+        print(">> API is already running.")
+    elif port_in_use(args.api_port):
+        print(f">> API port {args.api_port} already in use by another process.")
+        return 1
+
+    if not (api_pid and process_alive(api_pid)):
+        api_cmd = [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "web_api.app:app",
+        ]
+        if args.reload:
+            api_cmd.append("--reload")
+        api_cmd.extend(["--port", str(args.api_port)])
+        api_proc = _spawn_process(api_cmd, detach=not args.foreground, log_path=API_LOG)
+        write_pid(API_PID, api_proc.pid)
+
+        try:
+            if not _wait_for_api(args.api_port):
+                print(f">> API failed to start on port {args.api_port}. Check logs: {API_LOG}")
+                return _stop(args)
+        except KeyboardInterrupt:
+            print("\n>> Startup interrupted before API was ready.")
             return _stop(args)
-    except KeyboardInterrupt:
-        print("\n>> Startup interrupted before API was ready.")
-        return _stop(args)
 
     web_dir = Path("web")
     if args.no_web or not web_dir.exists():
         print(">> API started.")
+        if args.foreground:
+            wait_for_exit(api_proc.pid)
         return 0
 
-    npm_path = _npm_available()
-    if not npm_path:
-        print(">> npm not found. Install Node.js (includes npm) and retry.")
+    web_pid = read_pid(WEB_PID)
+    if web_pid and process_alive(web_pid):
+        print(">> Web UI is already running.")
+    elif port_in_use(args.ui_port):
+        print(f">> UI port {args.ui_port} already in use by another process.")
         return 1
-    if not _terminate_port_processes(args.ui_port, "UI", args.yes):
-        print(f">> UI port {args.ui_port} already in use.")
-        return 1
-    if not _ensure_node_modules(web_dir, npm_path, args.yes):
-        return 1
+    
+    if not (web_pid and process_alive(web_pid)):
+        npm_path = _npm_available()
+        if not npm_path:
+            print(">> npm not found. Install Node.js (includes npm) and retry.")
+            return 1
+        if not _ensure_node_modules(web_dir, npm_path, args.yes):
+            return 1
 
-    ui_env = os.environ.copy()
-    ui_env.setdefault("VITE_API_BASE", f"http://127.0.0.1:{args.api_port}")
-    api_key = os.environ.get("CLEAR_WEB_API_KEY")
-    if api_key:
-        ui_env.setdefault("VITE_API_KEY", api_key)
-    ui_cmd = [npm_path, "run", "dev", "--", "--host", "127.0.0.1", "--port", str(args.ui_port)]
-    ui_proc = _spawn_process(ui_cmd, cwd=web_dir, env=ui_env, detach=not args.foreground, log_path=WEB_LOG)
-    write_pid(WEB_PID, ui_proc.pid)
-    if not wait_for_port(args.ui_port, timeout=6.0):
-        print(f">> Web UI failed to start on port {args.ui_port}. Check logs: {WEB_LOG}")
-        return _stop(args)
+        ui_env = os.environ.copy()
+        ui_env.setdefault("VITE_API_BASE", f"http://127.0.0.1:{args.api_port}")
+        api_key = os.environ.get("CLEAR_WEB_API_KEY")
+        if api_key:
+            ui_env.setdefault("VITE_API_KEY", api_key)
+        ui_cmd = [npm_path, "run", "dev", "--", "--host", "127.0.0.1", "--port", str(args.ui_port)]
+        ui_proc = _spawn_process(ui_cmd, cwd=web_dir, env=ui_env, detach=not args.foreground, log_path=WEB_LOG)
+        write_pid(WEB_PID, ui_proc.pid)
+        if not wait_for_port(args.ui_port, timeout=6.0):
+            print(f">> Web UI failed to start on port {args.ui_port}. Check logs: {WEB_LOG}")
+            return _stop(args)
 
     print(f">> Web UI: http://127.0.0.1:{args.ui_port}")
     print(f">> API: http://127.0.0.1:{args.api_port}")
@@ -346,13 +313,6 @@ def _stop(args: argparse.Namespace) -> int:
     ensure_runtime_dirs()
     stopped = False
     failed = False
-    auto_yes = True
-    tokens_by_label = {
-        "API": ["uvicorn", "web_api.app:app"],
-        "Web": ["vite", "npm", "node"],
-    }
-    api_port = getattr(args, "api_port", DEFAULT_API_PORT)
-    ui_port = getattr(args, "ui_port", DEFAULT_UI_PORT)
     for label, pid_path in (("API", API_PID), ("Web", WEB_PID)):
         pid = read_pid(pid_path)
         if pid and process_alive(pid):
@@ -365,17 +325,7 @@ def _stop(args: argparse.Namespace) -> int:
                 print(f">> {label} process (pid {pid}) did not exit cleanly.")
         if pid_path.exists():
             pid_path.unlink(missing_ok=True)
-        port = api_port if label == "API" else ui_port
-        extra = terminate_pids_by_port(port, tokens_by_label.get(label), timeout=4.0)
-        if extra:
-            print(f">> Terminated {label} port process(es): {', '.join(str(pid) for pid in extra)}")
-    _terminate_port_processes(api_port, "API", auto_yes)
-    _terminate_port_processes(ui_port, "UI", auto_yes)
-    if not _force_release_ports((api_port, ui_port), timeout=8.0):
-        failed = True
-    if port_in_use(api_port) or port_in_use(ui_port):
-        failed = True
-        print(">> One or more service ports are still in use. Check running processes.")
+            
     if not stopped:
         print(">> No running services detected.")
     return 1 if failed else 0
@@ -458,9 +408,6 @@ def _parse_args() -> argparse.Namespace:
     start = sub.add_parser("start", help="Start API and web UI.")
     _add_start_args(start)
 
-    web = sub.add_parser("web", help="Start the web stack (API + UI).")
-    _add_start_args(web)
-
     stop = sub.add_parser("stop", help="Stop API and web UI.")
     stop.add_argument("--yes", action="store_true")
 
@@ -488,8 +435,6 @@ def main() -> int:
     _print_header()
     args = _parse_args()
     if args.command == "start":
-        return _start(args)
-    if args.command == "web":
         return _start(args)
     if args.command == "stop":
         return _stop(args)

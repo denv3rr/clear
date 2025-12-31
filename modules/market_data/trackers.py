@@ -218,7 +218,7 @@ class TrackerProviders:
     @staticmethod
     def fetch_flights(limit: int = 200) -> Tuple[List[TrackerPoint], List[str]]:
         warnings: List[str] = []
-        include_commercial = os.getenv("CLEAR_INCLUDE_COMMERCIAL", "1") == "1"
+        include_commercial = os.getenv("CLEAR_INCLUDE_COMMERCIAL", "0") == "1"
         include_private = os.getenv("CLEAR_INCLUDE_PRIVATE", "1") == "1"
         urls = TrackerProviders._parse_sources(os.getenv("FLIGHT_DATA_URL"))
         data_paths = TrackerProviders._parse_sources(os.getenv("FLIGHT_DATA_PATH"))
