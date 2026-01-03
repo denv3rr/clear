@@ -1203,7 +1203,7 @@ export default function Clients() {
               >
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 text-xs text-slate-100">
               <div className="rounded-xl border border-slate-700 p-4">
-                <p className="text-xs text-slate-300 mb-2">Tax Profile</p>
+                <p className="text-xs font-semibold text-slate-200 mb-2">Tax Profile</p>
                 <div className="space-y-2">
                   {profileRows.map(([label, value]) => (
                     <div key={label} className="flex items-center justify-between">
@@ -1214,7 +1214,7 @@ export default function Clients() {
                 </div>
               </div>
               <div className="rounded-xl border border-slate-700 p-4">
-                <p className="text-xs text-slate-300 mb-2">Accounts</p>
+                <p className="text-xs font-semibold text-slate-200 mb-2">Accounts</p>
                 {accountRows.length ? (
                   <div className="space-y-3">
                     {accountRows.map((account) => (
@@ -1292,7 +1292,7 @@ export default function Clients() {
                 />
                 <div className="space-y-4">
                   <div className="glass-panel rounded-2xl p-5">
-                    <p className="text-xs text-slate-300">Stationary Distribution</p>
+                    <p className="text-xs font-semibold text-slate-200">Stationary Distribution</p>
                     <div className="mt-3 space-y-2 text-xs text-slate-100">
                       {dashboard?.regime?.error ? (
                         <p className="text-amber-300">
@@ -1312,7 +1312,7 @@ export default function Clients() {
                   </div>
                   <div className="glass-panel rounded-2xl p-5">
                     <div className="flex items-center justify-between">
-                      <p className="text-xs text-slate-300">Regime Window</p>
+                      <p className="text-xs font-semibold text-slate-200">Regime Window</p>
                       <p className="text-[11px] text-green-300">
                         {dashboard?.regime?.window?.interval || dashboard?.interval || "n/a"}
                       </p>
@@ -1376,7 +1376,7 @@ export default function Clients() {
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 text-xs text-slate-100">
                   <div className="rounded-xl border border-slate-700 p-4">
-                    <p className="text-xs text-slate-300 mb-2">Motif Matches</p>
+                    <p className="text-xs font-semibold text-slate-200 mb-2">Motif Matches</p>
                     {patterns?.motifs?.length ? (
                       patterns.motifs.map((motif) => (
                         <div key={motif.window} className="flex items-center justify-between">
@@ -1389,7 +1389,7 @@ export default function Clients() {
                     )}
                   </div>
                   <div className="rounded-xl border border-slate-700 p-4">
-                    <p className="text-xs text-slate-300 mb-2">Change Points</p>
+                    <p className="text-xs font-semibold text-slate-200 mb-2">Change Points</p>
                     {patterns?.change_points?.length ? (
                       <p className="text-slate-100">{patterns.change_points.length} detected shifts</p>
                     ) : (
@@ -1429,7 +1429,7 @@ export default function Clients() {
               >
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 text-xs text-slate-100">
               <div className="rounded-xl border border-slate-700 p-4">
-                <p className="text-xs text-slate-300 mb-2">Sector Concentration</p>
+                <p className="text-xs font-semibold text-slate-200 mb-2">Sector Concentration</p>
                 {dashboard?.diagnostics?.sectors?.length ? (
                   <div className="space-y-2">
                     {dashboard.diagnostics.sectors.map((row) => (
@@ -1445,7 +1445,7 @@ export default function Clients() {
                 )}
               </div>
               <div className="rounded-xl border border-slate-700 p-4">
-                <p className="text-xs text-slate-300 mb-2">Top Movers (1D)</p>
+                <p className="text-xs font-semibold text-slate-200 mb-2">Top Movers (1D)</p>
                 {dashboard?.diagnostics ? (
                   <div className="space-y-2">
                     {(dashboard.diagnostics.gainers || []).map((row) => (

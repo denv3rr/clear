@@ -154,7 +154,7 @@ def _validate_clients_payload(payload: Any) -> List[str]:
                 errors.append(f"client[{idx}].accounts[{aidx}].account_id missing or invalid.")
             if not isinstance(account_name, str) or not account_name.strip():
                 errors.append(f"client[{idx}].accounts[{aidx}].account_name missing or invalid.")
-            holdings = account.get("holdings", {{}})
+            holdings = account.get("holdings", {})
             if holdings is not None and not isinstance(holdings, dict):
                 errors.append(f"client[{idx}].accounts[{aidx}].holdings must be an object.")
             if isinstance(holdings, dict):
@@ -168,7 +168,7 @@ def _validate_clients_payload(payload: Any) -> List[str]:
                     if isinstance(qty, (int, float)) and qty < 0:
                         errors.append(f"client[{idx}].accounts[{aidx}].holdings[{ticker}] must be non-negative.")
                         break
-            lots = account.get("lots", {{}})
+            lots = account.get("lots", {})
             if lots is not None and not isinstance(lots, dict):
                 errors.append(f"client[{idx}].accounts[{aidx}].lots must be an object.")
             if isinstance(lots, dict):

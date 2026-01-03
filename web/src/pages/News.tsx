@@ -197,7 +197,7 @@ export default function News() {
           </div>
           {sourceOptions.length ? (
             <div className="mt-4">
-              <p className="text-xs text-slate-300">Sources</p>
+              <p className="text-xs font-semibold text-slate-200">Sources</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {sourceOptions.map((source) => (
                   <button
@@ -219,7 +219,7 @@ export default function News() {
         </Collapsible>
 
         <div className="rounded-xl border border-slate-700 p-4">
-          <p className="text-xs text-slate-300 mb-2">Feed Health</p>
+          <p className="text-xs font-semibold text-slate-200 mb-2">Feed Health</p>
           <p className="text-sm text-green-300">{data?.cached ? "Cached feed" : "Live fetch"}</p>
           {data?.skipped?.length ? (
             <p className="text-xs text-amber-300 mt-2">Skipped: {data.skipped.join(", ")}</p>

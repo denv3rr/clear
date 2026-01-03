@@ -18,7 +18,7 @@ class DummyResponse:
 def test_fetch_flights_keeps_points_without_speed_or_alt(monkeypatch):
     monkeypatch.setenv("FLIGHT_DATA_URL", "http://example")
     monkeypatch.delenv("FLIGHT_DATA_PATH", raising=False)
-    monkeypatch.delenv("CLEAR_INCLUDE_COMMERCIAL", raising=False)
+    monkeypatch.setenv("CLEAR_INCLUDE_COMMERCIAL", "1")
     payload = [
         {
             "lat": 33.63,
@@ -36,6 +36,7 @@ def test_fetch_flights_keeps_points_without_speed_or_alt(monkeypatch):
 def test_fetch_flights_merges_multiple_urls(monkeypatch):
     monkeypatch.setenv("FLIGHT_DATA_URL", "http://example/a,http://example/b")
     monkeypatch.delenv("FLIGHT_DATA_PATH", raising=False)
+    monkeypatch.setenv("CLEAR_INCLUDE_COMMERCIAL", "1")
 
     def fake_get(url, timeout=8):
         if url.endswith("/a"):
@@ -160,10 +161,10 @@ def test_opensky_oauth_uses_bearer_token(monkeypatch):
                 ]
             }
 
-    def fake_post(url, data=None, headers=None, timeout=8):
+    def fake_post(url, data=None, headers=None, timeout=8, proxies=None):
         return TokenResponse()
 
-    def fake_get(url, timeout=8, auth=None, headers=None, params=None):
+    def fake_get(url, timeout=8, auth=None, headers=None, params=None, proxies=None):
         assert headers
         assert headers.get("Authorization") == "Bearer token"
         return OpenSkyResponse()

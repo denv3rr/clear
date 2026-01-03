@@ -65,6 +65,7 @@ data/*session*
 data/cache/
 data/exports/
 data/reports/
+
 data/logs/
 data/pids/
 data/runtime/

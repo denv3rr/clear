@@ -11,6 +11,7 @@ from modules.client_mgr.toolkit import (
 )
 from modules.client_mgr.valuation import ValuationEngine
 from modules.client_mgr.holdings import normalize_ticker
+from modules.client_mgr.client_model import Client as ClientPayload
 
 
 def _holdings_count(holdings: Dict[str, float]) -> int:
@@ -34,35 +35,162 @@ def _manual_value(manual_holdings: List[Dict[str, Any]]) -> float:
     return total
 
 
+def _client_accounts(client: Any) -> List[Any]:
+    if isinstance(client, dict):
+        return list(client.get("accounts", []) or [])
+    return list(getattr(client, "accounts", []) or [])
+
+
+def _account_holdings(account: Any) -> Dict[str, Any]:
+    if isinstance(account, dict):
+        return account.get("holdings", {}) or {}
+    return getattr(account, "holdings", {}) or {}
+
+
+def _account_lots(account: Any) -> Dict[str, List[Dict[str, Any]]]:
+    if isinstance(account, dict):
+        return account.get("lots", {}) or {}
+    return getattr(account, "lots", {}) or {}
+
+
+def _account_manual_holdings(account: Any) -> List[Dict[str, Any]]:
+    if isinstance(account, dict):
+        return account.get("manual_holdings", []) or []
+    return list(getattr(account, "manual_holdings", []) or [])
+
+
+def _account_label(account: Any) -> str:
+    if isinstance(account, dict):
+        return str(account.get("account_name") or "")
+    return str(getattr(account, "account_name", "") or getattr(account, "name", ""))
+
+
+def _account_identifier(account: Any) -> Any:
+    if isinstance(account, dict):
+        return account.get("account_id")
+    return getattr(account, "id", None) or getattr(account, "account_id", None)
+
+
+def _account_type(account: Any) -> str:
+    if isinstance(account, dict):
+        return str(account.get("account_type") or "")
+    return str(getattr(account, "account_type", "") or "")
+
+
+def _client_identifier(client: Any) -> Any:
+    if isinstance(client, dict):
+        return client.get("client_id")
+    return getattr(client, "id", None) or getattr(client, "client_id", None)
+
+
+def _client_label(client: Any) -> str:
+    if isinstance(client, dict):
+        return str(client.get("name") or "")
+    return str(getattr(client, "name", "") or "")
+
+
+def _client_risk_profile(client: Any) -> str:
+    if isinstance(client, dict):
+        return str(client.get("risk_profile") or "")
+    return str(getattr(client, "risk_profile", "") or "")
+
+
+def _client_risk_profile_source(client: Any) -> str:
+    if isinstance(client, dict):
+        return str(client.get("risk_profile_source") or "")
+    return str(getattr(client, "risk_profile_source", "") or "")
+
+
+def _client_active_interval(client: Any) -> str:
+    if isinstance(client, dict):
+        return str(client.get("active_interval") or "")
+    return str(getattr(client, "active_interval", "") or "")
+
+
+def _client_tax_profile(client: Any) -> Dict[str, Any]:
+    if isinstance(client, dict):
+        return client.get("tax_profile", {}) or {}
+    return getattr(client, "tax_profile", {}) or {}
+
+
+def _client_extra(client: Any) -> Dict[str, Any]:
+    if isinstance(client, dict):
+        return client.get("extra", {}) or {}
+    return getattr(client, "extra", {}) or {}
+
+
+def _account_current_value(account: Any) -> float:
+    if isinstance(account, dict):
+        try:
+            return float(account.get("current_value", 0.0) or 0.0)
+        except Exception:
+            return 0.0
+    try:
+        return float(getattr(account, "current_value", 0.0) or 0.0)
+    except Exception:
+        return 0.0
+
+
+def _account_active_interval(account: Any) -> str:
+    if isinstance(account, dict):
+        return str(account.get("active_interval") or "")
+    return str(getattr(account, "active_interval", "") or "")
+
+
+def _account_extra(account: Any) -> Dict[str, Any]:
+    if isinstance(account, dict):
+        return account.get("extra", {}) or {}
+    return getattr(account, "extra", {}) or {}
+
+
 def account_summary(account: Account) -> Dict[str, Any]:
     return {
-        "account_id": account.id,
-        "account_name": account.name,
-        "account_type": account.account_type,
-        "holdings_count": _holdings_count(account.holdings),
+        "account_id": _account_identifier(account),
+        "account_name": _account_label(account),
+        "account_type": _account_type(account),
+        "holdings_count": _holdings_count(_account_holdings(account)),
     }
 
 
 def account_detail(account: Account) -> Dict[str, Any]:
     holdings: Dict[str, float] = {}
-    for ticker, qty in (account.holdings or {}).items():
+    for ticker, qty in (_account_holdings(account) or {}).items():
         try:
             holdings[normalize_ticker(ticker)] = float(qty or 0.0)
         except Exception:
             continue
     return {
         **account_summary(account),
+        "current_value": _account_current_value(account),
+        "active_interval": _account_active_interval(account),
         "holdings": holdings,
+        "lots": _account_lots(account),
+        "manual_holdings": _account_manual_holdings(account),
+        "ownership_type": (
+            account.get("ownership_type")
+            if isinstance(account, dict)
+            else getattr(account, "ownership_type", None)
+        ),
+        "custodian": (
+            account.get("custodian") if isinstance(account, dict) else getattr(account, "custodian", None)
+        ),
+        "tags": (account.get("tags") if isinstance(account, dict) else getattr(account, "tags", None)) or [],
+        "tax_settings": (
+            account.get("tax_settings")
+            if isinstance(account, dict)
+            else getattr(account, "tax_settings", None)
+        ),
+        "extra": _account_extra(account),
     }
 
 
 def client_summary(client: Client) -> Dict[str, Any]:
-    holdings_count = sum(_holdings_count(acc.holdings) for acc in client.accounts)
+    holdings_count = sum(_holdings_count(_account_holdings(acc)) for acc in _client_accounts(client))
     return {
-        "client_id": client.id,
-        "name": client.name,
-        "risk_profile": client.risk_profile,
-        "accounts_count": len(client.accounts),
+        "client_id": _client_identifier(client),
+        "name": _client_label(client),
+        "risk_profile": _client_risk_profile(client),
+        "accounts_count": len(_client_accounts(client)),
         "holdings_count": holdings_count,
     }
 
@@ -70,7 +198,11 @@ def client_summary(client: Client) -> Dict[str, Any]:
 def client_detail(client: Client) -> Dict[str, Any]:
     return {
         **client_summary(client),
-        "accounts": [account_detail(account) for account in client.accounts],
+        "risk_profile_source": _client_risk_profile_source(client),
+        "active_interval": _client_active_interval(client),
+        "tax_profile": _client_tax_profile(client),
+        "accounts": [account_detail(account) for account in _client_accounts(client)],
+        "extra": _client_extra(client),
     }
 
 
@@ -81,7 +213,7 @@ def list_clients(clients: Iterable[Client]) -> List[Dict[str, Any]]:
 def _aggregate_holdings(accounts: Iterable[Account]) -> Dict[str, float]:
     consolidated: Dict[str, float] = {}
     for account in accounts:
-        for ticker, qty in (account.holdings or {}).items():
+        for ticker, qty in (_account_holdings(account) or {}).items():
             try:
                 consolidated[ticker] = consolidated.get(ticker, 0.0) + float(qty or 0.0)
             except Exception:
@@ -92,7 +224,7 @@ def _aggregate_holdings(accounts: Iterable[Account]) -> Dict[str, float]:
 def _aggregate_lots(accounts: Iterable[Account]) -> Dict[str, List[Dict[str, Any]]]:
     lots: Dict[str, List[Dict[str, Any]]] = {}
     for account in accounts:
-        for ticker, entries in (account.lots or {}).items():
+        for ticker, entries in (_account_lots(account) or {}).items():
             lots.setdefault(ticker, []).extend(entries or [])
     return lots
 
@@ -100,7 +232,7 @@ def _aggregate_lots(accounts: Iterable[Account]) -> Dict[str, List[Dict[str, Any
 def _aggregate_manual_holdings(accounts: Iterable[Account]) -> List[Dict[str, Any]]:
     manual: List[Dict[str, Any]] = []
     for account in accounts:
-        manual.extend(list(account.manual_holdings or []))
+        manual.extend(list(_account_manual_holdings(account) or []))
     return manual
 
 
@@ -135,9 +267,10 @@ def _regime_window_payload(
 
 def portfolio_dashboard(client: Client, interval: str = "1M") -> Dict[str, Any]:
     valuation = ValuationEngine()
-    holdings = _aggregate_holdings(client.accounts)
-    lots = _aggregate_lots(client.accounts)
-    manual_entries = _aggregate_manual_holdings(client.accounts)
+    accounts = _client_accounts(client)
+    holdings = _aggregate_holdings(accounts)
+    lots = _aggregate_lots(accounts)
+    manual_entries = _aggregate_manual_holdings(accounts)
     warnings: List[str] = []
 
     total_value = 0.0
@@ -158,18 +291,19 @@ def portfolio_dashboard(client: Client, interval: str = "1M") -> Dict[str, Any]:
         interval=interval,
         lot_map=lots,
     )
-    toolkit = FinancialToolkit(client)
+    client_obj = ClientPayload.from_dict(client) if isinstance(client, dict) else client
+    toolkit = FinancialToolkit(client_obj)
     risk_payload = toolkit.build_risk_dashboard_payload(
         holdings=holdings,
         interval=interval,
-        label=client.name,
+        label=_client_label(client),
         scope="Portfolio",
     )
     regime_payload = toolkit.build_regime_snapshot_payload(
         holdings=holdings,
         lot_map=lots,
         interval=interval,
-        label=client.name,
+        label=_client_label(client),
         scope="Portfolio",
     )
     regime_payload["window"] = _regime_window_payload(
@@ -251,8 +385,8 @@ def portfolio_dashboard(client: Client, interval: str = "1M") -> Dict[str, Any]:
 
 def account_dashboard(client: Client, account: Account, interval: str = "1M") -> Dict[str, Any]:
     valuation = ValuationEngine()
-    holdings = dict(account.holdings or {})
-    lots = dict(account.lots or {})
+    holdings = dict(_account_holdings(account) or {})
+    lots = dict(_account_lots(account) or {})
     warnings: List[str] = []
 
     total_value = 0.0
@@ -266,25 +400,26 @@ def account_dashboard(client: Client, account: Account, interval: str = "1M") ->
     else:
         warnings.append("No holdings available for valuation.")
 
-    manual_total, manual_holdings = valuation.calculate_manual_holdings_value(account.manual_holdings or [])
+    manual_total, manual_holdings = valuation.calculate_manual_holdings_value(_account_manual_holdings(account) or [])
     history_dates, history_values = valuation.generate_portfolio_history_series(
         enriched_data=enriched,
         holdings=holdings,
         interval=interval,
         lot_map=lots,
     )
-    toolkit = FinancialToolkit(client)
+    client_obj = ClientPayload.from_dict(client) if isinstance(client, dict) else client
+    toolkit = FinancialToolkit(client_obj)
     risk_payload = toolkit.build_risk_dashboard_payload(
         holdings=holdings,
         interval=interval,
-        label=account.account_name,
+        label=_account_label(account),
         scope="Account",
     )
     regime_payload = toolkit.build_regime_snapshot_payload(
         holdings=holdings,
         lot_map=lots,
         interval=interval,
-        label=account.account_name,
+        label=_account_label(account),
         scope="Account",
     )
     regime_payload["window"] = _regime_window_payload(
@@ -326,7 +461,7 @@ def account_dashboard(client: Client, account: Account, interval: str = "1M") ->
             "market_value": float(total_value),
             "manual_value": float(manual_total),
             "total_value": float(total_value + manual_total),
-            "holdings_count": _holdings_count(account.holdings),
+            "holdings_count": _holdings_count(_account_holdings(account)),
             "manual_count": len(manual_holdings),
         },
         "holdings": holdings_list,
@@ -366,22 +501,24 @@ def account_dashboard(client: Client, account: Account, interval: str = "1M") ->
 
 
 def client_patterns(client: Client, interval: str = "1M") -> Dict[str, Any]:
-    holdings = _aggregate_holdings(client.accounts)
-    toolkit = FinancialToolkit(client)
+    holdings = _aggregate_holdings(_client_accounts(client))
+    client_obj = ClientPayload.from_dict(client) if isinstance(client, dict) else client
+    toolkit = FinancialToolkit(client_obj)
     return toolkit.build_pattern_payload(
         holdings=holdings,
         interval=interval,
-        label=client.name,
+        label=_client_label(client),
         scope="Portfolio",
     )
 
 
 def account_patterns(client: Client, account: Account, interval: str = "1M") -> Dict[str, Any]:
-    holdings = dict(account.holdings or {})
-    toolkit = FinancialToolkit(client)
+    holdings = dict(_account_holdings(account) or {})
+    client_obj = ClientPayload.from_dict(client) if isinstance(client, dict) else client
+    toolkit = FinancialToolkit(client_obj)
     return toolkit.build_pattern_payload(
         holdings=holdings,
         interval=interval,
-        label=account.account_name,
+        label=_account_label(account),
         scope="Account",
     )

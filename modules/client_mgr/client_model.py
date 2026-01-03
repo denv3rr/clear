@@ -32,6 +32,7 @@ class Account:
         "withholding_rate": None,
         "tax_exempt": False,
     })
+    extra: Dict[str, Any] = field(default_factory=dict)
 
     @staticmethod
     def _normalize_lots(raw_lots: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
@@ -110,6 +111,7 @@ class Account:
                 "withholding_rate": None,
                 "tax_exempt": False,
             },
+            extra=data.get("extra", {}) or {},
         )
 
         if lots:
@@ -130,6 +132,7 @@ class Account:
             "custodian": self.custodian,
             "tags": self.tags,
             "tax_settings": self.tax_settings,
+            "extra": self.extra,
         }
 
 
@@ -149,6 +152,7 @@ class Client:
         "tax_id": "",
     })
     accounts: List[Account] = field(default_factory=list)
+    extra: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -158,7 +162,8 @@ class Client:
             "risk_profile_source": self.risk_profile_source,
             "active_interval": self.active_interval,
             "tax_profile": self.tax_profile,
-            "accounts": [a.to_dict() for a in self.accounts]
+            "accounts": [a.to_dict() for a in self.accounts],
+            "extra": self.extra,
         }
 
     @staticmethod
@@ -180,7 +185,8 @@ class Client:
                 "treaty_country": "",
                 "tax_id": "",
             },
-            accounts=[]
+            accounts=[],
+            extra=data.get("extra", {}) or {},
         )
 
         for acc_data in data.get("accounts", []):

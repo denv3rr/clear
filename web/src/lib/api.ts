@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DEMO_MODE, getMockResponse } from "./mockData";
-import { getTrackerPaused, useTrackerPause } from "./trackerPause";
+import { useTrackerPause } from "./trackerPause";
 
 const runtimeHost =
   typeof window !== "undefined" && window.location.hostname
@@ -115,13 +115,6 @@ export async function apiGet<T>(path: string, ttl = 0, signal?: AbortSignal): Pr
       return existing.data;
     }
   }
-  if (path.startsWith("/api/trackers") && getTrackerPaused()) {
-    const existing = cache.get(key) as CacheEntry<T> | undefined;
-    if (existing) {
-      return existing.data;
-    }
-    throw new Error("Tracker updates paused.");
-  }
   const demoMode = DEMO_MODE || isDemoOverride();
   if (demoMode) {
     const payload = getMockResponse(applyDemoOverrides(path)) as T;
@@ -231,6 +224,8 @@ export function useApi<T>(path: string, options: UseApiOptions = {}) {
   useEffect(() => {
     if (trackerPaused) {
       setLoading(false);
+      setError(null);
+      setWarnings([]);
       return;
     }
     fetchData();

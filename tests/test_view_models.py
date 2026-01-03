@@ -30,6 +30,7 @@ def test_account_detail_manual_holdings():
     acc.manual_holdings = [{"total_value": 1234.5}]
     detail = account_detail(acc)
     assert detail["manual_holdings"][0]["total_value"] == 1234.5
+    assert detail["active_interval"] == "1M"
 
 
 def test_account_detail_ignores_invalid_holdings():
@@ -38,6 +39,16 @@ def test_account_detail_ignores_invalid_holdings():
     detail = account_detail(acc)
     assert detail["holdings"]["AAPL"] == 2.0
     assert "BROKEN" not in detail["holdings"]
+
+
+def test_client_detail_includes_tax_profile_and_extra():
+    client = Client(name="Nova", tax_profile={"reporting_currency": "EUR"}, extra={"legacy": "yes"})
+    acc = Account(account_name="Primary", extra={"origin": "import"})
+    client.accounts = [acc]
+    detail = client_detail(client)
+    assert detail["tax_profile"]["reporting_currency"] == "EUR"
+    assert detail["extra"]["legacy"] == "yes"
+    assert detail["accounts"][0]["extra"]["origin"] == "import"
 
 
 def test_regime_window_payload_uses_recent_window():

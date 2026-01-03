@@ -27,7 +27,7 @@ export function SurfaceGrid({ title, data, labels, className = "" }: SurfaceProp
   return (
     <div className={`glass-panel rounded-2xl p-5 ${className}`}>
       <div className="flex items-center justify-between">
-        <p className="text-xs text-slate-400">{title}</p>
+        <p className="text-xs font-semibold text-slate-100">{title}</p>
         <p className="text-[11px] text-emerald-300">{columns ? `${rows.length}x${columns}` : "No data"}</p>
       </div>
       <div className="mt-3 space-y-2">

@@ -34,9 +34,6 @@ def test_cleanup_existing_processes_removes_pidfiles(monkeypatch, tmp_path: Path
 def test_terminate_port_processes_auto_yes(monkeypatch) -> None:
     killed: list[int] = []
 
-    def fake_port_in_use(port: int) -> bool:
-        return True
-
     def fake_find_pids(port: int) -> list[int]:
         return [222, 333]
 
@@ -44,12 +41,12 @@ def test_terminate_port_processes_auto_yes(monkeypatch) -> None:
         killed.append(pid)
         return True
 
-    monkeypatch.setattr(clearctl, "port_in_use", fake_port_in_use)
     monkeypatch.setattr(clearctl, "find_pids_by_port", fake_find_pids)
-    monkeypatch.setattr(clearctl, "filter_matching_pids", lambda pids, tokens: pids)
     monkeypatch.setattr(clearctl, "terminate_pid", fake_terminate)
+    monkeypatch.setattr(clearctl, "wait_for_port_release", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(clearctl, "port_in_use", lambda *_args, **_kwargs: False)
 
-    assert clearctl._terminate_port_processes(8000, "API", True) is True
+    assert clearctl._terminate_port_processes(8000, "API") is True
     assert killed == [222, 333]
 
 
@@ -60,12 +57,13 @@ def test_start_forwards_api_key_to_ui_env(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(clearctl, "API_LOG", tmp_path / "api.log")
     monkeypatch.setattr(clearctl, "WEB_LOG", tmp_path / "web.log")
     monkeypatch.setattr(clearctl, "ensure_runtime_dirs", lambda: None)
-    monkeypatch.setattr(clearctl, "_cleanup_existing_processes", lambda: None)
+    monkeypatch.setattr(clearctl, "_cleanup_existing_processes", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(clearctl, "_python_deps_ready", lambda _auto: True)
     monkeypatch.setattr(clearctl, "_terminate_port_processes", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(clearctl, "_wait_for_api", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(clearctl, "_npm_available", lambda: "npm")
     monkeypatch.setattr(clearctl, "_ensure_node_modules", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(clearctl, "port_in_use", lambda *_args, **_kwargs: False)
 
     captured_env = {}
 
@@ -104,13 +102,14 @@ def test_start_stops_when_ui_fails(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(clearctl, "API_LOG", tmp_path / "api.log")
     monkeypatch.setattr(clearctl, "WEB_LOG", tmp_path / "web.log")
     monkeypatch.setattr(clearctl, "ensure_runtime_dirs", lambda: None)
-    monkeypatch.setattr(clearctl, "_cleanup_existing_processes", lambda: None)
+    monkeypatch.setattr(clearctl, "_cleanup_existing_processes", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(clearctl, "_python_deps_ready", lambda _auto: True)
     monkeypatch.setattr(clearctl, "_terminate_port_processes", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(clearctl, "_wait_for_api", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(clearctl, "_npm_available", lambda: "npm")
     monkeypatch.setattr(clearctl, "_ensure_node_modules", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(clearctl, "wait_for_port", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(clearctl, "port_in_use", lambda *_args, **_kwargs: False)
 
     stop_called = {"value": False}
 

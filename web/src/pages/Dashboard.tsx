@@ -133,6 +133,12 @@ export default function Dashboard() {
   });
   const activeSnapshot = trackerStream || trackerSnapshot;
 
+  useEffect(() => {
+    if (!paused) {
+      refreshTrackers();
+    }
+  }, [paused, refreshTrackers]);
+
   const mapInitRef = useRef(false);
   const mapActiveRef = useRef(true);
   const mapResizeHandler = useRef<(() => void) | null>(null);
@@ -572,16 +578,15 @@ export default function Dashboard() {
       <Reveal delay={0.2}>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
   <div className="lg:col-span-2 space-y-6">
-    <Collapsible
-      title="Global Patterns"
-      meta={intelSummary?.risk_level || "Live"}
-      open={riskOpen}
-      onToggle={() => setRiskOpen((prev) => !prev)}
-    >
-      <SectionHeader label="RISK SIGNALS" title="Global Patterns" />
-      <div className="mt-4 h-52">
-        {hasRiskSeries ? (
-          <ResponsiveContainer width="100%" height="100%">
+        <Collapsible
+          title="Global Patterns"
+          meta={intelSummary?.risk_level || "Live"}
+          open={riskOpen}
+          onToggle={() => setRiskOpen((prev) => !prev)}
+        >
+          <div className="h-52">
+            {hasRiskSeries ? (
+              <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={riskSeries}>
               <defs>
                 <linearGradient id="riskGlow" x1="0" y1="0" x2="0" y2="1">
@@ -616,17 +621,16 @@ export default function Dashboard() {
       </div>
     </Collapsible>
 
-    <Collapsible
-      title="Flight + Maritime Map"
-      meta={mapFallback ? "Leaflet" : "MapLibre GL"}
-      open={mapOpen}
-      onToggle={() => setMapOpen((prev) => !prev)}
-    >
-      <SectionHeader label="MAPS" title="Flight + Maritime Layer" right={mapFallback ? "Leaflet" : "MapLibre GL"} />
-      <div
-        ref={mapRef}
-        className="mt-4 h-[300px] rounded-2xl overflow-hidden border border-slate-700 relative"
-      >
+        <Collapsible
+          title="Flight + Maritime Map"
+          meta={mapFallback ? "Leaflet" : "MapLibre GL"}
+          open={mapOpen}
+          onToggle={() => setMapOpen((prev) => !prev)}
+        >
+          <div
+            ref={mapRef}
+            className="h-[300px] rounded-2xl overflow-hidden border border-slate-700 relative"
+          >
         {mapFallback ? (
           <div ref={leafletRef} className="absolute inset-0" />
         ) : null}
@@ -659,22 +663,17 @@ export default function Dashboard() {
     </Collapsible>
   </div>
   <div className="lg:col-span-1">
-    <Collapsible
-      title="Live Feed"
-      meta={`${activeSnapshot ? activeSnapshot.count : 0} signals • ${
-        streamConnected ? "Streaming" : "Snapshot"
-      }`}
-      open={feedOpen}
-      onToggle={() => setFeedOpen((prev) => !prev)}
-    >
-      <SectionHeader
-        label="LIVE FEED"
-        title="Tracker Signals"
-        right={activeSnapshot ? `${activeSnapshot.count} signals` : "Loading"}
-      />
-      <div className="overflow-x-auto mt-6">
-        {trackerRows.length ? (
-          <table className="w-full text-sm">
+        <Collapsible
+          title="Live Feed"
+          meta={`${activeSnapshot ? activeSnapshot.count : 0} signals • ${
+            streamConnected ? "Streaming" : "Snapshot"
+          }`}
+          open={feedOpen}
+          onToggle={() => setFeedOpen((prev) => !prev)}
+        >
+          <div className="overflow-x-auto mt-2">
+            {trackerRows.length ? (
+              <table className="w-full text-sm">
             <thead className="text-slate-300 border-b border-slate-700">
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id}>

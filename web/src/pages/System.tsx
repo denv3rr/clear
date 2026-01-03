@@ -178,13 +178,13 @@ export default function System() {
         </div>
         <div className="space-y-2">
           <p className="text-slate-100 font-medium">Utilization</p>
-          <p className="text-xs text-slate-300">CPU Load</p>
+          <p className="text-xs font-semibold text-slate-200">CPU Load</p>
           <MeterBar value={cpuPercent ?? 0} height={70} max={100} />
-          <p className="text-xs text-slate-300 mt-3">Memory Load</p>
+          <p className="text-xs font-semibold text-slate-200 mt-3">Memory Load</p>
           <MeterBar value={memPercent ?? 0} height={70} max={100} />
-          <p className="text-xs text-slate-300 mt-3">Disk Usage</p>
+          <p className="text-xs font-semibold text-slate-200 mt-3">Disk Usage</p>
           <MeterBar value={diskPercent ?? 0} height={70} max={100} />
-          <p className="text-xs text-slate-300 mt-3">Swap Load</p>
+          <p className="text-xs font-semibold text-slate-200 mt-3">Swap Load</p>
           <MeterBar value={swapPercent ?? 0} height={70} max={100} color="var(--green-300)" />
           <div className="mt-3 text-xs text-slate-300 space-y-1">
             <p>Total: {metrics?.disk_total_gb?.toFixed(2) ?? "—"} GB</p>

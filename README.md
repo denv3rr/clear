@@ -43,17 +43,18 @@
 
 ## Overview
 
-A portfolio management, analytics, and global tracking platform.
+A portfolio management, analytics, and global tracking platform with SQLite-backed client storage and JSON import/export.
 
 ## Features
 
-- Client and account management
-- Portfolio analytics + regime modeling
-- Market dashboard and macro snapshots
-- Global flight and maritime tracking
-- Intel and news aggregation
+- Client and account management (DB-backed; JSON export/import)
+- Portfolio analytics + regime/pattern modeling
+- Market dashboard with macro snapshots + map fallback
+- Global flight and maritime tracking (OpenSky-only)
+- Intel and news aggregation with filters
+- Diagnostics + system health views
 - Reports and exports (CLI + web)
-- Web API with streaming trackers
+- Web API + WebSocket streaming trackers
 
 <details>
 <summary><strong>More Details</strong></summary>
@@ -67,6 +68,7 @@ A portfolio management, analytics, and global tracking platform.
 - Tracker heat/volatility metrics and relevance tagging
 - Weather and conflict reporting with caching and exports
 - Health-aware sources with retry/backoff handling
+- AI assistant endpoint (draft) for deterministic summaries
 
 </details>
 
@@ -157,17 +159,6 @@ Convenience wrappers:
 - Windows CMD: `clear web` / `clear cli`
 - macOS/Linux: `./clear web` / `./clear cli`
 
-## Testing
-
-```pwsh
-python -m pytest
-```
-
-```pwsh
-cd web
-npm run test:e2e
-```
-
 Service templates for always-on usage: `docs/platform_services.md`
 
 ## Local Reports (Offline)
@@ -192,8 +183,9 @@ python -m modules.reporting.cli --client-id <CLIENT_ID> --format md --output dat
 
   Startup safety checks:
   - `run.py` performs a syntax compile pass across core modules and warns if `config/settings.json` is invalid JSON.
-  - `run.py` warns if `data/clients.json` fails schema checks (client_id/name, account list shape, holdings/lot types).
+  - `run.py` warns if `data/clients.json` exists and fails schema checks (legacy import/export file).
   - Legacy lot timestamps are normalized to ISO-8601 on startup (and can be forced via Settings -> Diagnostics -> Normalize Lot Timestamps).
+  - The API bootstraps `data/clients.json` into `data/clear.db` on startup, merging missing entries without overwriting existing rows.
 
 ### Local Model Setup
 
@@ -290,12 +282,13 @@ OpenSky is the only flight feed right now; configure OAuth credentials in `.env`
 
 Flight operator metadata can be extended by copying `config/flight_operators.example.json` to `config/flight_operators.json`.
 
-### AI Synthesis
+### AI Assistant (Draft)
 
-> [!NOTE]
-> Incomplete
+The assistant module is in progress. The API endpoint (`/api/assistant/query`) currently supports a limited rules-based summarizer; unsupported modes/questions return an explicit "not implemented" response. UI/CLI chat surfaces are planned. See `docs/ai_assistant.md` for the draft plan.
 
-AI synthesis is configured in `config/settings.json` under the `ai` key:
+### AI Synthesis (Reports)
+
+Report synthesis is configured in `config/settings.json` under the `ai` key:
 
   | Key | Purpose | Default |
   | --- | --- | --- |
@@ -345,7 +338,8 @@ Scroll text settings live in `config/settings.json` under `display.scroll_text`:
 | `data/intel_news.json` | Cached RSS news items for reports. |
 | `data/news_health.json` | RSS feed health + backoff state. |
 | `data/ai_report_cache.json` | Cached AI synthesis outputs. |
-| `data/clients.json` | Local client/account data (legacy lot timestamps auto-normalized to ISO-8601). |
+| `data/clear.db` | Primary SQLite database for clients/accounts/holdings. |
+| `data/clients.json` | Legacy import/export payload (auto-normalized when present). |
 | `config/settings.json` | Runtime settings saved by the Settings module. |
 | `data/*.md`, `data/*.csv`, `data/*.pdf`, `exports/`, `reports/` | Generated exports (ignored by git). |
 | `.env`, `data/*.json`, `config/*local*.json` | Personal/runtime data (ignored by git). |
@@ -368,9 +362,11 @@ Scroll text settings live in `config/settings.json` under `display.scroll_text`:
 ![Rich](https://img.shields.io/badge/Rich-121212?style=for-the-badge&logo=python&logoColor=white)
 ![Requests](https://img.shields.io/badge/Requests-0F172A?style=for-the-badge)
 ![HTTPX](https://img.shields.io/badge/HTTPX-0F172A?style=for-the-badge)
-![python-dotenv](https://img.shields.io/badge/python--dotenv-111827?style=for-the-badge)
-![psutil](https://img.shields.io/badge/psutil-111827?style=for-the-badge)
-![Cryptography](https://img.shields.io/badge/Cryptography-0F172A?style=for-the-badge)
+  ![python-dotenv](https://img.shields.io/badge/python--dotenv-111827?style=for-the-badge)
+  ![psutil](https://img.shields.io/badge/psutil-111827?style=for-the-badge)
+  ![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-111827?style=for-the-badge&logo=sqlalchemy&logoColor=white)
+  ![SQLite](https://img.shields.io/badge/SQLite-0F172A?style=for-the-badge&logo=sqlite&logoColor=white)
+  ![Cryptography](https://img.shields.io/badge/Cryptography-0F172A?style=for-the-badge)
 
 ### Web Platform
 
@@ -397,9 +393,12 @@ Scroll text settings live in `config/settings.json` under `display.scroll_text`:
 
 ### Data Sources
 
-![Finnhub](https://img.shields.io/badge/Finnhub-00C805?style=for-the-badge&logoColor=white)
-![Yahoo Finance](https://img.shields.io/badge/Yahoo%20Finance-6001D2?style=for-the-badge&logo=yahoo&logoColor=white)
-![OpenSky](https://img.shields.io/badge/OpenSky-111827?style=for-the-badge)
+  ![Finnhub](https://img.shields.io/badge/Finnhub-00C805?style=for-the-badge&logoColor=white)
+  ![Yahoo Finance](https://img.shields.io/badge/Yahoo%20Finance-6001D2?style=for-the-badge&logo=yahoo&logoColor=white)
+  ![OpenSky](https://img.shields.io/badge/OpenSky-111827?style=for-the-badge)
+  ![Open-Meteo](https://img.shields.io/badge/Open--Meteo-0F172A?style=for-the-badge)
+  ![GDELT](https://img.shields.io/badge/GDELT-111827?style=for-the-badge)
+  ![RSS](https://img.shields.io/badge/RSS-0F172A?style=for-the-badge&logo=rss&logoColor=orange)
 
 ### Testing
 

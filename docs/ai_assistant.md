@@ -1,5 +1,10 @@
 # AI Assistant Plan (Draft)
 
+## Current Status
+- API route `/api/assistant/query` exists; limited rules-based summarizer handles client/news/tracker prompts.
+- Unsupported modes or questions return explicit "not implemented" responses.
+- UI/CLI chat surfaces are not implemented yet.
+
 ## Goals
 - Provide a deterministic insight layer on top of existing analytics, news, and client data.
 - Keep all calculations source-driven (no simulations, no example math).
@@ -13,14 +18,15 @@
 ## Data Contracts
 - Read-only access to:
   - `/api/clients`, `/api/clients/{id}`, `/api/clients/{id}/accounts/{id}`
-  - `/api/intel/summary`, `/api/intel/weather`, `/api/intel/conflict`, `/api/news`
-  - `/api/trackers`, `/api/diagnostics`, `/api/settings/system`
+  - `/api/intel/summary`, `/api/intel/weather`, `/api/intel/conflict`, `/api/intel/news`
+  - `/api/trackers/snapshot`
+  - `/api/tools/diagnostics`, `/api/settings`
 - Only use JSON-ready view-models already exposed by the API.
 - Do not compute new values unless backed by documented formulas in code.
 
 ## Interaction Model
-- UI: floating chat drawer anchored in the top nav, expandable from any page.
-- CLI: shared "Ask Clear" command with context flags (client, account, region).
+- UI: floating chat drawer anchored in the top nav, expandable from any page (planned).
+- CLI: shared "Ask Clear" command with context flags (client, account, region) (planned).
 - API: `/api/assistant/query` endpoint (auth gated) that accepts:
   - `question` (string)
   - `context` (optional selectors: client_id, account_id, region, industry)
@@ -35,6 +41,7 @@
   - `warnings` (missing data, stale cache, or blocked sources)
 - No hallucinated numbers or placeholder examples.
 - If inputs are missing, return "Unavailable" with a reason.
+- Until the assistant is fully wired, unsupported queries return an explicit "not implemented" response with empty sources.
 
 ## Model Options
 - Default: rules-based summarizer and templated narratives over deterministic data.
@@ -42,10 +49,10 @@
 - Never allow the model to change numeric values, only rephrase.
 
 ## Implementation Plan
-1) Add shared prompt context builder for analytics + news payloads.
-2) Implement API endpoint with strict schema validation and rate limits.
+1) Add shared prompt context builder for analytics + news payloads (started).
+2) Harden the API endpoint with strict schema validation and rate limits.
 3) Add UI chat drawer with history + export.
 4) Add CLI command that mirrors API payloads.
 5) Add tests for schema validation and deterministic output constraints.
 
-For the agent-based architecture, please consult the `agents/` folder.
+For the agent-based architecture, consult `AGENTS.md` when available locally.

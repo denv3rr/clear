@@ -54,18 +54,12 @@ SETTINGS = _load_settings()
 DEFAULT_API_PORT = SETTINGS.get("api_port", 8000)
 DEFAULT_UI_PORT = SETTINGS.get("ui_port", 5173)
 _ACTIVE_ARGS: argparse.Namespace | None = None
-
-_ACTIVE_ARGS: argparse.Namespace | None = None
+_STOPPING = False
 
 
 def _print_header() -> None:
     print(">> Clear")
     print(">> Seperet LLC | https://seperet.com/")
-
-
-def _prompt_yes_no(message: str) -> bool:
-    reply = input(f"{message} [y/N]: ").strip().lower()
-    return reply in ("y", "yes")
 
 
 def _python_deps_ready(auto_yes: bool) -> bool:
@@ -76,10 +70,12 @@ def _python_deps_ready(auto_yes: bool) -> bool:
     if not missing:
         return True
     print(">> Missing Python dependencies:", ", ".join(missing))
-    if auto_yes or _prompt_yes_no("Install Python dependencies from requirements.txt?"):
+    try:
         subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
         return True
-    return False
+    except Exception:
+        print(">> Python dependency install failed. Fix pip setup and retry.")
+        return False
 
 
 def _candidate_paths() -> list[str]:
@@ -118,14 +114,12 @@ def _ensure_node_modules(web_dir: Path, npm_path: str, auto_yes: bool) -> bool:
     if (web_dir / "node_modules").is_dir():
         return True
     print(">> Web dependencies not installed (node_modules missing).")
-    if auto_yes or _prompt_yes_no("Run npm install in ./web?"):
-        try:
-            subprocess.check_call([npm_path, "install"], cwd=str(web_dir))
-            return True
-        except Exception:
-            print(">> npm install failed. Fix npm/node setup and retry.")
-            return False
-    return False
+    try:
+        subprocess.check_call([npm_path, "install"], cwd=str(web_dir))
+        return True
+    except Exception:
+        print(">> npm install failed. Fix npm/node setup and retry.")
+        return False
 
 
 def _spawn_process(
@@ -170,18 +164,16 @@ def _ensure_playwright(npm_path: str, web_dir: Path, auto_yes: bool) -> bool:
         print(">> Playwright browsers installed.")
         return True
     print(">> Playwright browsers not installed.")
-    if auto_yes or _prompt_yes_no("Install Playwright browsers now?"):
-        try:
-            subprocess.check_call([npm_path, "exec", "--", "playwright", "install"], cwd=str(web_dir))
-            if _playwright_installed(npm_path, web_dir):
-                print(">> Playwright browsers installed.")
-                return True
-            print(">> Playwright install completed but browsers not detected.")
+    try:
+        subprocess.check_call([npm_path, "exec", "--", "playwright", "install"], cwd=str(web_dir))
+        if _playwright_installed(npm_path, web_dir):
+            print(">> Playwright browsers installed.")
             return True
-        except Exception:
-            print(">> Playwright install failed. Run: npx playwright install")
-            return False
-    return False
+        print(">> Playwright install completed but browsers not detected.")
+        return True
+    except Exception:
+        print(">> Playwright install failed. Run: npx playwright install")
+        return False
 
 
 def _health_check(api_port: int) -> bool:
@@ -191,6 +183,44 @@ def _health_check(api_port: int) -> bool:
         return response.status_code == 200
     except Exception:
         return False
+
+
+def _terminate_port_processes(
+    port: int,
+    label: str,
+    attempts: int = 3,
+    wait_timeout: float = 6.0,
+) -> bool:
+    for _ in range(max(1, attempts)):
+        pids = find_pids_by_port(port)
+        if not pids:
+            return True
+        alive = [pid for pid in pids if process_alive(pid)]
+        target = alive or pids
+        pid_list = ", ".join(str(pid) for pid in target)
+        print(f">> {label} port {port} in use by process(es) {pid_list}. Terminating.")
+        for pid in target:
+            terminate_pid(pid, timeout=8.0)
+        wait_for_port_release(port, timeout=wait_timeout)
+        if not port_in_use(port):
+            return True
+    print(f">> {label} port {port} still in use after termination attempts.")
+    return False
+
+
+def _cleanup_existing_processes(
+    api_port: int = DEFAULT_API_PORT,
+    ui_port: int = DEFAULT_UI_PORT,
+) -> None:
+    for label, pid_path in (("API", API_PID), ("Web", WEB_PID)):
+        pid = read_pid(pid_path)
+        if pid and process_alive(pid):
+            terminate_pid(pid, timeout=8.0)
+            print(f">> Stopped {label} (pid {pid}).")
+        if pid_path.exists():
+            pid_path.unlink(missing_ok=True)
+    wait_for_port_release(api_port, timeout=10.0)
+    wait_for_port_release(ui_port, timeout=10.0)
 
 
 def _wait_for_api(api_port: int, timeout: float = 20.0) -> bool:
@@ -223,18 +253,25 @@ def _install_shutdown_handlers(args: argparse.Namespace) -> None:
 
 
 def _start(args: argparse.Namespace) -> int:
+    global _STOPPING
+    _STOPPING = False
     ensure_runtime_dirs()
     if args.foreground:
         _install_shutdown_handlers(args)
     if not _python_deps_ready(args.yes):
+        return 1
+    _cleanup_existing_processes(args.api_port, args.ui_port)
+    if not _terminate_port_processes(args.api_port, "API"):
         return 1
 
     api_pid = read_pid(API_PID)
     if api_pid and process_alive(api_pid):
         print(">> API is already running.")
     elif port_in_use(args.api_port):
-        print(f">> API port {args.api_port} already in use by another process.")
-        return 1
+        wait_for_port_release(args.api_port, timeout=6.0)
+        if port_in_use(args.api_port):
+            print(f">> API port {args.api_port} already in use by another process.")
+            return 1
 
     if not (api_pid and process_alive(api_pid)):
         api_cmd = [
@@ -268,13 +305,17 @@ def _start(args: argparse.Namespace) -> int:
     if web_pid and process_alive(web_pid):
         print(">> Web UI is already running.")
     elif port_in_use(args.ui_port):
-        print(f">> UI port {args.ui_port} already in use by another process.")
-        return 1
+        wait_for_port_release(args.ui_port, timeout=6.0)
+        if port_in_use(args.ui_port):
+            print(f">> UI port {args.ui_port} already in use by another process.")
+            return 1
     
     if not (web_pid and process_alive(web_pid)):
         npm_path = _npm_available()
         if not npm_path:
             print(">> npm not found. Install Node.js (includes npm) and retry.")
+            return 1
+        if not _terminate_port_processes(args.ui_port, "UI"):
             return 1
         if not _ensure_node_modules(web_dir, npm_path, args.yes):
             return 1
@@ -311,9 +352,16 @@ def _start(args: argparse.Namespace) -> int:
 
 
 def _stop(args: argparse.Namespace) -> int:
+    global _STOPPING, _ACTIVE_ARGS
+    if _STOPPING:
+        return 0
+    _STOPPING = True
+    _ACTIVE_ARGS = None
     ensure_runtime_dirs()
     stopped = False
     failed = False
+    api_port = getattr(args, "api_port", DEFAULT_API_PORT)
+    ui_port = getattr(args, "ui_port", DEFAULT_UI_PORT)
     for label, pid_path in (("API", API_PID), ("Web", WEB_PID)):
         pid = read_pid(pid_path)
         if pid and process_alive(pid):
@@ -326,9 +374,19 @@ def _stop(args: argparse.Namespace) -> int:
                 print(f">> {label} process (pid {pid}) did not exit cleanly.")
         if pid_path.exists():
             pid_path.unlink(missing_ok=True)
-            
+
+    if port_in_use(api_port):
+        if not _terminate_port_processes(api_port, "API"):
+            failed = True
+    if port_in_use(ui_port):
+        if not _terminate_port_processes(ui_port, "UI"):
+            failed = True
+    wait_for_port_release(api_port, timeout=6.0)
+    wait_for_port_release(ui_port, timeout=6.0)
+
     if not stopped:
         print(">> No running services detected.")
+    _STOPPING = False
     return 1 if failed else 0
 
 

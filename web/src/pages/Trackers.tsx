@@ -96,8 +96,8 @@ type TrackerDetail = {
 export default function Trackers() {
   const [mode, setMode] = useState<"combined" | "flights" | "ships">("combined");
   const [categoryFilter, setCategoryFilter] = useState("all");
-  const [includeCommercial, setIncludeCommercial] = useState(true);
-  const [includePrivate, setIncludePrivate] = useState(true);
+  const [includeCommercial, setIncludeCommercial] = useState(false);
+  const [includePrivate, setIncludePrivate] = useState(false);
   const [countryFilter, setCountryFilter] = useState("");
   const [operatorFilter, setOperatorFilter] = useState("");
   const [idFilter, setIdFilter] = useState("");
@@ -146,6 +146,12 @@ export default function Trackers() {
   const [riskOpen, setRiskOpen] = useState(true);
   const [mapOpen, setMapOpen] = useState(true);
   const [feedOpen, setFeedOpen] = useState(true);
+
+  useEffect(() => {
+    if (!paused) {
+      refreshPoll();
+    }
+  }, [paused, refreshPoll]);
 
   const searchPath = useMemo(() => {
     const kindParam = mode === "combined" ? "" : `&kind=${mode === "ships" ? "ship" : "flight"}`;
@@ -701,7 +707,7 @@ export default function Trackers() {
           </div>
           <div className="mt-5 grid grid-cols-1 lg:grid-cols-2 gap-5">
             <div className="rounded-xl border border-slate-700 p-4">
-              <p className="text-xs text-slate-300 mb-2">Dominant Categories</p>
+              <p className="text-xs font-semibold text-slate-200 mb-2">Dominant Categories</p>
               <div className="space-y-2">
                 {riskTotals.topCategories.length ? (
                   riskTotals.topCategories.map(([category, count]) => (
@@ -716,7 +722,7 @@ export default function Trackers() {
               </div>
             </div>
             <div className="rounded-xl border border-slate-700 p-4">
-              <p className="text-xs text-slate-300 mb-2">System Status</p>
+              <p className="text-xs font-semibold text-slate-200 mb-2">System Status</p>
               <p className="text-sm text-green-300">
                 {connected ? "Live stream connected" : "Streaming offline - polling snapshots"}
               </p>
@@ -768,7 +774,7 @@ export default function Trackers() {
             </div>
           </div>
           <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-950/40 p-4">
-            <p className="text-xs text-slate-300 mb-3">Leaflet Debug Map</p>
+            <p className="text-xs font-semibold text-slate-200 mb-3">Leaflet Debug Map</p>
             <div className="relative h-[260px] overflow-hidden rounded-xl border border-slate-700">
               <div ref={leafletRef} className="absolute inset-0" />
               <div className="absolute bottom-2 right-2 rounded-lg border border-slate-700 bg-slate-950/80 px-2 py-1 text-[11px] text-slate-300">

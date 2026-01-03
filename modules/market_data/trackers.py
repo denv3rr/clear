@@ -124,6 +124,7 @@ class TrackerProviders:
                     "client_secret": client_secret,
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
+                proxies={"http": None, "https": None},
                 timeout=8,
             )
         except Exception as exc:
@@ -219,7 +220,7 @@ class TrackerProviders:
     def fetch_flights(limit: int = 200) -> Tuple[List[TrackerPoint], List[str]]:
         warnings: List[str] = []
         include_commercial = os.getenv("CLEAR_INCLUDE_COMMERCIAL", "0") == "1"
-        include_private = os.getenv("CLEAR_INCLUDE_PRIVATE", "1") == "1"
+        include_private = os.getenv("CLEAR_INCLUDE_PRIVATE", "0") == "1"
         urls = TrackerProviders._parse_sources(os.getenv("FLIGHT_DATA_URL"))
         data_paths = TrackerProviders._parse_sources(os.getenv("FLIGHT_DATA_PATH"))
         rows_by_source: List[Tuple[List[Dict[str, Any]], str]] = []
@@ -336,7 +337,12 @@ class TrackerProviders:
     def _fetch_opensky_rows() -> Tuple[List[Dict[str, Any]], List[str]]:
         warnings: List[str] = []
         now = time.time()
-        min_refresh = int(os.getenv("OPENSKY_MIN_REFRESH", "120") or 120)
+        min_refresh_env = os.getenv("OPENSKY_MIN_REFRESH")
+        if min_refresh_env is None:
+            has_oauth = bool(os.getenv("OPENSKY_CLIENT_ID") and os.getenv("OPENSKY_CLIENT_SECRET"))
+            min_refresh = 0 if has_oauth else 120
+        else:
+            min_refresh = int(min_refresh_env or 0)
         if min_refresh > 0 and (now - TrackerProviders._OPENSKY_LAST_REQUEST) < min_refresh:
             wait = int(min_refresh - (now - TrackerProviders._OPENSKY_LAST_REQUEST))
             warnings.append(f"OpenSky refresh throttled; retry in {wait}s.")
@@ -355,8 +361,7 @@ class TrackerProviders:
             headers["Authorization"] = f"Bearer {token}"
             used_oauth = True
         elif os.getenv("OPENSKY_CLIENT_ID") or os.getenv("OPENSKY_CLIENT_SECRET"):
-            warnings.append("OpenSky OAuth token missing; check OPENSKY_CLIENT_ID/OPENSKY_CLIENT_SECRET.")
-            return [], warnings
+            warnings.append("OpenSky OAuth token missing; falling back to anonymous access.")
 
         params = TrackerProviders._parse_bbox(os.getenv("OPENSKY_BBOX")) or {}
         extended = TrackerProviders._parse_extended(os.getenv("OPENSKY_EXTENDED"))
@@ -372,7 +377,6 @@ class TrackerProviders:
         if icao24_list:
             params["icao24"] = icao24_list
         try:
-            TrackerProviders._OPENSKY_LAST_REQUEST = now
             refreshed = False
             while True:
                 resp = requests.get(
@@ -381,6 +385,7 @@ class TrackerProviders:
                     auth=auth,
                     headers=headers or None,
                     params=params or None,
+                    proxies={"http": None, "https": None},
                 )
                 if resp.status_code == 401 and used_oauth and not refreshed:
                     TrackerProviders._clear_opensky_token()
@@ -405,10 +410,11 @@ class TrackerProviders:
                         )
                     backoff = retry_after if retry_after is not None else 120
                     TrackerProviders._OPENSKY_BACKOFF_UNTIL = now + max(backoff, 30)
-                    if not auth:
-                        warnings.append("OpenSky credentials missing; anonymous limits apply.")
+                if not auth:
+                    warnings.append("OpenSky credentials missing; anonymous limits apply.")
                 warnings.append(f"OpenSky HTTP {resp.status_code}")
                 return [], warnings
+            TrackerProviders._OPENSKY_LAST_REQUEST = now
             payload = resp.json()
         except Exception as exc:
             warnings.append(f"OpenSky fetch failed: {exc}")
@@ -441,6 +447,16 @@ class TrackerProviders:
                 "altitude_ft": (float(geo_alt) * 3.28084) if geo_alt is not None else None,
                 "updated_ts": int(updated) if updated is not None else None,
             })
+        if rows:
+            token_prefixes = (
+                "OpenSky token fetch failed",
+                "OpenSky OAuth token missing",
+            )
+            warnings = [
+                warning
+                for warning in warnings
+                if not warning.startswith(token_prefixes)
+            ]
         return rows, warnings
 
     @staticmethod

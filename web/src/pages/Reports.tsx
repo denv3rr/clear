@@ -178,7 +178,7 @@ export default function Reports() {
                 </button>
               </div>
               <div className="rounded-xl border border-slate-700 p-3">
-                <p className="text-xs text-slate-300">Interval</p>
+                <p className="text-xs font-semibold text-slate-200">Interval</p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {intervals.map((opt) => (
                     <button

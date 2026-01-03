@@ -149,11 +149,11 @@ export function Surface3D({
     <>
       <div className={`glass-panel rounded-2xl p-5 surface-3d ${className}`}>
         <div className="flex items-center justify-between">
-          <p className="text-xs text-slate-400">{title}</p>
+          <p className="text-xs font-semibold text-slate-100">{title}</p>
           <div className="flex items-center gap-3">
             <p className="text-[11px] text-emerald-300">{hasData ? "3D Surface" : "No data"}</p>
             <button
-              className="text-[11px] text-slate-400 hover:text-emerald-300"
+              className="text-[11px] text-slate-300 hover:text-emerald-300"
               type="button"
               onClick={() => setExpanded(true)}
             >

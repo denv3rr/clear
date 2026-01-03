@@ -22,23 +22,23 @@ export function TopNav({ items, onToggleContext, onToggleAssistant }: TopNavProp
 
   return (
     <header className="border-b border-slate-700 bg-slate-950/95 backdrop-blur">
-      <div className="flex min-w-0 items-center gap-6 py-4 pl-6 pr-6 md:pl-10 md:pr-10 lg:pl-[68px] lg:pr-12">
+      <div className="flex min-w-0 items-center gap-6 py-4 pl-6 pr-6 md:pl-10 md:pr-10 min-[1800px]:pl-[68px] min-[1800px]:pr-12">
         <div className="flex items-center gap-3">
           <button
             type="button"
             aria-label="Toggle navigation"
             aria-expanded={mobileOpen}
             onClick={() => setMobileOpen((prev) => !prev)}
-            className="lg:hidden rounded-full border border-slate-700 p-2 text-slate-100 hover:border-green-500 hover:text-green-500"
+            className="min-[1800px]:hidden rounded-full border border-slate-700 p-2 text-slate-100 hover:border-green-500 hover:text-green-500"
           >
             {mobileOpen ? <X size={18} /> : <Menu size={18} />}
           </button>
           <span className="text-lg font-semibold tracking-tight">[ CLEAR ]</span>
-          <span className="hidden text-xs text-slate-500 sm:inline">
+          <span className="hidden text-xs text-slate-500 md:inline">
             Markets • Risk • Trackers
           </span>
         </div>
-        <nav className="hidden lg:flex flex-1 min-w-0">
+        <nav className="hidden min-[1800px]:flex flex-1 min-w-0">
           <div className="flex gap-2 py-1">
             {primaryItems.map(({ label, icon: Icon, path }) => (
               <NavLink
@@ -60,7 +60,7 @@ export function TopNav({ items, onToggleContext, onToggleAssistant }: TopNavProp
           </div>
         </nav>
         <div className="flex items-center gap-2">
-          <div className="hidden lg:flex items-center gap-2">
+            <div className="hidden min-[1800px]:flex items-center gap-2">
             {utilityItems.map(({ label, icon: Icon, path }) => (
               <NavLink
                 key={label}
@@ -80,7 +80,7 @@ export function TopNav({ items, onToggleContext, onToggleAssistant }: TopNavProp
             ))}
           </div>
           <button
-            className="hidden lg:inline-flex rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-100 hover:border-green-500 hover:text-green-500"
+            className="hidden min-[1800px]:inline-flex rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-100 hover:border-green-500 hover:text-green-500"
             type="button"
             onClick={onToggleAssistant}
           >
@@ -88,7 +88,7 @@ export function TopNav({ items, onToggleContext, onToggleAssistant }: TopNavProp
             Assistant
           </button>
           <button
-            className="hidden lg:inline-flex rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-100 hover:border-green-500 hover:text-green-500"
+            className="hidden min-[1800px]:inline-flex rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-100 hover:border-green-500 hover:text-green-500"
             type="button"
             onClick={onToggleContext}
           >
@@ -97,7 +97,7 @@ export function TopNav({ items, onToggleContext, onToggleAssistant }: TopNavProp
         </div>
       </div>
       {mobileOpen ? (
-        <div className="lg:hidden border-t border-slate-700 bg-slate-950/95">
+        <div className="min-[1800px]:hidden border-t border-slate-700 bg-slate-950/95">
           <div className="px-6 py-4 space-y-4">
             <nav className="space-y-2">
               {primaryItems.map(({ label, icon: Icon, path }) => (

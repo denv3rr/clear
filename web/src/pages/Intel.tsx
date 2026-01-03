@@ -124,7 +124,7 @@ export default function Intel() {
     const flat: Array<[string, number]> = [];
     entries.forEach(([regionName, industries]) => {
       Object.entries(industries || {}).forEach(([industryName, count]) => {
-        flat.push([`${regionName} • ${industryName}`, count]);
+        flat.push([`${regionName} ? ${industryName}`, count]);
       });
     });
     return flat.sort((a, b) => b[1] - a[1]);
@@ -184,11 +184,11 @@ export default function Intel() {
       <div className="mt-6 space-y-4 text-sm text-slate-300">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <KpiCard label="Risk Level" value={data?.risk_level || "Loading"} tone="text-green-300" />
-          <KpiCard label="Risk Score" value={data?.risk_score !== undefined ? `${data.risk_score}/10` : "—"} tone="text-slate-100" />
-          <KpiCard label="Confidence" value={data?.confidence || "—"} tone="text-slate-100" />
+          <KpiCard label="Risk Score" value={data?.risk_score !== undefined ? `${data.risk_score}/10` : "?"} tone="text-slate-100" />
+          <KpiCard label="Confidence" value={data?.confidence || "?"} tone="text-slate-100" />
         </div>
 
-        <Collapsible title="Filters" meta={`${region} • ${industry}`} open={filtersOpen} onToggle={() => setFiltersOpen((prev) => !prev)}>
+        <Collapsible title="Filters" meta={`${region} ? ${industry}`} open={filtersOpen} onToggle={() => setFiltersOpen((prev) => !prev)}>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div>
               <label htmlFor="intel-region" className="text-xs text-slate-300">
@@ -228,7 +228,7 @@ export default function Intel() {
               </select>
             </div>
             <div>
-              <p className="text-xs text-slate-300">Categories</p>
+              <p className="text-xs font-semibold text-slate-200">Categories</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {(meta?.categories || []).map((category) => (
                   <button
@@ -248,7 +248,7 @@ export default function Intel() {
             </div>
           </div>
           <div className="mt-4">
-            <p className="text-xs text-slate-300">Sources</p>
+            <p className="text-xs font-semibold text-slate-200">Sources</p>
             <div className="mt-2 flex flex-wrap gap-2">
               {(meta?.sources || []).map((source) => (
                 <button
@@ -276,7 +276,7 @@ export default function Intel() {
         >
           <div className="space-y-4">
             <div className="rounded-xl border border-slate-700 p-4">
-              <p className="text-xs text-slate-300 mb-2">Summary</p>
+              <p className="text-xs font-semibold text-slate-200 mb-2">Summary</p>
               <div className="space-y-2">
                 {(data?.summary || ["No intel payload yet."]).map((line) => (
                   <p key={line}>{line}</p>
@@ -285,7 +285,7 @@ export default function Intel() {
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div className="rounded-xl border border-slate-700 p-4">
-                <p className="text-xs text-slate-300 mb-2">Global Risk Trend</p>
+                <p className="text-xs font-semibold text-slate-200 mb-2">Global Risk Trend</p>
                 {showTrendData ? (
                   <div className="h-40 w-full">
                     <ResponsiveContainer width="100%" height="100%">
@@ -311,7 +311,7 @@ export default function Intel() {
                 )}
               </div>
               <div className="rounded-xl border border-slate-700 p-4">
-                <p className="text-xs text-slate-300 mb-2">Emotion Trend</p>
+                <p className="text-xs font-semibold text-slate-200 mb-2">Emotion Trend</p>
                 {showTrendData && emotionSeries.length > 0 ? (
                   <div className="h-40 w-full">
                     <ResponsiveContainer width="100%" height="100%">
@@ -338,7 +338,7 @@ export default function Intel() {
                 )}
               </div>
               <div className="rounded-xl border border-slate-700 p-4">
-                <p className="text-xs text-slate-300 mb-2">Category Mix</p>
+                <p className="text-xs font-semibold text-slate-200 mb-2">Category Mix</p>
                 {categoryMix.length > 0 ? (
                   <div className="space-y-2 text-xs text-slate-100">
                     {categoryMix.slice(0, 6).map(([category, count]) => (
@@ -353,7 +353,7 @@ export default function Intel() {
                 )}
                 {emotionMix.length > 0 ? (
                   <div className="mt-4 space-y-2 text-xs text-slate-100">
-                    <p className="text-xs text-slate-300">Emotion Mix</p>
+                    <p className="text-xs font-semibold text-slate-200">Emotion Mix</p>
                     {emotionMix.slice(0, 6).map(([emotion, count]) => (
                       <div key={emotion} className="flex items-center justify-between">
                         <span className="text-slate-300">{emotion}</span>
@@ -366,7 +366,7 @@ export default function Intel() {
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div className="rounded-xl border border-slate-700 p-4">
-                <p className="text-xs text-slate-300 mb-2">Regional Coverage</p>
+                <p className="text-xs font-semibold text-slate-200 mb-2">Regional Coverage</p>
                 {regionMix.length > 0 ? (
                   <div className="space-y-2 text-xs text-slate-100">
                     {regionMix.slice(0, 6).map(([regionName, count]) => (
@@ -381,7 +381,7 @@ export default function Intel() {
                 )}
               </div>
               <div className="rounded-xl border border-slate-700 p-4">
-                <p className="text-xs text-slate-300 mb-2">Subregional Coverage</p>
+                <p className="text-xs font-semibold text-slate-200 mb-2">Subregional Coverage</p>
                 {subregionMix.length > 0 ? (
                   <div className="space-y-2 text-xs text-slate-100">
                     {subregionMix.slice(0, 6).map(([label, count]) => (
@@ -399,13 +399,13 @@ export default function Intel() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {(data?.sections || []).slice(0, 4).map((section) => (
                 <div key={section.title} className="rounded-xl border border-slate-700 p-4">
-                  <p className="text-xs text-slate-300 mb-2">{section.title}</p>
+                  <p className="text-xs font-semibold text-slate-200 mb-2">{section.title}</p>
                   {renderRows(section.rows as (string[] | string)[])}
                 </div>
               ))}
             </div>
             <div className="rounded-xl border border-slate-700 p-4">
-              <p className="text-xs text-slate-300 mb-2">News Metrics</p>
+              <p className="text-xs font-semibold text-slate-200 mb-2">News Metrics</p>
               {renderRows([
                 ["Articles", String(data?.news?.count ?? 0)],
                 ["Sentiment avg", String(data?.news?.sentiment_avg ?? 0)],
@@ -429,14 +429,14 @@ export default function Intel() {
         >
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="rounded-xl border border-slate-700 p-4">
-              <p className="text-xs text-slate-300 mb-2">Summary</p>
+              <p className="text-xs font-semibold text-slate-200 mb-2">Summary</p>
               {(weather?.summary || ["No weather payload yet."]).map((line) => (
                 <p key={line}>{line}</p>
               ))}
             </div>
             {(weather?.sections || []).map((section) => (
               <div key={section.title} className="rounded-xl border border-slate-700 p-4">
-                <p className="text-xs text-slate-300 mb-2">{section.title}</p>
+                <p className="text-xs font-semibold text-slate-200 mb-2">{section.title}</p>
                 {renderRows(section.rows as (string[] | string)[])}
               </div>
             ))}
@@ -451,14 +451,14 @@ export default function Intel() {
         >
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="rounded-xl border border-slate-700 p-4">
-              <p className="text-xs text-slate-300 mb-2">Summary</p>
+              <p className="text-xs font-semibold text-slate-200 mb-2">Summary</p>
               {(conflict?.summary || ["No conflict payload yet."]).map((line) => (
                 <p key={line}>{line}</p>
               ))}
             </div>
             {(conflict?.sections || []).map((section) => (
               <div key={section.title} className="rounded-xl border border-slate-700 p-4">
-                <p className="text-xs text-slate-300 mb-2">{section.title}</p>
+                <p className="text-xs font-semibold text-slate-200 mb-2">{section.title}</p>
                 {renderRows(section.rows as (string[] | string)[])}
               </div>
             ))}

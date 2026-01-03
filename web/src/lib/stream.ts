@@ -18,13 +18,94 @@ export function useTrackerStream<T>(options: StreamOptions = {}) {
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const socketRef = useRef<WebSocket | null>(null);
+  const retryRef = useRef<number | null>(null);
+  const attemptRef = useRef(0);
   const { paused } = useTrackerPause();
 
   useEffect(() => {
+    let cancelled = false;
+    const clearRetry = () => {
+      if (retryRef.current !== null) {
+        window.clearTimeout(retryRef.current);
+        retryRef.current = null;
+      }
+    };
+    const closeSocket = () => {
+      if (socketRef.current) {
+        socketRef.current.close();
+        socketRef.current = null;
+      }
+    };
+    const scheduleReconnect = () => {
+      if (cancelled || paused || !enabled) return;
+      clearRetry();
+      attemptRef.current += 1;
+      const delay = Math.min(10000, 1500 + attemptRef.current * 1000);
+      retryRef.current = window.setTimeout(() => {
+        if (cancelled || paused || !enabled) return;
+        connect();
+      }, delay);
+    };
+    const connect = () => {
+      clearRetry();
+      closeSocket();
+      setError(null);
+      const params = new URLSearchParams();
+      params.set("mode", mode);
+      params.set("interval", String(interval));
+      const apiKey = getApiKey();
+      if (apiKey) {
+        params.set("api_key", apiKey);
+      }
+      const baseUrl = new URL(API_BASE);
+      const wsProtocol = baseUrl.protocol === "https:" ? "wss:" : "ws:";
+      const wsUrl = `${wsProtocol}//${baseUrl.host}/ws/trackers?${params.toString()}`;
+      const ws = new WebSocket(wsUrl);
+      socketRef.current = ws;
+
+      ws.onopen = () => {
+        attemptRef.current = 0;
+        setConnected(true);
+        setError(null);
+      };
+      ws.onclose = (event) => {
+        setConnected(false);
+        if (event.code === 1008) {
+          setError("WebSocket rejected. Check API key settings.");
+        } else if (event.code === 1006) {
+          setError("WebSocket closed unexpectedly. Check API base and auth.");
+        }
+        scheduleReconnect();
+      };
+      ws.onerror = () => {
+        setConnected(false);
+        setError("WebSocket connection failed. Check API base and auth.");
+        scheduleReconnect();
+      };
+      ws.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data) as T;
+          setData(payload);
+          setWarnings(extractWarnings(payload));
+        } catch {
+          setConnected(false);
+          setError("WebSocket payload parsing failed.");
+          setWarnings([]);
+          scheduleReconnect();
+        }
+      };
+    };
+
     if (!enabled || paused) {
       setConnected(false);
       setError(null);
-      return;
+      clearRetry();
+      closeSocket();
+      return () => {
+        cancelled = true;
+        clearRetry();
+        closeSocket();
+      };
     }
     if (DEMO_MODE || isDemoOverride()) {
       setConnected(true);
@@ -36,52 +117,16 @@ export function useTrackerStream<T>(options: StreamOptions = {}) {
         setData(getMockTrackerSnapshot(mode) as T);
         setWarnings([]);
       }, interval * 1000);
-      return () => clearInterval(timer);
+      return () => {
+        cancelled = true;
+        clearInterval(timer);
+      };
     }
-    const params = new URLSearchParams();
-    params.set("mode", mode);
-    params.set("interval", String(interval));
-    const apiKey = getApiKey();
-    if (apiKey) {
-      params.set("api_key", apiKey);
-    }
-    const baseUrl = new URL(API_BASE);
-    const wsProtocol = baseUrl.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${wsProtocol}//${baseUrl.host}/ws/trackers?${params.toString()}`;
-    const ws = new WebSocket(wsUrl);
-    socketRef.current = ws;
-
-    setError(null);
-    ws.onopen = () => {
-      setConnected(true);
-      setError(null);
-    };
-    ws.onclose = (event) => {
-      setConnected(false);
-      if (event.code === 1008) {
-        setError("WebSocket rejected. Check API key settings.");
-      } else if (event.code === 1006) {
-        setError("WebSocket closed unexpectedly. Check API base and auth.");
-      }
-    };
-    ws.onerror = () => {
-      setConnected(false);
-      setError("WebSocket connection failed. Check API base and auth.");
-    };
-    ws.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(event.data) as T;
-        setData(payload);
-        setWarnings(extractWarnings(payload));
-      } catch {
-        setConnected(false);
-        setError("WebSocket payload parsing failed.");
-        setWarnings([]);
-      }
-    };
-
+    connect();
     return () => {
-      ws.close();
+      cancelled = true;
+      clearRetry();
+      closeSocket();
     };
   }, [enabled, interval, mode, paused]);
 

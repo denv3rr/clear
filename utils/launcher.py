@@ -73,7 +73,9 @@ def find_pids_by_port(port: int) -> list[int]:
             pid_value = int(pid)
             if pid_value > 0:
                 pids.append(pid_value)
-    return sorted(set(pids))
+    if not pids:
+        return []
+    return sorted({pid for pid in pids if psutil.pid_exists(pid)})
 
 
 def pid_cmdline(pid: int) -> list[str]:
@@ -150,9 +152,20 @@ def terminate_pid(pid: int, timeout: float = 5.0) -> bool:
         if alive:
             for target in alive:
                 target.kill()
-        return not process_alive(pid)
+        if not process_alive(pid):
+            return True
     except Exception:
-        return False
+        pass
+    if os.name == "nt":
+        try:
+            subprocess.check_call(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            return False
+    return not process_alive(pid)
 
 
 def terminate_pids_by_port(
