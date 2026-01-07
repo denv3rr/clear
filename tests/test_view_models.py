@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
 from modules.client_mgr.client_model import Client, Account
-from modules.client_mgr.toolkit import RegimeModels
+from modules.client_mgr.regime import RegimeModels
 from modules.view_models import (
     _regime_window_payload,
     account_detail,

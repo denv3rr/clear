@@ -284,7 +284,7 @@ Flight operator metadata can be extended by copying `config/flight_operators.exa
 
 ### AI Assistant (Draft)
 
-The assistant module is in progress. The API endpoint (`/api/assistant/query`) currently supports a limited rules-based summarizer; unsupported modes/questions return an explicit "not implemented" response. UI/CLI chat surfaces are planned. See `docs/ai_assistant.md` for the draft plan.
+The assistant module is in progress. The API endpoint (`/api/assistant/query`) currently supports a limited rules-based summarizer; unsupported modes/questions return a 501 response with an explicit "not implemented" payload and `meta` warnings. UI/CLI chat surfaces are planned. See `docs/ai_assistant.md` for the draft plan.
 
 ### AI Synthesis (Reports)
 

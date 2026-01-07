@@ -22,6 +22,8 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from utils.input import InputSafe
 from interfaces.shell import ShellRenderer
+from modules.client_mgr import calculations
+from modules.client_mgr.regime import RegimeModels
 from modules.client_mgr.client_model import Client, Account
 from modules.client_mgr.valuation import ValuationEngine
 from utils.report_synth import ReportSynthesizer, build_report_context, build_ai_sections
@@ -686,7 +688,7 @@ class FinancialToolkit:
         # 5. Risk Free Rate (r)
         risk_free = InputSafe.get_float("Risk-Free Rate % (e.g. 4.5):", min_val=0.0) / 100.0
 
-        call_price, put_price = self._black_scholes_price(
+        call_price, put_price = calculations.black_scholes_price(
             spot_price,
             strike_price,
             time_years,
@@ -715,44 +717,6 @@ class FinancialToolkit:
         self.console.print(Align.center(results))
         self.console.print(self._render_black_scholes_context(spot_price, strike_price, time_years, volatility, risk_free))
         InputSafe.pause()
-
-    @staticmethod
-    def _black_scholes_price(
-        spot_price: float,
-        strike_price: float,
-        time_years: float,
-        volatility: float,
-        risk_free: float,
-    ) -> Tuple[float, float]:
-        if spot_price <= 0 or strike_price <= 0 or time_years <= 0 or volatility <= 0:
-            return float("nan"), float("nan")
-
-        d1 = (math.log(spot_price / strike_price) + (risk_free + 0.5 * volatility ** 2) * time_years) / (volatility * math.sqrt(time_years))
-        d2 = d1 - volatility * math.sqrt(time_years)
-
-        def N(x: float) -> float:
-            return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
-
-        call_price = spot_price * N(d1) - strike_price * math.exp(-risk_free * time_years) * N(d2)
-        put_price = strike_price * math.exp(-risk_free * time_years) * N(-d2) - spot_price * N(-d1)
-        return float(call_price), float(put_price)
-
-    @staticmethod
-    def _calculate_max_drawdown(returns: pd.Series) -> float:
-        if returns.empty:
-            return 0.0
-        cumulative_returns = (1 + returns).cumprod()
-        peak = cumulative_returns.expanding(min_periods=1).max()
-        drawdown = (cumulative_returns - peak) / peak
-        return drawdown.min()
-
-    @staticmethod
-    def _calculate_var_cvar(returns: pd.Series, confidence_level: float) -> Tuple[float, float]:
-        if returns.empty:
-            return 0.0, 0.0
-        var = returns.quantile(1 - confidence_level)
-        cvar = returns[returns <= var].mean()
-        return float(var), float(cvar)
 
     def _run_multi_model_dashboard(self):
         """Compute a multi-model risk dashboard for the client's portfolio."""
@@ -1281,17 +1245,17 @@ class FinancialToolkit:
             return cached
 
         values = self._returns_to_values(returns)
-        spectrum = self._fft_spectrum(values, top_n=6)
-        change_points = self._cusum_change_points(returns, threshold=5.0)
-        motifs = self._motif_similarity(returns, window=20, top=3)
-        vol_forecast = self._ewma_vol_forecast(returns, lam=0.94, steps=6)
-        entropy = self._shannon_entropy(returns, bins=12)
-        perm_entropy = self._permutation_entropy(
+        spectrum = calculations.fft_spectrum(values, top_n=6)
+        change_points = calculations.cusum_change_points(returns, threshold=5.0)
+        motifs = calculations.motif_similarity(returns, window=20, top=3)
+        vol_forecast = calculations.ewma_vol_forecast(returns, lam=0.94, steps=6)
+        entropy = calculations.shannon_entropy(returns, bins=12)
+        perm_entropy = calculations.permutation_entropy(
             values,
             order=self.perm_entropy_order,
             delay=self.perm_entropy_delay,
         )
-        hurst = self._hurst_exponent(values)
+        hurst = calculations.hurst_exponent(values)
 
         payload = {
             "interval": interval,
@@ -1317,131 +1281,6 @@ class FinancialToolkit:
         for r in returns:
             vals.append(vals[-1] * (1.0 + float(r)))
         return vals[1:]
-
-    @staticmethod
-    def _fft_spectrum(values: List[float], top_n: int = 6) -> List[Tuple[float, float]]:
-        if not values or len(values) < 8:
-            return []
-        series = np.array(values, dtype=float)
-        series = series - series.mean()
-        spec = np.fft.rfft(series)
-        power = np.abs(spec) ** 2
-        freqs = np.fft.rfftfreq(len(series), d=1.0)
-        pairs = list(zip(freqs[1:], power[1:]))
-        pairs.sort(key=lambda item: item[1], reverse=True)
-        return pairs[:top_n]
-
-    @staticmethod
-    def _cusum_change_points(returns: pd.Series, threshold: float = 5.0) -> List[int]:
-        values = np.array(returns, dtype=float)
-        if len(values) < 10:
-            return []
-        mean = values.mean()
-        std = values.std(ddof=1) or 1e-6
-        k = 0.5 * std
-        h = threshold * std
-        pos = 0.0
-        neg = 0.0
-        change_points = []
-        for i, x in enumerate(values):
-            pos = max(0.0, pos + x - mean - k)
-            neg = min(0.0, neg + x - mean + k)
-            if pos > h or abs(neg) > h:
-                change_points.append(i)
-                pos = 0.0
-                neg = 0.0
-        return change_points
-
-    @staticmethod
-    def _motif_similarity(returns: pd.Series, window: int = 20, top: int = 3) -> List[Dict[str, Any]]:
-        values = np.array(returns, dtype=float)
-        if len(values) < window * 2:
-            return []
-        current = values[-window:]
-        current = (current - current.mean()) / (current.std(ddof=1) or 1.0)
-        step = max(1, window // 3)
-        matches = []
-        for start in range(0, len(values) - window * 2, step):
-            seg = values[start:start + window]
-            seg = (seg - seg.mean()) / (seg.std(ddof=1) or 1.0)
-            dist = float(np.linalg.norm(current - seg))
-            matches.append((start, dist))
-        matches.sort(key=lambda item: item[1])
-        results = []
-        index = returns.index
-        for start, dist in matches[:top]:
-            end = start + window
-            label = f"{start}-{end}"
-            if isinstance(index, pd.DatetimeIndex):
-                label = f"{index[start].date()} to {index[end-1].date()}"
-            results.append({"window": label, "distance": dist})
-        return results
-
-    @staticmethod
-    def _ewma_vol_forecast(returns: pd.Series, lam: float = 0.94, steps: int = 6) -> List[float]:
-        values = np.array(returns, dtype=float)
-        if len(values) < 2:
-            return []
-        var = np.var(values, ddof=1)
-        for r in values:
-            var = lam * var + (1.0 - lam) * (r ** 2)
-        forecast = []
-        for _ in range(steps):
-            var = lam * var
-            forecast.append(math.sqrt(var))
-        return forecast
-
-    @staticmethod
-    def _shannon_entropy(returns: pd.Series, bins: int = 12) -> float:
-        values = np.array(returns, dtype=float)
-        if len(values) < 5:
-            return 0.0
-        counts, _ = np.histogram(values, bins=bins, density=False)
-        total = float(counts.sum())
-        if total <= 0:
-            return 0.0
-        probs = counts / total
-        probs = probs[probs > 0]
-        entropy = float(-np.sum(probs * np.log2(probs)))
-        return max(0.0, entropy)
-
-    @staticmethod
-    def _permutation_entropy(values: List[float], order: int = 3, delay: int = 1) -> float:
-        if not values or order < 2 or delay < 1:
-            return 0.0
-        n = len(values)
-        max_start = n - delay * (order - 1)
-        if max_start <= 0:
-            return 0.0
-        patterns = {}
-        for start in range(max_start):
-            window = [values[start + i * delay] for i in range(order)]
-            ranks = tuple(np.argsort(window))
-            patterns[ranks] = patterns.get(ranks, 0) + 1
-        total = float(sum(patterns.values()))
-        if total <= 0:
-            return 0.0
-        probs = np.array([count / total for count in patterns.values()], dtype=float)
-        entropy = float(-np.sum(probs * np.log2(probs)))
-        max_entropy = math.log2(math.factorial(order))
-        if max_entropy <= 0:
-            return 0.0
-        return max(0.0, min(1.0, entropy / max_entropy))
-
-    @staticmethod
-    def _hurst_exponent(values: List[float]) -> float:
-        if not values or len(values) < 20:
-            return 0.5
-        series = np.array(values, dtype=float)
-        lags = range(2, min(20, len(series) // 2))
-        tau = []
-        for lag in lags:
-            diff = series[lag:] - series[:-lag]
-            tau.append(np.sqrt(np.std(diff)))
-        if not tau:
-            return 0.5
-        poly = np.polyfit(np.log(list(lags)), np.log(tau), 1)
-        return float(poly[0] * 2.0)
 
     def _render_pattern_summary(self, payload: Dict[str, Any]) -> Table:
         summary = Table(box=box.SIMPLE, expand=True)
@@ -1597,19 +1436,7 @@ class FinancialToolkit:
 
     @staticmethod
     def _annualization_factor_from_index(returns: pd.Series) -> float:
-        try:
-            idx = returns.index
-            if not isinstance(idx, pd.DatetimeIndex) or len(idx) < 2:
-                return 252.0
-            deltas = idx.to_series().diff().dropna().dt.total_seconds()
-            deltas = deltas[deltas > 0]
-            if deltas.empty:
-                return 252.0
-            avg_delta = float(deltas.mean())
-            seconds_per_year = 365.25 * 24 * 60 * 60
-            return seconds_per_year / avg_delta
-        except Exception:
-            return 252.0
+        return calculations.annualization_factor_from_index(returns)
 
     @staticmethod
     def assess_risk_profile(metrics: Dict[str, Any], min_points: int = 30) -> str:
@@ -1974,79 +1801,11 @@ class FinancialToolkit:
         benchmark_returns: Optional[pd.Series],
         risk_free_annual: float,
     ) -> Dict[str, Any]:
-        ann_factor = FinancialToolkit._annualization_factor_from_index(returns)
-        rf_daily = risk_free_annual / ann_factor
-        avg_daily = float(returns.mean())
-        std_daily = float(returns.std(ddof=1))
-
-        vol_annual = std_daily * (ann_factor ** 0.5)
-        mean_annual = avg_daily * ann_factor
-
-        sharpe = None
-        if std_daily > 0:
-            sharpe = (avg_daily - rf_daily) / std_daily * (ann_factor ** 0.5)
-
-        downside = returns[returns < rf_daily]
-        downside_std = float(downside.std(ddof=1)) if len(downside) > 1 else 0.0
-        sortino = None
-        if downside_std > 0:
-            sortino = (avg_daily - rf_daily) / downside_std * (ann_factor ** 0.5)
-
-        max_drawdown = self._calculate_max_drawdown(returns)
-        var_95, cvar_95 = self._calculate_var_cvar(returns, 0.95)
-        var_99, cvar_99 = self._calculate_var_cvar(returns, 0.99)
-
-        beta = None
-        alpha_annual = None
-        r_squared = None
-        information_ratio = None
-        treynor = None
-        m_squared = None
-        tracking_error = None
-
-        if benchmark_returns is not None and not benchmark_returns.empty:
-            aligned = pd.concat([returns, benchmark_returns], axis=1).dropna()
-            if not aligned.empty and len(aligned) > 10:
-                p = aligned.iloc[:, 0].values
-                m = aligned.iloc[:, 1].values
-                var_m = float(np.var(m, ddof=1))
-                cov_pm = float(np.cov(p, m, ddof=1)[0][1])
-                beta = (cov_pm / var_m) if var_m > 0 else None
-
-                avg_m = float(np.mean(m))
-                alpha_annual = (avg_daily - (rf_daily + (beta or 0.0) * (avg_m - rf_daily))) * ann_factor
-
-                corr = float(np.corrcoef(p, m)[0][1])
-                r_squared = corr * corr
-                
-                active_return = returns - benchmark_returns
-                tracking_error = active_return.std() * (ann_factor ** 0.5)
-                if tracking_error > 0:
-                    information_ratio = (returns.mean() - benchmark_returns.mean()) * ann_factor / tracking_error
-                
-                if beta is not None and beta != 0:
-                    treynor = (mean_annual - risk_free_annual) / beta
-                    
-                m_squared = risk_free_annual + sharpe * (benchmark_returns.std() * (ann_factor ** 0.5)) if sharpe is not None else None
-        
-        return {
-            "mean_annual": mean_annual,
-            "vol_annual": vol_annual,
-            "sharpe": sharpe,
-            "sortino": sortino,
-            "max_drawdown": max_drawdown,
-            "var_95": var_95,
-            "cvar_95": cvar_95,
-            "var_99": var_99,
-            "cvar_99": cvar_99,
-            "beta": beta,
-            "alpha_annual": alpha_annual,
-            "r_squared": r_squared,
-            "information_ratio": information_ratio,
-            "treynor": treynor,
-            "m_squared": m_squared,
-            "tracking_error": tracking_error,
-        }
+        return calculations.compute_risk_metrics(
+            returns,
+            benchmark_returns,
+            risk_free_annual,
+        )
 
     def _max_drawdown(self, returns: pd.Series) -> float:
         if returns.empty:
@@ -2332,7 +2091,7 @@ class FinancialToolkit:
             port_ret = port_val.pct_change().dropna()
             mkt_ret = close[bench].pct_change().dropna()
 
-            capm = FinancialToolkit.compute_capm_metrics_from_returns(
+            capm = calculations.compute_capm_metrics_from_returns(
                 port_ret,
                 mkt_ret,
                 risk_free_annual=risk_free_annual,
@@ -2359,118 +2118,21 @@ class FinancialToolkit:
         risk_free_annual: float = 0.04,
         min_points: int = 30,
     ) -> Dict[str, Any]:
-        if returns is None or benchmark_returns is None:
-            return {"error": "Missing returns", "beta": None, "alpha_annual": None, "r_squared": None, "sharpe": None, "vol_annual": None, "points": 0}
-        if returns.empty or benchmark_returns.empty:
-            return {"error": "No return history", "beta": None, "alpha_annual": None, "r_squared": None, "sharpe": None, "vol_annual": None, "points": 0}
-
-        joined = pd.concat(
-            [returns.rename("p"), benchmark_returns.rename("m")],
-            axis=1,
-        ).dropna()
-        if joined.empty or len(joined) < min_points:
-            return {
-                "error": "Insufficient return history",
-                "beta": None,
-                "alpha_annual": None,
-                "r_squared": None,
-                "sharpe": None,
-                "vol_annual": None,
-                "points": int(len(joined)),
-            }
-
-        ann_factor = FinancialToolkit._annualization_factor_from_index(joined["p"])
-        p = joined["p"].values
-        m = joined["m"].values
-
-        var_m = float(np.var(m, ddof=1))
-        cov_pm = float(np.cov(p, m, ddof=1)[0][1])
-        beta = (cov_pm / var_m) if var_m > 0 else None
-
-        rf_daily = float(risk_free_annual) / ann_factor
-        avg_p = float(np.mean(p))
-        avg_m = float(np.mean(m))
-
-        alpha_daily = None
-        alpha_annual = None
-        if beta is not None:
-            alpha_daily = avg_p - (rf_daily + beta * (avg_m - rf_daily))
-            alpha_annual = alpha_daily * ann_factor
-
-        corr = float(np.corrcoef(p, m)[0][1])
-        r_squared = corr * corr
-
-        std_p = float(np.std(p, ddof=1))
-        sharpe = ((avg_p - rf_daily) / std_p * (ann_factor ** 0.5)) if std_p > 0 else None
-        vol_annual = std_p * (ann_factor ** 0.5)
-
-        neg = p[p < rf_daily]
-        downside_std = float(np.std(neg, ddof=1)) if len(neg) > 1 else None
-        downside_vol_annual = downside_std * (ann_factor ** 0.5) if downside_std else None
-
-        sortino = None
-        if downside_std and downside_std > 0:
-            sortino = (avg_p - rf_daily) / downside_std * (ann_factor ** 0.5)
-
-        jensen_alpha = alpha_annual
-
-        excess = p - m
-        te = float(np.std(excess, ddof=1))
-        information_ratio = None
-        if te > 0:
-            information_ratio = (avg_p - avg_m) / te * (ann_factor ** 0.5)
-
-        std_m = float(np.std(m, ddof=1))
-        m_squared = None
-        if std_p > 0:
-            m_squared = ((avg_p - rf_daily) / std_p) * std_m * ann_factor + risk_free_annual
-
-        return {
-            "error": "",
-            "beta": beta,
-            "alpha_annual": alpha_annual,
-            "jensen_alpha": jensen_alpha,
-            "r_squared": r_squared,
-            "sharpe": sharpe,
-            "sortino": sortino,
-            "information_ratio": information_ratio,
-            "m_squared": m_squared,
-            "vol_annual": vol_annual,
-            "downside_vol_annual": downside_vol_annual,
-            "points": int(len(joined)),
-        }
+        return calculations.compute_capm_metrics_from_returns(
+            returns,
+            benchmark_returns,
+            risk_free_annual=risk_free_annual,
+            min_points=min_points,
+        )
 
     # toolkit.py changes
 
     @staticmethod
     def _compute_core_metrics(returns: pd.Series, benchmark_returns: pd.Series = None) -> dict:
-        """Centralized math engine for all UI components."""
-        if returns.empty:
-            return {}
+        return calculations.compute_core_metrics(returns, benchmark_returns)
 
-        # Standard Volatility (Annualized)
-        ann_factor = FinancialToolkit._annualization_factor_from_index(returns)
-        vol = returns.std() * np.sqrt(ann_factor)
-        
-        # Sharpe (assuming 0% risk-free rate currently just for dev simplicity)
-        sharpe = (returns.mean() / returns.std()) * np.sqrt(ann_factor) if returns.std() != 0 else 0
 
-        metrics = {
-            "volatility_annual": float(vol),
-            "sharpe": float(sharpe),
-            "mean_return": float(returns.mean() * ann_factor),
-        }
 
-        if benchmark_returns is not None and not benchmark_returns.empty:
-            # Align series to ensure correct covariance
-            combined = pd.concat([returns, benchmark_returns], axis=1).dropna()
-            if len(combined) > 5:
-                cov = np.cov(combined.iloc[:, 0], combined.iloc[:, 1])[0, 1]
-                mkt_var = np.var(combined.iloc[:, 1])
-                beta = cov / mkt_var if mkt_var != 0 else 1.0
-                metrics["beta"] = float(beta)
-                
-        return metrics
 
 
 
@@ -2502,466 +2164,6 @@ class FinancialToolkit:
 
 
 
-
-
-
-
-class RegimeModels:
-    """
-    Collection of regime-based predictive models.
-    """
-
-    DEFAULT_BINS = [
-        -math.inf, -0.02, -0.005, 0.005, 0.02, math.inf
-    ]
-
-    STATE_LABELS = [
-        "Strong Down",
-        "Mild Down",
-        "Flat",
-        "Mild Up",
-        "Strong Up"
-    ]
-
-    INTERVAL_POINTS = {
-        "1W": 5,
-        "1M": 21,
-        "3M": 63,
-        "6M": 126,
-        "1Y": 252,
-    }
-
-    ANNUALIZATION = {
-        "1W": 252.0 * 6.5,  # 60m bars, approx 6.5 trading hours/day
-        "1M": 252.0,
-        "3M": 252.0,
-        "6M": 252.0,
-        "1Y": 252.0,
-        "1D": 252.0,
-        "1WK": 52.0,
-        "1MO": 12.0,
-        "60M": 252.0 * 6.5,
-    }
-
-    @staticmethod
-    def _annualization_factor(interval: str | None) -> float:
-        if not interval:
-            return 252.0
-        key = str(interval).upper().strip()
-        return float(RegimeModels.ANNUALIZATION.get(key, 252.0))
-
-    @staticmethod
-    def _annualization_from_timestamps(timestamps: list) -> Optional[float]:
-        if not timestamps or len(timestamps) < 2:
-            return None
-        deltas = []
-        for i in range(1, len(timestamps)):
-            a = timestamps[i - 1]
-            b = timestamps[i]
-            if not hasattr(a, "timestamp") or not hasattr(b, "timestamp"):
-                continue
-            delta = (b - a).total_seconds()
-            if delta > 0:
-                deltas.append(delta)
-        if not deltas:
-            return None
-        avg_delta = sum(deltas) / len(deltas)
-        seconds_per_year = 365.25 * 24 * 60 * 60
-        return seconds_per_year / avg_delta
-
-    @staticmethod
-    def _stationary_distribution(P: list[list[float]], tol: float = 1e-12, max_iter: int = 5000) -> list[float]:
-        """
-        Power-iteration stationary distribution for a row-stochastic Markov chain.
-
-        Returns pi such that pi = pi * P, sum(pi)=1.
-
-        No clamping. No flooring. Converges for ergodic chains; otherwise returns last iterate.
-        """
-        n = len(P)
-        if n <= 0:
-            return []
-
-        # Start uniform
-        pi = [1.0 / n] * n
-
-        it = 0
-        while it < max_iter:
-            # pi_next[j] = sum_i pi[i] * P[i][j]
-            pi_next = [0.0] * n
-            i = 0
-            while i < n:
-                row = P[i]
-                w = float(pi[i])
-                j = 0
-                while j < n:
-                    pi_next[j] += w * float(row[j])
-                    j += 1
-                i += 1
-
-            s = float(sum(pi_next))
-            if s > 0:
-                inv = 1.0 / s
-                j = 0
-                while j < n:
-                    pi_next[j] *= inv
-                    j += 1
-
-            # L1 diff
-            diff = 0.0
-            j = 0
-            while j < n:
-                diff += abs(pi_next[j] - pi[j])
-                j += 1
-
-            pi = pi_next
-            if diff < tol:
-                break
-
-            it += 1
-
-        return pi
-
-    @staticmethod
-    def _evolution_surface(
-        P: list[list[float]],
-        current_state: int,
-        steps: int,
-        include_initial: bool = False
-    ) -> list[list[float]]:
-        """
-        Returns a matrix (steps+1) x n where row t is the state probability vector at time t,
-        starting from a one-hot distribution at current_state.
-        """
-        n = len(P)
-        if n <= 0:
-            return []
-
-        out = []
-        probs = [0.0] * n
-        probs[current_state] = 1.0
-        if include_initial:
-            out.append(probs[:])
-
-        t = 0
-        while t < steps:
-            nxt = [0.0] * n
-            i = 0
-            while i < n:
-                pi = float(probs[i])
-                if pi != 0.0:
-                    row = P[i]
-                    j = 0
-                    while j < n:
-                        nxt[j] += pi * float(row[j])
-                        j += 1
-                i += 1
-
-            s = float(sum(nxt))
-            if s > 0:
-                inv = 1.0 / s
-                j = 0
-                while j < n:
-                    nxt[j] *= inv
-                    j += 1
-
-            probs = nxt
-            out.append(probs[:])
-            t += 1
-
-        return out
-
-    @staticmethod
-    def snapshot_from_value_series(values: list[float], interval: str = "1M", label: str = "Portfolio") -> dict:
-        n = RegimeModels.INTERVAL_POINTS.get(interval, 21)
-        series = values[-(n+1):] if values and len(values) >= (n+1) else values
-
-        returns = []
-        if series and len(series) >= 8:
-            for i in range(1, len(series)):
-                prev = float(series[i-1])
-                curr = float(series[i])
-                if prev > 0:
-                    returns.append((curr - prev) / prev)
-
-        snap = RegimeModels.compute_markov_snapshot(
-            returns,
-            horizon=1,
-            label=f"{label} ({interval})",
-            interval=interval,
-        )
-        snap["interval"] = interval
-        return snap
-
-    @staticmethod
-    def compute_markov_snapshot(
-        returns: list[float],
-        horizon: int = 1,
-        label: str = "1D",
-        interval: str | None = None,
-        timestamps: list | None = None,
-    ) -> dict:
-        if not returns or len(returns) < 8:
-            return {"error": "Insufficient data for regime analysis"}
-
-        bins = RegimeModels._make_bins_quantiles(returns)
-        states = RegimeModels._discretize(returns, bins)
-        n = len(bins) - 1
-
-        P = RegimeModels._transition_matrix(states, n)
-
-        current_state = states[-1]
-        probs = RegimeModels._project(P, current_state, horizon)
-
-        next_state = max(probs, key=probs.get)
-
-        avg_return = sum(returns) / len(returns)
-        if len(returns) > 1:
-            volatility = math.sqrt(
-                sum((r - avg_return) ** 2 for r in returns) / (len(returns) - 1)
-            )
-        else:
-            volatility = 0.0
-        ann_factor = RegimeModels._annualization_from_timestamps(timestamps) or RegimeModels._annualization_factor(interval)
-        avg_return_annual = avg_return * ann_factor
-        volatility_annual = volatility * math.sqrt(ann_factor)
-
-        # --- Surfaces (pure Markov; interval-compatible) ---
-        pi = RegimeModels._stationary_distribution(P)
-        evo_steps = 12
-        evo = RegimeModels._evolution_surface(P, current_state, evo_steps, include_initial=False)
-
-        #
-        return {
-            "model": "Markov",
-            "horizon": label,
-            "current_regime": RegimeModels.STATE_LABELS[current_state],
-            "confidence": probs[current_state],
-            "state_probs": {
-                RegimeModels.STATE_LABELS[i]: probs[i]
-                for i in range(n)
-            },
-            "transition_matrix": P,
-            "expected_next": {
-                "regime": RegimeModels.STATE_LABELS[next_state],
-                "probability": probs[next_state]
-            },
-            "stability": P[current_state][current_state],
-            "samples": len(returns),
-            "metrics": {
-                "avg_return": avg_return_annual,
-                "volatility": volatility_annual,
-                "avg_return_raw": avg_return,
-                "volatility_raw": volatility,
-            },
-            "stationary": {
-                RegimeModels.STATE_LABELS[i]: pi[i] for i in range(n)
-            },
-            "evolution": {
-                "steps": evo_steps,
-                "series": [
-                    {RegimeModels.STATE_LABELS[i]: evo[t][i] for i in range(n)}
-                    for t in range(len(evo))
-                ]
-            },
-        }
-
-    @staticmethod
-    def generate_snapshot(
-        ticker: str,
-        benchmark_ticker: str = "SPY",
-        period: str = "1y",
-        interval: str = "1d",
-        risk_free_annual: float = 0.04,
-    ) -> dict:
-        """Generate a Markov regime snapshot using real historical returns."""
-        symbol = (ticker or "").strip().upper()
-        if not symbol:
-            return {"error": "Missing ticker"}
-
-        try:
-            df = yf.download(symbol, period=period, interval=interval, progress=False, auto_adjust=True)
-        except Exception as exc:
-            return {"error": f"Failed to fetch data: {exc}"}
-
-        if df is None or df.empty or "Close" not in df.columns:
-            return {"error": "No historical data available"}
-
-        returns = df["Close"].pct_change().dropna()
-        if returns.empty or len(returns) < 8:
-            return {"error": "Insufficient data for regime analysis"}
-
-        snap = RegimeModels.compute_markov_snapshot(
-            returns.tolist(),
-            horizon=1,
-            label=f"{symbol} ({period})",
-            interval=interval,
-            timestamps=list(df.index),
-        )
-        if "error" in snap:
-            return snap
-
-        bench_returns = pd.Series(dtype=float)
-        if benchmark_ticker:
-            try:
-                bench = yf.download(
-                    str(benchmark_ticker).upper(),
-                    period=period,
-                    interval=interval,
-                    progress=False,
-                    auto_adjust=True,
-                )
-                if bench is not None and not bench.empty and "Close" in bench.columns:
-                    bench_returns = bench["Close"].pct_change().dropna()
-            except Exception:
-                bench_returns = pd.Series(dtype=float)
-
-        metrics = FinancialToolkit._compute_core_metrics(returns, bench_returns)
-
-        if not bench_returns.empty and "beta" in metrics:
-            combined = pd.concat([returns, bench_returns], axis=1).dropna()
-            if len(combined) > 5:
-                ann_factor = FinancialToolkit._annualization_factor_from_index(combined.iloc[:, 0])
-                avg_p = float(combined.iloc[:, 0].mean() * ann_factor)
-                avg_m = float(combined.iloc[:, 1].mean() * ann_factor)
-                beta = float(metrics.get("beta", 0.0))
-                alpha_annual = avg_p - (risk_free_annual + beta * (avg_m - risk_free_annual))
-                corr = combined.iloc[:, 0].corr(combined.iloc[:, 1])
-                if corr is not None:
-                    metrics["r_squared"] = float(corr * corr)
-                metrics["alpha_annual"] = float(alpha_annual)
-
-        snap["metrics"].update(metrics)
-        snap["ticker"] = symbol
-        snap["benchmark"] = str(benchmark_ticker).upper() if benchmark_ticker else None
-        return snap
-    
-    @staticmethod
-    def _bin_returns_sigma(returns: pd.Series) -> pd.Series:
-        """Bins returns using Standard Deviation thresholds for stability."""
-        mu = returns.mean()
-        std = returns.std()
-        
-        # Thresholds: +/- 1.0 sigma for Mild, +/- 2.0 sigma for Strong
-        bins = [-np.inf, mu - 2*std, mu - std, mu + std, mu + 2*std, np.inf]
-        labels = ["Strong Down", "Mild Down", "Neutral", "Mild Up", "Strong Up"]
-        
-        return pd.cut(returns, bins=bins, labels=labels)
-
-    @staticmethod
-    def _discretize(returns, bins):
-        out = []
-        for r in returns:
-            for i in range(len(bins) - 1):
-                if bins[i] <= r < bins[i + 1]:
-                    out.append(i)
-                    break
-        return out
-
-    @staticmethod
-    def _transition_matrix(states: list[int], n: int, k: float = 0.75, self_floor: float = 0.0):
-        """
-        Dirichlet-smoothed transition matrix.
-
-        k: smoothing strength (higher = more smoothing)
-        self_floor: minimum probability of staying in the same regime
-                (prevents unrealistically jumpy chains in sparse data)
-        """
-        counts = [[0.0] * n for _ in range(n)]
-        for a, b in zip(states[:-1], states[1:]):
-            counts[a][b] += 1.0
-
-        P = []
-        for i in range(n):
-            row = counts[i]
-            total = sum(row)
-
-            # Dirichlet prior: start with uniform pseudo-counts
-            smoothed = [(c + k) for c in row]
-            sm_total = sum(smoothed)
-            probs = [v / sm_total for v in smoothed]
-
-            P.append(probs)
-
-        return P
-
-    @staticmethod
-    def _make_bins_quantiles(returns: list[float]) -> list[float]:
-        """
-        Build 5-state bins from return quantiles so states are populated.
-        Produces 6 edges: [-inf, q20, q40, q60, q80, +inf]
-        """
-        r = [float(x) for x in returns if x is not None]
-        if len(r) < 20:
-            # fallback if too few points
-            return [-math.inf, -0.02, -0.005, 0.005, 0.02, math.inf]
-
-        qs = np.quantile(r, [0.20, 0.40, 0.60, 0.80]).tolist()
-
-        # guard against identical quantiles (flat series)
-        # if too many duplicates, revert to static bins
-        if len(set(round(q, 10) for q in qs)) < 3:
-            return [-math.inf, -0.02, -0.005, 0.005, 0.02, math.inf]
-
-        return [-math.inf, qs[0], qs[1], qs[2], qs[3], math.inf]
-
-    @staticmethod
-    def _project(P, current, steps):
-        probs = {i: 0.0 for i in range(len(P))}
-        probs[current] = 1.0
-
-        for _ in range(steps):
-            next_probs = defaultdict(float)
-            for i, p in probs.items():
-                for j, w in enumerate(P[i]):
-                    next_probs[j] += p * w
-            probs = next_probs
-
-        return probs
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-from rich.table import Table
-from rich.panel import Panel
-from rich.align import Align
-from rich.text import Text
-from rich import box
-
-from utils.charts import ChartRenderer
 
 class RegimeRenderer:
     """

@@ -40,7 +40,7 @@ def client(session):
 def test_create_client(client):
     response = client.post(
         "/api/clients",
-        json={"name": "Test Client", "risk_profile": "High"},
+        json={"client_id": "test_client_1", "name": "Test Client", "risk_profile": "High", "accounts": []},
     )
     assert response.status_code == 200
     data = response.json()
@@ -56,19 +56,16 @@ def test_get_clients(client):
 
 def test_get_clients_with_accounts(client):
     # Create a client
+    client_id = "test_client_2"
     client.post(
         "/api/clients",
-        json={"name": "Client With Accounts", "risk_profile": "Medium"},
+        json={"client_id": client_id, "name": "Client With Accounts", "risk_profile": "Medium", "accounts": []},
     )
     
-    # Get the client ID
-    response = client.get("/api/clients")
-    client_id = response.json()["clients"][0]["client_id"]
-
     # Create an account for the client
     client.post(
         f"/api/clients/{client_id}/accounts",
-        json={"account_name": "Checking Account", "account_type": "Checking"},
+        json={"account_id": "test_account_1", "account_name": "Checking Account", "account_type": "Checking"},
     )
 
     # Get clients again and assert the new client and its account are present
@@ -87,12 +84,14 @@ def test_get_clients_with_accounts(client):
 
 
 def test_account_metadata_persists(client):
+    client_id = "test_client_3"
     response = client.post(
         "/api/clients",
-        json={"name": "Meta Client", "risk_profile": "Moderate", "tax_profile": {"reporting_currency": "EUR"}},
+        json={"client_id": client_id, "name": "Meta Client", "risk_profile": "Moderate", "tax_profile": {"reporting_currency": "EUR"}, "accounts": []},
     )
-    client_id = response.json()["client_id"]
+    
     account_payload = {
+        "account_id": "test_account_2",
         "account_name": "Main",
         "account_type": "Taxable",
         "ownership_type": "Joint",

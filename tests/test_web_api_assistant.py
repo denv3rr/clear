@@ -30,6 +30,8 @@ def test_assistant_summary_endpoint_uses_payload():
     assert resp.status_code == 200
     payload = resp.json()
     assert payload["answer"] == "OK"
+    assert payload["meta"]["route"] == "/api/assistant/query"
+    assert payload["meta"]["status"] == "ok"
     args, _ = mocked.call_args
     assert args[0] == "How many clients?"
     assert args[1] is None
@@ -43,9 +45,11 @@ def test_assistant_non_summary_mode_is_explicit():
             json={"question": "Compare clients", "mode": "compare"},
             headers=_api_headers(),
         )
-    assert resp.status_code == 200
+    assert resp.status_code == 501
     payload = resp.json()
     assert payload["answer"] == "Mode 'compare' is not yet implemented."
+    assert payload["meta"]["route"] == "/api/assistant/query"
+    assert payload["meta"]["status"] == "error"
     mocked.assert_not_called()
 
 

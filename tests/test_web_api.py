@@ -53,7 +53,7 @@ def test_client_create_endpoint_stubbed():
         }
         resp = client.post(
             "/api/clients",
-            json={"name": "Atlas Capital", "risk_profile": "Balanced", "tax_profile": {"reporting_currency": "USD"}},
+            json={"client_id": "c1", "name": "Atlas Capital", "risk_profile": "Balanced", "accounts": []},
             headers=_api_headers(),
         )
     assert resp.status_code == 200
@@ -72,7 +72,7 @@ def test_client_update_endpoint_stubbed():
         }
         resp = client.patch(
             "/api/clients/c1",
-            json={"name": "New Name", "risk_profile": "Balanced"},
+            json={"client_id": "c1", "name": "New Name", "risk_profile": "Balanced", "accounts": []},
             headers=_api_headers(),
         )
     assert resp.status_code == 200
@@ -96,7 +96,7 @@ def test_account_create_endpoint_stubbed():
         mocked_client.return_value = {"client_id": "c1", "name": "Test Client", "accounts": []}
         resp = client.post(
             "/api/clients/c1/accounts",
-            json={"account_name": "Primary Brokerage", "account_type": "Taxable", "tags": ["Core"]},
+            json={"account_id": "a1", "account_name": "Primary Brokerage", "account_type": "Taxable", "tags": ["Core"]},
             headers=_api_headers(),
         )
     assert resp.status_code == 200
@@ -121,7 +121,7 @@ def test_account_update_endpoint_stubbed():
         mocked_client.return_value = {"client_id": "c1", "name": "Test Client", "accounts": []}
         resp = client.patch(
             "/api/clients/c1/accounts/a1",
-            json={"account_name": "Alpha Prime", "custodian": "Fidelity"},
+            json={"account_id": "a1", "account_name": "Alpha Prime", "account_type": "Taxable", "custodian": "Fidelity"},
             headers=_api_headers(),
         )
     assert resp.status_code == 200

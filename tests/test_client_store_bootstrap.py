@@ -70,6 +70,7 @@ def test_bootstrap_loads_when_db_empty(tmp_path, monkeypatch):
                     {
                         "account_id": "a1",
                         "account_name": "Main",
+                        "account_type": "Taxable",
                         "holdings": {"AAPL": 2},
                     }
                 ],

@@ -18,6 +18,7 @@ from modules.view_models import (
     portfolio_dashboard,
 )
 from modules.client_store import DbClientStore
+from modules.client_mgr.schema import Client, Account
 from web_api.auth import require_api_key
 from web_api.view_model import attach_meta, validate_payload
 
@@ -30,48 +31,6 @@ def get_db():
         yield db
     finally:
         db.close()
-
-
-class ClientPayload(BaseModel):
-    name: str = Field(..., min_length=1)
-    risk_profile: Optional[str] = None
-    tax_profile: Optional[Dict[str, Any]] = None
-    risk_profile_source: Optional[str] = None
-    active_interval: Optional[str] = None
-
-
-class ClientUpdatePayload(BaseModel):
-    name: Optional[str] = None
-    risk_profile: Optional[str] = None
-    tax_profile: Optional[Dict[str, Any]] = None
-    risk_profile_source: Optional[str] = None
-    active_interval: Optional[str] = None
-
-
-class AccountPayload(BaseModel):
-    account_name: str = Field(..., min_length=1)
-    account_type: Optional[str] = None
-    ownership_type: Optional[str] = None
-    custodian: Optional[str] = None
-    tags: Optional[List[str]] = None
-    tax_settings: Optional[Dict[str, Any]] = None
-    holdings: Optional[Dict[str, Any]] = None
-    lots: Optional[Dict[str, Any]] = None
-    manual_holdings: Optional[List[Dict[str, Any]]] = None
-    active_interval: Optional[str] = None
-
-
-class AccountUpdatePayload(BaseModel):
-    account_name: Optional[str] = None
-    account_type: Optional[str] = None
-    ownership_type: Optional[str] = None
-    custodian: Optional[str] = None
-    tags: Optional[List[str]] = None
-    tax_settings: Optional[Dict[str, Any]] = None
-    holdings: Optional[Dict[str, Any]] = None
-    lots: Optional[Dict[str, Any]] = None
-    manual_holdings: Optional[List[Dict[str, Any]]] = None
-    active_interval: Optional[str] = None
 
 
 class DuplicateCleanupPayload(BaseModel):
@@ -170,23 +129,10 @@ def client_view(client_id: str, _auth: None = Depends(require_api_key), db: Sess
 
 
 @router.post("/api/clients")
-def client_create(payload: ClientPayload, _auth: None = Depends(require_api_key), db: Session = Depends(get_db)):
-    name = payload.name.strip()
-    if not name:
-        raise HTTPException(status_code=422, detail="Client name required")
-
-    risk_profile = payload.risk_profile.strip() if payload.risk_profile else ""
+def client_create(payload: Client, _auth: None = Depends(require_api_key), db: Session = Depends(get_db)):
     store = DbClientStore(db)
     try:
-        response = store.create_client(
-            {
-                "name": name,
-                "risk_profile": risk_profile or "Not Assessed",
-                "risk_profile_source": payload.risk_profile_source,
-                "active_interval": payload.active_interval,
-                "tax_profile": payload.tax_profile,
-            }
-        )
+        response = store.create_client(payload.model_dump())
     except IntegrityError:
         raise HTTPException(status_code=409, detail="Client name already exists.")
     response = client_detail(response)
@@ -202,27 +148,12 @@ def client_create(payload: ClientPayload, _auth: None = Depends(require_api_key)
 @router.patch("/api/clients/{client_id}")
 def client_update(
     client_id: str,
-    payload: ClientUpdatePayload,
+    payload: Client,
     _auth: None = Depends(require_api_key),
     db: Session = Depends(get_db)
 ):
-    updates: Dict[str, Any] = {}
-    if payload.name is not None:
-        name = payload.name.strip()
-        if not name:
-            raise HTTPException(status_code=422, detail="Client name required")
-        updates["name"] = name
-    if payload.risk_profile is not None:
-        cleaned = payload.risk_profile.strip()
-        updates["risk_profile"] = cleaned or "Not Assessed"
-    if payload.tax_profile is not None:
-        updates["tax_profile"] = payload.tax_profile
-    if payload.risk_profile_source is not None:
-        updates["risk_profile_source"] = payload.risk_profile_source
-    if payload.active_interval is not None:
-        updates["active_interval"] = payload.active_interval
     store = DbClientStore(db)
-    updated = store.update_client(client_id, updates)
+    updated = store.update_client(client_id, payload.model_dump())
     if updated is None:
         raise HTTPException(status_code=404, detail="Client not found")
     response = client_detail(updated)
@@ -266,29 +197,12 @@ def client_dashboard_view(
 @router.post("/api/clients/{client_id}/accounts")
 def account_create(
     client_id: str,
-    payload: AccountPayload,
+    payload: Account,
     _auth: None = Depends(require_api_key),
     db: Session = Depends(get_db)
 ):
-    name = payload.account_name.strip()
-    if not name:
-        raise HTTPException(status_code=422, detail="Account name required")
     store = DbClientStore(db)
-    account_payload = store.create_account(
-        client_id,
-        {
-            "account_name": name,
-            "account_type": payload.account_type,
-            "ownership_type": payload.ownership_type,
-            "custodian": payload.custodian,
-            "tags": payload.tags,
-            "tax_settings": payload.tax_settings,
-            "holdings": payload.holdings,
-            "lots": payload.lots,
-            "manual_holdings": payload.manual_holdings,
-            "active_interval": payload.active_interval,
-        },
-    )
+    account_payload = store.create_account(client_id, payload.model_dump())
     if account_payload is None:
         raise HTTPException(status_code=404, detail="Client not found")
     client_payload = store.fetch_client(client_id)
@@ -308,36 +222,12 @@ def account_create(
 def account_update(
     client_id: str,
     account_id: str,
-    payload: AccountUpdatePayload,
+    payload: Account,
     _auth: None = Depends(require_api_key),
     db: Session = Depends(get_db)
 ):
-    updates: Dict[str, Any] = {}
-    if payload.account_name is not None:
-        name = payload.account_name.strip()
-        if not name:
-            raise HTTPException(status_code=422, detail="Account name required")
-        updates["account_name"] = name
-    if payload.account_type is not None:
-        updates["account_type"] = payload.account_type
-    if payload.ownership_type is not None:
-        updates["ownership_type"] = payload.ownership_type
-    if payload.custodian is not None:
-        updates["custodian"] = payload.custodian
-    if payload.tags is not None:
-        updates["tags"] = payload.tags
-    if payload.tax_settings is not None:
-        updates["tax_settings"] = payload.tax_settings
-    if payload.holdings is not None:
-        updates["holdings"] = payload.holdings
-    if payload.lots is not None:
-        updates["lots"] = payload.lots
-    if payload.manual_holdings is not None:
-        updates["manual_holdings"] = payload.manual_holdings
-    if payload.active_interval is not None:
-        updates["active_interval"] = payload.active_interval
     store = DbClientStore(db)
-    account_payload = store.update_account(client_id, account_id, updates)
+    account_payload = store.update_account(client_id, account_id, payload.model_dump())
     if account_payload is None:
         raise HTTPException(status_code=404, detail="Account not found")
     client_payload = store.fetch_client(client_id)

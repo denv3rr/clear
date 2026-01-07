@@ -3,12 +3,8 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, List
 from core.models import Client, Account
 
-from modules.client_mgr.toolkit import (
-    FinancialToolkit,
-    RegimeModels,
-    TOOLKIT_INTERVAL,
-    TOOLKIT_PERIOD,
-)
+from modules.client_mgr.toolkit import FinancialToolkit, TOOLKIT_INTERVAL, TOOLKIT_PERIOD
+from modules.client_mgr.regime import RegimeModels
 from modules.client_mgr.valuation import ValuationEngine
 from modules.client_mgr.holdings import normalize_ticker
 from modules.client_mgr.client_model import Client as ClientPayload

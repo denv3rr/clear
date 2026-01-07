@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from web_api.auth import require_api_key
 from web_api.summarizer import summarize
+from web_api.view_model import attach_meta, validate_payload
 
 router = APIRouter()
 
@@ -25,12 +27,34 @@ def query(
 
     if mode == "summary":
         response = summarize(payload.question, payload.context, payload.sources)
-    else:
-        response = {
-            "answer": f"Mode '{payload.mode}' is not yet implemented.",
-            "sources": [],
-            "confidence": "Low",
-            "warnings": ["This assistant mode is not yet available."],
-        }
+        warnings = validate_payload(
+            response,
+            required_keys=("answer", "sources", "confidence", "warnings"),
+            warnings=response.get("warnings"),
+        )
+        return attach_meta(
+            response,
+            route="/api/assistant/query",
+            source="assistant",
+            warnings=warnings,
+        )
 
-    return response
+    response = {
+        "answer": f"Mode '{payload.mode}' is not yet implemented.",
+        "sources": [],
+        "confidence": "Low",
+        "warnings": ["This assistant mode is not yet available."],
+    }
+    warnings = validate_payload(
+        response,
+        required_keys=("answer", "sources", "confidence", "warnings"),
+        warnings=response.get("warnings"),
+    )
+    attach_meta(
+        response,
+        route="/api/assistant/query",
+        source="assistant",
+        warnings=warnings,
+        status="error",
+    )
+    return JSONResponse(response, status_code=status.HTTP_501_NOT_IMPLEMENTED)

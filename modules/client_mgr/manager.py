@@ -21,7 +21,8 @@ from modules.client_mgr.holdings import (
 )
 from modules.client_mgr.data_handler import DataHandler
 from modules.client_mgr.valuation import ValuationEngine
-from modules.client_mgr.toolkit import FinancialToolkit, RegimeModels, RegimeRenderer
+from modules.client_mgr.toolkit import FinancialToolkit, RegimeRenderer
+from modules.client_mgr.regime import RegimeModels
 from modules.client_mgr.tools import Tools
 from modules.client_mgr.tax import TaxEngine
 from modules.market_data.trackers import GlobalTrackers, TrackerRelevance       

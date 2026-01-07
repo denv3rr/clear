@@ -2,7 +2,7 @@
 
 ## Current Status
 - API route `/api/assistant/query` exists; limited rules-based summarizer handles client/news/tracker prompts.
-- Unsupported modes or questions return explicit "not implemented" responses.
+- Unsupported modes or questions return explicit "not implemented" payloads with a 501 status and `meta` warnings.
 - UI/CLI chat surfaces are not implemented yet.
 
 ## Goals
@@ -41,7 +41,7 @@
   - `warnings` (missing data, stale cache, or blocked sources)
 - No hallucinated numbers or placeholder examples.
 - If inputs are missing, return "Unavailable" with a reason.
-- Until the assistant is fully wired, unsupported queries return an explicit "not implemented" response with empty sources.
+- Until the assistant is fully wired, unsupported queries return a 501 response with empty sources and explicit warnings.
 
 ## Model Options
 - Default: rules-based summarizer and templated narratives over deterministic data.
