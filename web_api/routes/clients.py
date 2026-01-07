@@ -74,6 +74,10 @@ class AccountUpdatePayload(BaseModel):
     active_interval: Optional[str] = None
 
 
+class DuplicateCleanupPayload(BaseModel):
+    confirm: bool = False
+
+
 def _find_account_payload(client_payload: Dict[str, Any], account_ref: Any) -> Optional[Dict[str, Any]]:
     ref = str(account_ref)
     for account in client_payload.get("accounts", []) or []:
@@ -93,6 +97,51 @@ def clients_index(_auth: None = Depends(require_api_key), db: Session = Depends(
     return attach_meta(
         payload,
         route="/api/clients",
+        source="database",
+        warnings=warnings,
+    )
+
+
+@router.get("/api/clients/duplicates")
+def client_duplicate_accounts(
+    _auth: None = Depends(require_api_key),
+    db: Session = Depends(get_db),
+):
+    store = DbClientStore(db)
+    payload = store.find_duplicate_accounts()
+    warnings = validate_payload(
+        payload,
+        required_keys=("count", "clients", "details"),
+        warnings=[],
+    )
+    if payload.get("count", 0) > 0:
+        warnings.append("Duplicate accounts detected.")
+    return attach_meta(
+        payload,
+        route="/api/clients/duplicates",
+        source="database",
+        warnings=warnings,
+    )
+
+
+@router.post("/api/clients/duplicates/cleanup")
+def cleanup_client_duplicates(
+    payload: DuplicateCleanupPayload,
+    _auth: None = Depends(require_api_key),
+    db: Session = Depends(get_db),
+):
+    if not payload.confirm:
+        raise HTTPException(status_code=400, detail="Cleanup requires confirm=true.")
+    store = DbClientStore(db)
+    result = store.remove_duplicate_accounts()
+    warnings = validate_payload(
+        result,
+        required_keys=("removed", "clients"),
+        warnings=[],
+    )
+    return attach_meta(
+        result,
+        route="/api/clients/duplicates/cleanup",
         source="database",
         warnings=warnings,
     )

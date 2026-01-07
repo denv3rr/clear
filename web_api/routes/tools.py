@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 
 from web_api.diagnostics import (
     client_counts,
+    duplicate_account_summary,
     feed_status,
     news_cache_info,
     report_cache_info,
@@ -28,6 +29,7 @@ def diagnostics(_auth: None = Depends(require_api_key)):
             "news_cache": news_cache_info(),
         },
         "clients": client_counts(),
+        "duplicates": {"accounts": duplicate_account_summary()},
         "reports": report_cache_info(),
     }
     warnings = validate_payload(

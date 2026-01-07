@@ -59,7 +59,7 @@ def _normalize_holdings_map(raw: Any) -> Dict[str, Any]:
     return holdings
 
 
-def _normalize_account_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize_account_payload(payload: Dict[str, Any]) -> Dict[str, Any]:      
     account = Account.from_dict(payload)
     normalized = account.to_dict()
     extra = _split_extra(
@@ -85,7 +85,25 @@ def _normalize_account_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     return normalized
 
 
-def _normalize_client_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+def _account_fingerprint(account: models.Account) -> str:
+    payload: Dict[str, Any] = {
+        "name": account.name or "",
+        "account_type": account.account_type or "",
+        "ownership_type": account.ownership_type or "",
+        "custodian": account.custodian or "",
+        "tags": sorted(list(account.tags or [])),
+        "tax_settings": account.tax_settings or {},
+        "holdings_map": account.holdings_map or {},
+        "lots": account.lots or {},
+        "manual_holdings": account.manual_holdings or [],
+        "extra": account.extra or {},
+        "current_value": float(account.current_value or 0.0),
+        "active_interval": account.active_interval or "1M",
+    }
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def _normalize_client_payload(payload: Dict[str, Any]) -> Dict[str, Any]:       
     client = Client.from_dict(payload)
     normalized = client.to_dict()
     extra = _split_extra(
@@ -323,6 +341,73 @@ class DbClientStore:
             db.commit()
             db.refresh(account)
             return self._account_to_dict(account)
+
+    def find_duplicate_accounts(self) -> Dict[str, Any]:
+        self.ensure_schema()
+        with _session_scope(self._db) as db:
+            duplicates: List[Dict[str, Any]] = []
+            total_duplicates = 0
+            client_count = 0
+            for client in db.query(models.Client).all():
+                groups: Dict[str, List[models.Account]] = {}
+                for account in client.accounts:
+                    key = _account_fingerprint(account)
+                    groups.setdefault(key, []).append(account)
+                has_duplicates = False
+                for accounts in groups.values():
+                    if len(accounts) <= 1:
+                        continue
+                    has_duplicates = True
+                    accounts_sorted = sorted(accounts, key=lambda item: item.id or 0)
+                    keeper = accounts_sorted[0]
+                    dupes = accounts_sorted[1:]
+                    duplicates.append(
+                        {
+                            "client_id": client.client_uid or str(client.id),
+                            "client_name": client.name or "",
+                            "account_name": keeper.name or "",
+                            "account_type": keeper.account_type or "",
+                            "keep_account_id": keeper.account_uid or str(keeper.id),
+                            "duplicate_ids": [
+                                dup.account_uid or str(dup.id) for dup in dupes
+                            ],
+                            "duplicate_count": len(dupes),
+                        }
+                    )
+                    total_duplicates += len(dupes)
+                if has_duplicates:
+                    client_count += 1
+            return {
+                "count": total_duplicates,
+                "clients": client_count,
+                "details": duplicates,
+            }
+
+    def remove_duplicate_accounts(self) -> Dict[str, Any]:
+        self.ensure_schema()
+        with _session_scope(self._db) as db:
+            removed = 0
+            client_count = 0
+            for client in db.query(models.Client).all():
+                groups: Dict[str, List[models.Account]] = {}
+                for account in client.accounts:
+                    key = _account_fingerprint(account)
+                    groups.setdefault(key, []).append(account)
+                removed_for_client = False
+                for accounts in groups.values():
+                    if len(accounts) <= 1:
+                        continue
+                    accounts_sorted = sorted(accounts, key=lambda item: item.id or 0)
+                    dupes = accounts_sorted[1:]
+                    for account in dupes:
+                        db.delete(account)
+                        removed += 1
+                        removed_for_client = True
+                if removed_for_client:
+                    client_count += 1
+            if removed:
+                db.commit()
+            return {"removed": removed, "clients": client_count}
 
     def _sync_accounts(
         self,

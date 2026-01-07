@@ -105,6 +105,7 @@ export default function Dashboard() {
   const [riskOpen, setRiskOpen] = useState(true);
   const [mapOpen, setMapOpen] = useState(true);
   const [feedOpen, setFeedOpen] = useState(true);
+  const accentColor = "#48f1a6";
   const { paused } = useTrackerPause();
   const {
     data: trackerStream,
@@ -261,7 +262,7 @@ export default function Dashboard() {
           source: "tracker-points",
           paint: {
             "circle-radius": 6,
-            "circle-color": "var(--green-500)",
+            "circle-color": accentColor,
             "circle-opacity": 0.12
           }
         });
@@ -276,7 +277,7 @@ export default function Dashboard() {
               ["get", "kind"],
               "ship",
               "#8892a0",
-              "var(--green-500)"
+              accentColor
             ],
             "circle-opacity": 0.8
           }
@@ -412,7 +413,7 @@ export default function Dashboard() {
       (point) => Number.isFinite(point.lat) && Number.isFinite(point.lon)
     );
     points.slice(0, 200).forEach((point) => {
-      const color = point.kind === "ship" ? "#8892a0" : "var(--green-500)";
+      const color = point.kind === "ship" ? "#8892a0" : accentColor;
       L.circleMarker([point.lat, point.lon], {
         radius: 4,
         color,

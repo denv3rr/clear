@@ -6,6 +6,7 @@ import time
 from typing import Dict, List, Optional
 
 from modules.client_mgr.data_handler import DataHandler
+from modules.client_store import DbClientStore
 from modules.market_data.trackers import GlobalTrackers
 from utils.system import SystemHost
 
@@ -79,6 +80,11 @@ def client_counts() -> Dict[str, int]:
         "holdings": holdings_count,
         "lots": lots_count,
     }
+
+
+def duplicate_account_summary() -> Dict[str, object]:
+    store = DbClientStore()
+    return store.find_duplicate_accounts()
 
 
 def news_cache_info(max_age_hours: int = 6) -> Dict[str, Optional[object]]:

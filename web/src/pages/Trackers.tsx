@@ -146,6 +146,7 @@ export default function Trackers() {
   const [riskOpen, setRiskOpen] = useState(true);
   const [mapOpen, setMapOpen] = useState(true);
   const [feedOpen, setFeedOpen] = useState(true);
+  const accentColor = "#48f1a6";
 
   useEffect(() => {
     if (!paused) {
@@ -429,7 +430,7 @@ export default function Trackers() {
           source: "tracker-points",
           paint: {
             "circle-radius": 6,
-            "circle-color": "var(--green-500)",
+            "circle-color": accentColor,
             "circle-opacity": 0.12
           }
         });
@@ -444,7 +445,7 @@ export default function Trackers() {
               ["get", "kind"],
               "ship",
               "#8892a0",
-              "var(--green-500)"
+              accentColor
             ],
             "circle-opacity": 0.8
           }
@@ -476,7 +477,7 @@ export default function Trackers() {
           type: "line",
           source: "history-line",
           paint: {
-            "line-color": "var(--green-500)",
+            "line-color": accentColor,
             "line-width": 2,
             "line-opacity": 0.8
           }

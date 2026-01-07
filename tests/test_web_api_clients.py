@@ -5,6 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from core.database import Base
+from core import models
 from web_api.app import app
 from web_api.routes.clients import get_db
 
@@ -110,3 +111,44 @@ def test_account_metadata_persists(client):
     assert "AAPL" in account["holdings"]
     assert account["lots"]["AAPL"][0]["basis"] == 100.0
     assert account["manual_holdings"][0]["total_value"] == 1234.5
+
+
+def test_duplicate_account_cleanup(client, session):
+    dup_client = models.Client(client_uid="dup1", name="Dup Client")
+    session.add(dup_client)
+    session.flush()
+    account_payload = dict(
+        name="Primary",
+        account_type="Taxable",
+        ownership_type="Individual",
+        custodian="Fidelity",
+        tags=["Core"],
+        tax_settings={"jurisdiction": "US"},
+        holdings_map={"AAPL": 1.0},
+        lots={"AAPL": [{"qty": 1.0, "basis": 100.0, "timestamp": "2024-01-01T00:00:00"}]},
+        manual_holdings=[],
+        extra={"source": "seed"},
+        current_value=100.0,
+        active_interval="1M",
+        client_id=dup_client.id,
+    )
+    session.add(models.Account(account_uid="dup-a1", **account_payload))
+    session.add(models.Account(account_uid="dup-a2", **account_payload))
+    session.commit()
+
+    response = client.get("/api/clients/duplicates")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 1
+
+    response = client.post(
+        "/api/clients/duplicates/cleanup",
+        json={"confirm": True},
+    )
+    assert response.status_code == 200
+    cleaned = response.json()
+    assert cleaned["removed"] == 1
+
+    response = client.get("/api/clients/duplicates")
+    assert response.status_code == 200
+    assert response.json()["count"] == 0

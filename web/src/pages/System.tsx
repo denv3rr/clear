@@ -4,6 +4,7 @@ import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { KpiCard } from "../components/ui/KpiCard";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import {
+  apiPost,
   clearApiKey,
   getApiKey,
   setApiKey as setApiKeyLocal,
@@ -42,6 +43,7 @@ type DiagnosticsPayload = {
   trackers?: { warning_count?: number; count?: number };
   intel?: { news_cache?: { status?: string; items?: number; age_hours?: number | null } };
   clients?: { clients?: number; accounts?: number; holdings?: number; lots?: number };
+  duplicates?: { accounts?: { count?: number; clients?: number } };
   reports?: { items?: number; status?: string };
 };
 
@@ -66,12 +68,29 @@ export default function System() {
       : null
   ].filter(Boolean) as string[];
 
+  const duplicateCount = data?.duplicates?.accounts?.count ?? 0;
+  const duplicateClients = data?.duplicates?.accounts?.clients ?? 0;
+
   const onNormalize = () => {
     // Implement normalization logic here
   };
 
   const onClearCache = () => {
     // Implement clear cache logic here
+  };
+
+  const onCleanupDuplicates = async () => {
+    if (!duplicateCount) return;
+    const confirmed = window.confirm(
+      `Remove ${duplicateCount} duplicate account${duplicateCount === 1 ? '' : 's'} across ${duplicateClients} client${duplicateClients === 1 ? '' : 's'}? Originals will be preserved.`
+    );
+    if (!confirmed) return;
+    try {
+      await apiPost('/api/clients/duplicates/cleanup', { confirm: true });
+      refresh();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Duplicate cleanup failed.');
+    }
   };
 
   const onSetApiKey = () => {
@@ -106,6 +125,22 @@ export default function System() {
       <div className="mt-4">
         <ErrorBanner messages={errorMessages} onRetry={refresh} />
       </div>
+      {duplicateCount > 0 ? (
+        <div className="mt-4 rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-200">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <p>
+              Duplicate accounts detected: {duplicateCount} across{' '}
+              {duplicateClients} client{duplicateClients === 1 ? '' : 's'}.
+            </p>
+            <button
+              onClick={onCleanupDuplicates}
+              className="rounded-lg border border-amber-400/50 px-3 py-1 text-xs text-amber-100 hover:border-amber-300"
+            >
+              Remove duplicates
+            </button>
+          </div>
+        </div>
+      ) : null}
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-4 gap-4">
         <KpiCard label="Clients" value={`${data?.clients?.clients ?? 0}`} tone="text-green-300" />
         <KpiCard label="Accounts" value={`${data?.clients?.accounts ?? 0}`} tone="text-slate-100" />
