@@ -104,23 +104,7 @@ If npm is not found, install Node.js first (includes npm) and retry:
 - macOS: `brew install node`
 - Linux: https://nodejs.org/en/download/package-manager
 
-<!--
-## Demo (GitHub Pages)
 
-The web demo uses deterministic mock data and hash routing for GitHub Pages.
-
-```pwsh
-cd web
-VITE_DEMO_MODE=true VITE_HASH_ROUTER=true VITE_BASE=/ npm run build
-```
-
-For project pages (non-user pages), set `VITE_BASE=/clear/` to match the repo name.
-
-The workflow deploys via `GH_PAGES_TOKEN`, which must be stored as a repository
-secret in this repo with `public_repo` (or full `repo`) scope. The destination
-repo (`denv3rr/denv3rr.github.io`) should have Pages set to the `main` branch
-root.
--->
 
 ## Launcher Commands
 
