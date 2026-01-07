@@ -218,7 +218,18 @@ python clearctl.py doctor --web-tests
 
 ## Docs
 
-- `docs/README.md`
+| Doc | Description |
+| --- | --- |
+| `docs/README.md` | Index of project docs |
+| `docs/architecture.md` | Architecture standards and layout conventions |
+| `docs/ai_assistant.md` | Assistant plan and current status |
+| `docs/assistant_usage.md` | Assistant usage across API, web, and CLI |
+| `docs/api_contracts.md` | Core API contract expectations |
+| `docs/data_integrity.md` | Data integrity expectations and safety rules |
+| `docs/diagnostics.md` | Diagnostics sources, registry health, consistency checks |
+| `docs/feed_registry.md` | Feed registry sources and health semantics |
+| `docs/launchers.md` | Launcher behavior and startup/shutdown guarantees |
+| `docs/platform_services.md` | Service templates for running the API |
 
 ## Configuration
 
