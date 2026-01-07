@@ -27,7 +27,7 @@ class DataHandler:
 
         if not os.path.exists(DataHandler.CLIENT_FILE):
             try:
-                with open(DataHandler.CLIENT_FILE, 'w') as f:
+                with open(DataHandler.CLIENT_FILE, "w", encoding="utf-8") as f:
                     json.dump([], f)
                 DataHandler.console.print(f"[dim]Initial client data file created at {DataHandler.CLIENT_FILE}[/dim]")
             except Exception as e:
@@ -60,5 +60,5 @@ class DataHandler:
         """Exports the current list of Client objects to JSON."""
         DataHandler._create_initial_files()
         data_to_save = [c.to_dict() for c in clients]
-        with open(DataHandler.CLIENT_FILE, 'w') as f:
+        with open(DataHandler.CLIENT_FILE, "w", encoding="utf-8") as f:
             json.dump(data_to_save, f, indent=4)

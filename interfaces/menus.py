@@ -239,6 +239,7 @@ class MainMenu:
             "3": "settings",
             "4": "intel_reports",
             "5": "global_trackers",
+            "6": "assistant",
             "0": "exit",
             "x": "exit"
         }
@@ -257,6 +258,7 @@ class MainMenu:
                     "3": "Settings",
                     "4": "Reports",
                     "5": "Global Trackers",
+                    "6": "Assistant",
                 }),
                 ("Session", {"0": "Exit"}),
             ],

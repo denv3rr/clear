@@ -18,7 +18,7 @@ def _load_settings_payload() -> Dict[str, object]:
     if not os.path.exists(path):
         return {"settings": {}, "error": "settings.json not found"}
     try:
-        with open(path, "r", encoding="ascii") as handle:
+        with open(path, "r", encoding="utf-8") as handle:
             data = handle.read()
         return {"settings": json.loads(data), "error": None}
     except Exception as exc:

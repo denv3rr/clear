@@ -14,7 +14,7 @@ def migrate_data() -> None:
     """
     db = SessionLocal()
     try:
-        with open("data/clients.json", "r", encoding="ascii") as f:
+        with open("data/clients.json", "r", encoding="utf-8") as f:
             clients_data = json.load(f)
         clients_data, _ = normalize_clients_payload(clients_data)
         store = DbClientStore(db)

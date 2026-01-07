@@ -17,6 +17,7 @@ from utils.charts import ChartRenderer
 from interfaces.shell import ShellRenderer
 from interfaces.menu_layout import build_sidebar, build_status_header, compact_for_width
 from interfaces.navigator import Navigator
+from modules.client_store import DbClientStore
 
 class SettingsModule:
     def __init__(self):
@@ -97,7 +98,7 @@ class SettingsModule:
         if not os.path.exists(self.settings_file):
             return defaults
         try:
-            with open(self.settings_file, "r") as f:
+            with open(self.settings_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
             if not isinstance(data, dict):
                 return defaults
@@ -133,7 +134,7 @@ class SettingsModule:
     def _save_settings(self):
         try:
             os.makedirs(os.path.dirname(self.settings_file), exist_ok=True)
-            with open(self.settings_file, "w") as f:
+            with open(self.settings_file, "w", encoding="utf-8") as f:
                 json.dump(self.settings, f, indent=4)
         except Exception as e:
             self.console.print(f"[red]Error saving settings: {e}[/red]")
@@ -525,11 +526,13 @@ class SettingsModule:
             tools = self.settings.get("tools", {})
             order = tools.get("perm_entropy_order", 3)
             delay = tools.get("perm_entropy_delay", 1)
+            dup_count, _ = self._duplicate_accounts_summary()
             compact = compact_for_width(self.console.width)
 
             options = {
                 "1": f"Permutation Order (m) (Current: {order})",
                 "2": f"Permutation Delay (tau) (Current: {delay})",
+                "3": f"Remove Duplicate Accounts (Found: {dup_count})",
                 "0": "Back",
             }
             sidebar = build_sidebar(
@@ -545,6 +548,7 @@ class SettingsModule:
             rows.add_column("Notes", style="dim")
             rows.add_row("Permutation Order (m)", str(order), "Higher = more patterns; needs more data")
             rows.add_row("Permutation Delay (tau)", str(delay), "Spacing between points in the ordinal pattern")
+            rows.add_row("Duplicate Accounts", str(dup_count), "Remove duplicate accounts")
             panel = Panel(rows, title="TOOLS SETTINGS", box=box.ROUNDED)
             choice = ShellRenderer.render_and_prompt(
                 Group(panel),
@@ -576,6 +580,8 @@ class SettingsModule:
                         tools["perm_entropy_delay"] = num
                     else:
                         self.console.print("[yellow]Delay must be >= 1.[/yellow]")
+            elif choice == "3":
+                self._cleanup_duplicate_accounts()
             self.settings["tools"] = tools
             self._save_settings()
 
@@ -1048,6 +1054,31 @@ class SettingsModule:
         self.console.print(table)
         InputSafe.pause()
 
+    def _duplicate_accounts_summary(self):
+        try:
+            summary = DbClientStore().find_duplicate_accounts()
+            return (
+                int(summary.get('count', 0) or 0),
+                int(summary.get('clients', 0) or 0),
+            )
+        except Exception:
+            return 0, 0
+
+    def _cleanup_duplicate_accounts(self):
+        count, clients = self._duplicate_accounts_summary()
+        if count <= 0:
+            self.console.print('[dim]No duplicate accounts detected.[/dim]')
+            InputSafe.pause()
+            return
+        if not InputSafe.get_yes_no(
+            f'Remove {count} duplicate account(s) across {clients} client(s)?'
+        ):
+            return
+        result = DbClientStore().remove_duplicate_accounts()
+        removed = int(result.get('removed', 0) or 0)
+        self.console.print(f'[green]Removed {removed} duplicate account(s).[/green]')
+        InputSafe.pause()
+
     # --- Panel Builder (Unchanged) ---
     def _build_info_panel(self) -> Panel:
         try: data = SystemHost.get_info()
@@ -1073,6 +1104,11 @@ class SettingsModule:
         finnhub_status = "ACTIVE" if data['finnhub_status'] else "MISSING"
         finnhub_style = "bold green" if data['finnhub_status'] else "bold red"
         left_table.add_row("API KEY:", f"[{finnhub_style}]{finnhub_status}[/{finnhub_style}]")
+
+        dup_count, dup_clients = self._duplicate_accounts_summary()
+        dup_label = f"{dup_count} ({dup_clients} clients)" if dup_count else "0"
+        dup_style = "bold red" if dup_count else "dim"
+        left_table.add_row("DUP ACCTS:", f"[{dup_style}]{dup_label}[/{dup_style}]")
 
         right_table = Table.grid(padding=(0,1))
         right_table.add_column(style="bold magenta", width=10)
@@ -1100,6 +1136,7 @@ class SettingsModule:
     def run(self):
         while True:
             compact = compact_for_width(self.console.width)
+            dup_count, dup_clients = self._duplicate_accounts_summary()
             panel = self._build_info_panel()
 
             # Modular Menu Implementation
@@ -1149,6 +1186,7 @@ class SettingsModule:
                     ("Trackers", str(self.settings.get("trackers", {}).get("auto_refresh", True))),
                     ("AI", str(self.settings.get("ai", {}).get("enabled", True))),
                     ("Report AI", str(self.settings.get("reporting", {}).get("ai", {}).get("enabled", True))),
+                    ("Dup Accts", f"{dup_count}"),
                 ],
                 compact=compact,
             )
@@ -1208,13 +1246,13 @@ class SettingsModule:
             if not os.path.exists(path):
                 self.console.print("[yellow]No clients.json found.[/yellow]")
                 return
-            with open(path, "r", encoding="ascii") as f:
+            with open(path, "r", encoding="utf-8") as f:
                 payload = json.load(f)
             payload, migrated = DataHandler._migrate_clients_payload(payload)
             if not migrated:
                 self.console.print("[dim]No legacy timestamps found.[/dim]")
                 return
-            with open(path, "w", encoding="ascii") as f:
+            with open(path, "w", encoding="utf-8") as f:
                 json.dump(payload, f, indent=4)
             self.console.print("[green]Lot timestamps normalized to ISO-8601.[/green]")
         except Exception as exc:

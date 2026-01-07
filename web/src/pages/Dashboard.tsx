@@ -161,7 +161,7 @@ export default function Dashboard() {
     return () => {
       mounted = false;
     };
-  }, [maplibre]);
+  }, []);
 
   useEffect(() => {
     let raf = 0;
@@ -356,7 +356,7 @@ export default function Dashboard() {
       window.cancelAnimationFrame(raf);
       window.clearTimeout(timeout);
     };
-  }, []);
+  }, [maplibre]);
 
   useEffect(() => {
     return () => {
@@ -654,8 +654,8 @@ export default function Dashboard() {
           <p>{mapFallback ? leafletStatus : mapStatus}</p>
           {!mapFallback && mapDiagnostics.length ? (
             <div className="mt-1 space-y-0.5">
-              {mapDiagnostics.map((item) => (
-                <p key={item}>{item}</p>
+              {mapDiagnostics.map((item, idx) => (
+                <p key={`${idx}-${item}`}>{item}</p>
               ))}
             </div>
           ) : null}

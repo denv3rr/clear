@@ -8,23 +8,21 @@ from web_api.routes import clients as clients_routes
 from web_api.routes import intel as intel_routes
 from web_api.routes import trackers as tracker_routes
 
-API_HEADERS = (
-    {"X-API-Key": os.getenv("CLEAR_WEB_API_KEY")}
-    if os.getenv("CLEAR_WEB_API_KEY")
-    else {}
-)
+def _api_headers():
+    key = os.getenv("CLEAR_WEB_API_KEY")
+    return {"X-API-Key": key} if key else {}
 
 
 def test_health_endpoint():
     client = TestClient(web_app.app)
-    resp = client.get("/api/health", headers=API_HEADERS)
+    resp = client.get("/api/health", headers=_api_headers())
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
 
 
 def test_settings_endpoint():
     client = TestClient(web_app.app)
-    resp = client.get("/api/settings", headers=API_HEADERS)
+    resp = client.get("/api/settings", headers=_api_headers())
     assert resp.status_code == 200
     payload = resp.json()
     assert "settings" in payload
@@ -37,7 +35,7 @@ def test_client_index_endpoint_stubbed():
     client = TestClient(web_app.app)
     with mock.patch.object(clients_routes.DbClientStore, "fetch_all_clients") as mocked:
         mocked.return_value = [{"client_id": "c1", "name": "Test Client", "accounts": []}]
-        resp = client.get("/api/clients", headers=API_HEADERS)
+        resp = client.get("/api/clients", headers=_api_headers())
     assert resp.status_code == 200
     payload = resp.json()
     assert payload["clients"]
@@ -56,7 +54,7 @@ def test_client_create_endpoint_stubbed():
         resp = client.post(
             "/api/clients",
             json={"name": "Atlas Capital", "risk_profile": "Balanced", "tax_profile": {"reporting_currency": "USD"}},
-            headers=API_HEADERS,
+            headers=_api_headers(),
         )
     assert resp.status_code == 200
     payload = resp.json()
@@ -75,7 +73,7 @@ def test_client_update_endpoint_stubbed():
         resp = client.patch(
             "/api/clients/c1",
             json={"name": "New Name", "risk_profile": "Balanced"},
-            headers=API_HEADERS,
+            headers=_api_headers(),
         )
     assert resp.status_code == 200
     payload = resp.json()
@@ -99,7 +97,7 @@ def test_account_create_endpoint_stubbed():
         resp = client.post(
             "/api/clients/c1/accounts",
             json={"account_name": "Primary Brokerage", "account_type": "Taxable", "tags": ["Core"]},
-            headers=API_HEADERS,
+            headers=_api_headers(),
         )
     assert resp.status_code == 200
     payload = resp.json()
@@ -124,7 +122,7 @@ def test_account_update_endpoint_stubbed():
         resp = client.patch(
             "/api/clients/c1/accounts/a1",
             json={"account_name": "Alpha Prime", "custodian": "Fidelity"},
-            headers=API_HEADERS,
+            headers=_api_headers(),
         )
     assert resp.status_code == 200
     payload = resp.json()
@@ -133,19 +131,24 @@ def test_account_update_endpoint_stubbed():
 
 def test_diagnostics_endpoint():
     client = TestClient(web_app.app)
-    resp = client.get("/api/tools/diagnostics", headers=API_HEADERS)
+    resp = client.get("/api/tools/diagnostics", headers=_api_headers())
     assert resp.status_code == 200
     payload = resp.json()
     assert "system" in payload
     assert "metrics" in payload
     assert "feeds" in payload
+    assert "duplicates" in payload
+    assert "accounts" in payload["duplicates"]
+    assert "orphans" in payload
+    assert "holdings" in payload["orphans"]
+    assert "lots" in payload["orphans"]
 
 
 def test_intel_summary_endpoint_stubbed():
     client = TestClient(web_app.app)
     with mock.patch.object(intel_routes.MarketIntel, "combined_report") as mocked:
         mocked.return_value = {"title": "ok", "summary": [], "sections": []}
-        resp = client.get("/api/intel/summary", headers=API_HEADERS)
+        resp = client.get("/api/intel/summary", headers=_api_headers())
     assert resp.status_code == 200
     assert resp.json()["title"] == "ok"
 
@@ -154,7 +157,7 @@ def test_intel_news_endpoint_stubbed():
     client = TestClient(web_app.app)
     with mock.patch.object(intel_routes.MarketIntel, "fetch_news_signals") as mocked:
         mocked.return_value = {"items": [{"title": "A"}], "cached": False, "stale": False, "skipped": []}
-        resp = client.get("/api/intel/news?limit=1", headers=API_HEADERS)
+        resp = client.get("/api/intel/news?limit=1", headers=_api_headers())
     assert resp.status_code == 200
     payload = resp.json()
     assert payload["items"]
@@ -178,7 +181,7 @@ def test_tracker_search_endpoint_stubbed():
     }
     with mock.patch.object(tracker_routes.GlobalTrackers, "get_snapshot") as mocked:
         mocked.return_value = sample
-        resp = client.get("/api/trackers/search?q=aal&mode=combined", headers=API_HEADERS)
+        resp = client.get("/api/trackers/search?q=aal&mode=combined", headers=_api_headers())
     assert resp.status_code == 200
     payload = resp.json()
     assert payload["count"] == 1
@@ -193,7 +196,7 @@ def test_tracker_snapshot_endpoint_stubbed():
     }
     with mock.patch.object(tracker_routes.GlobalTrackers, "get_snapshot") as mocked:
         mocked.return_value = sample
-        resp = client.get("/api/trackers/snapshot?mode=combined", headers=API_HEADERS)
+        resp = client.get("/api/trackers/snapshot?mode=combined", headers=_api_headers())
     assert resp.status_code == 200
     payload = resp.json()
     assert payload["points"]
@@ -204,7 +207,7 @@ def test_tracker_detail_endpoint_stubbed():
     client = TestClient(web_app.app)
     with mock.patch.object(tracker_routes.GlobalTrackers, "get_detail") as mocked:
         mocked.return_value = {"id": "abc123", "point": {"label": "AAL762"}, "history": []}
-        resp = client.get("/api/trackers/detail/abc123", headers=API_HEADERS)
+        resp = client.get("/api/trackers/detail/abc123", headers=_api_headers())
     assert resp.status_code == 200
     assert resp.json()["point"]["label"] == "AAL762"
 
@@ -225,7 +228,7 @@ def test_client_dashboard_endpoint_stubbed():
             "regime": {},
             "warnings": [],
         }
-        resp = client.get("/api/clients/c1/dashboard?interval=1M", headers=API_HEADERS)
+        resp = client.get("/api/clients/c1/dashboard?interval=1M", headers=_api_headers())
     assert resp.status_code == 200
     assert resp.json()["client"]["client_id"] == "c1"
 
@@ -251,7 +254,7 @@ def test_account_dashboard_endpoint_stubbed():
             "regime": {},
             "warnings": [],
         }
-        resp = client.get("/api/clients/c1/accounts/a1/dashboard?interval=1M", headers=API_HEADERS)
+        resp = client.get("/api/clients/c1/accounts/a1/dashboard?interval=1M", headers=_api_headers())
     assert resp.status_code == 200
     assert resp.json()["account"]["account_id"] == "a1"
 
@@ -263,7 +266,7 @@ def test_client_patterns_endpoint_stubbed():
     ) as mocked_patterns:
         mocked_client.return_value = {"client_id": "c1", "name": "Test Client", "accounts": []}
         mocked_patterns.return_value = {"entropy": 0.1, "wave_surface": {"z": []}}
-        resp = client.get("/api/clients/c1/patterns?interval=1M", headers=API_HEADERS)
+        resp = client.get("/api/clients/c1/patterns?interval=1M", headers=_api_headers())
     assert resp.status_code == 200
     assert "entropy" in resp.json()
 
@@ -279,6 +282,6 @@ def test_account_patterns_endpoint_stubbed():
             "accounts": [{"account_id": "a1", "account_name": "Alpha", "holdings": {}}],
         }
         mocked_patterns.return_value = {"entropy": 0.1, "wave_surface": {"z": []}}
-        resp = client.get("/api/clients/c1/accounts/a1/patterns?interval=1M", headers=API_HEADERS)
+        resp = client.get("/api/clients/c1/accounts/a1/patterns?interval=1M", headers=_api_headers())
     assert resp.status_code == 200
     assert "entropy" in resp.json()

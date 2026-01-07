@@ -11,6 +11,7 @@ import {
   useApi
 } from "../lib/api";
 import { useSystemMetrics } from "../lib/systemMetrics";
+import { useState } from "react";
 
 type DiagnosticsPayload = {
   system?: {
@@ -44,6 +45,7 @@ type DiagnosticsPayload = {
   intel?: { news_cache?: { status?: string; items?: number; age_hours?: number | null } };
   clients?: { clients?: number; accounts?: number; holdings?: number; lots?: number };
   duplicates?: { accounts?: { count?: number; clients?: number } };
+  orphans?: { holdings?: number; lots?: number };
   reports?: { items?: number; status?: string };
 };
 
@@ -51,7 +53,22 @@ type HealthPayload = {
   status?: string;
 };
 
+type DuplicateCleanupResponse = {
+  removed?: number;
+  clients?: number;
+  remaining?: { count?: number; clients?: number };
+};
+
+type MaintenanceResponse = {
+  normalized?: boolean;
+  message?: string;
+  cleared?: boolean;
+  removed_holdings?: number;
+  removed_lots?: number;
+};
+
 export default function System() {
+  const [cleanupMessage, setCleanupMessage] = useState<string | null>(null);
   const { data, error, refresh } = useApi<DiagnosticsPayload>("/api/tools/diagnostics", {
     interval: 60000
   });
@@ -70,13 +87,60 @@ export default function System() {
 
   const duplicateCount = data?.duplicates?.accounts?.count ?? 0;
   const duplicateClients = data?.duplicates?.accounts?.clients ?? 0;
+  const orphanHoldings = data?.orphans?.holdings ?? 0;
+  const orphanLots = data?.orphans?.lots ?? 0;
 
-  const onNormalize = () => {
-    // Implement normalization logic here
+  const onNormalize = async () => {
+    try {
+      const result = await apiPost<MaintenanceResponse>(
+        "/api/maintenance/normalize-lots"
+      );
+      setCleanupMessage(result.message || "Normalization complete.");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Normalization failed.";
+      setCleanupMessage(message);
+    }
   };
 
-  const onClearCache = () => {
-    // Implement clear cache logic here
+  const onClearCache = async () => {
+    try {
+      const result = await apiPost<MaintenanceResponse>(
+        "/api/maintenance/clear-report-cache"
+      );
+      if (result.cleared) {
+        setCleanupMessage("Report cache cleared.");
+      } else {
+        setCleanupMessage("Report cache already empty.");
+      }
+      refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Report cache cleanup failed.";
+      setCleanupMessage(message);
+    }
+  };
+
+  const onCleanupOrphans = async () => {
+    const totalOrphans = orphanHoldings + orphanLots;
+    if (!totalOrphans) {
+      setCleanupMessage("No orphaned holdings or lots detected.");
+      return;
+    }
+    const confirmed = window.confirm(
+      `Remove ${orphanHoldings} orphaned holding${orphanHoldings === 1 ? "" : "s"} and ${orphanLots} orphaned lot${orphanLots === 1 ? "" : "s"}?`
+    );
+    if (!confirmed) return;
+    try {
+      const result = await apiPost<MaintenanceResponse>(
+        "/api/maintenance/cleanup-orphans"
+      );
+      setCleanupMessage(
+        `Removed ${result.removed_holdings ?? 0} orphaned holdings and ${result.removed_lots ?? 0} orphaned lots.`
+      );
+      refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Orphan cleanup failed.";
+      setCleanupMessage(message);
+    }
   };
 
   const onCleanupDuplicates = async () => {
@@ -86,10 +150,25 @@ export default function System() {
     );
     if (!confirmed) return;
     try {
-      await apiPost('/api/clients/duplicates/cleanup', { confirm: true });
+      const result = await apiPost<DuplicateCleanupResponse>(
+        "/api/clients/duplicates/cleanup",
+        { confirm: true }
+      );
+      const remaining = result.remaining?.count ?? 0;
+      const removed = result.removed ?? 0;
+      if (remaining > 0) {
+        setCleanupMessage(
+          `Removed ${removed} duplicate account${removed === 1 ? "" : "s"}. ${remaining} still remain.`
+        );
+      } else {
+        setCleanupMessage(
+          `Removed ${removed} duplicate account${removed === 1 ? "" : "s"}.`
+        );
+      }
       refresh();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Duplicate cleanup failed.');
+      const message = err instanceof Error ? err.message : "Duplicate cleanup failed.";
+      setCleanupMessage(message);
     }
   };
 
@@ -141,6 +220,11 @@ export default function System() {
           </div>
         </div>
       ) : null}
+      {cleanupMessage ? (
+        <div className="mt-3 rounded-xl border border-slate-700/60 bg-slate-900/70 p-3 text-xs text-slate-200">
+          {cleanupMessage}
+        </div>
+      ) : null}
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-4 gap-4">
         <KpiCard label="Clients" value={`${data?.clients?.clients ?? 0}`} tone="text-green-300" />
         <KpiCard label="Accounts" value={`${data?.clients?.accounts ?? 0}`} tone="text-slate-100" />
@@ -162,6 +246,12 @@ export default function System() {
               className="w-full rounded-lg border border-slate-700 px-3 py-2 text-left text-slate-100 hover:border-green-400/40"
             >
               Clear Report Cache
+            </button>
+            <button
+              onClick={onCleanupOrphans}
+              className="w-full rounded-lg border border-slate-700 px-3 py-2 text-left text-slate-100 hover:border-green-400/40"
+            >
+              Remove Orphaned Holdings/Lots
             </button>
           </div>
         </div>
@@ -202,6 +292,9 @@ export default function System() {
           <p>Shipping Feed: {data?.feeds?.shipping?.configured ? "Configured" : "Missing"}</p>
           <p>OpenSky Creds: {data?.feeds?.opensky?.credentials_set ? "Present" : "Missing"}</p>
           <p>Tracker Warnings: {data?.trackers?.warning_count ?? "—"}</p>
+          <p>
+            Orphaned Holdings: {orphanHoldings} • Orphaned Lots: {orphanLots}
+          </p>
           <p>
             News Cache: {data?.intel?.news_cache?.status || "—"} ({data?.intel?.news_cache?.items ?? 0})
             {data?.intel?.news_cache?.age_hours !== undefined && data?.intel?.news_cache?.age_hours !== null

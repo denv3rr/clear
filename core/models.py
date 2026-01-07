@@ -16,7 +16,12 @@ class Client(Base):
     tax_profile = Column(JSON, default=dict)
     extra = Column(JSON, default=dict)
 
-    accounts = relationship("Account", back_populates="client")
+    accounts = relationship(
+        "Account",
+        back_populates="client",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 class Account(Base):
     __tablename__ = "accounts"
@@ -35,10 +40,15 @@ class Account(Base):
     lots = Column(JSON, default=dict)
     manual_holdings = Column(JSON, default=list)
     extra = Column(JSON, default=dict)
-    client_id = Column(Integer, ForeignKey("clients.id"))
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"))
 
     client = relationship("Client", back_populates="accounts")
-    holdings = relationship("Holding", back_populates="account")
+    holdings = relationship(
+        "Holding",
+        back_populates="account",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 class Holding(Base):
     __tablename__ = "holdings"
@@ -46,10 +56,15 @@ class Holding(Base):
     id = Column(Integer, primary_key=True, index=True)
     ticker = Column(String, index=True)
     quantity = Column(Float)
-    account_id = Column(Integer, ForeignKey("accounts.id"))
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"))
 
     account = relationship("Account", back_populates="holdings")
-    lots = relationship("Lot", back_populates="holding")
+    lots = relationship(
+        "Lot",
+        back_populates="holding",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 class Lot(Base):
     __tablename__ = "lots"
@@ -58,6 +73,6 @@ class Lot(Base):
     purchase_date = Column(Date)
     purchase_price = Column(Float)
     quantity = Column(Float)
-    holding_id = Column(Integer, ForeignKey("holdings.id"))
+    holding_id = Column(Integer, ForeignKey("holdings.id", ondelete="CASCADE"))
 
     holding = relationship("Holding", back_populates="lots")

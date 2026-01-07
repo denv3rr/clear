@@ -6,6 +6,8 @@ import time
 from typing import Dict, List, Optional
 
 from modules.client_mgr.data_handler import DataHandler
+from core.database import SessionLocal
+from core import models
 from modules.client_store import DbClientStore
 from modules.market_data.trackers import GlobalTrackers
 from utils.system import SystemHost
@@ -60,17 +62,18 @@ def tracker_status() -> Dict[str, object]:
 
 
 def client_counts() -> Dict[str, int]:
-    clients = DataHandler.load_clients()
+    store = DbClientStore()
+    clients = store.fetch_all_clients()
     account_count = 0
     holdings_count = 0
     lots_count = 0
     for client in clients:
-        accounts = getattr(client, "accounts", []) or []
+        accounts = client.get("accounts", []) or []
         account_count += len(accounts)
         for account in accounts:
-            holdings = getattr(account, "holdings", {}) or {}
-            manual = getattr(account, "manual_holdings", []) or []
-            lots = getattr(account, "lots", {}) or {}
+            holdings = account.get("holdings", {}) or {}
+            manual = account.get("manual_holdings", []) or []
+            lots = account.get("lots", {}) or {}
             holdings_count += len(holdings) + len(manual)
             for lot_list in lots.values():
                 lots_count += len(lot_list or [])
@@ -87,12 +90,33 @@ def duplicate_account_summary() -> Dict[str, object]:
     return store.find_duplicate_accounts()
 
 
+def orphaned_counts() -> Dict[str, int]:
+    db = SessionLocal()
+    try:
+        account_ids = {row[0] for row in db.query(models.Account.id).all()}
+        holding_ids = {row[0] for row in db.query(models.Holding.id).all()}
+        holdings_query = db.query(models.Holding)
+        if account_ids:
+            holdings_query = holdings_query.filter(
+                ~models.Holding.account_id.in_(account_ids)
+            )
+        lots_query = db.query(models.Lot)
+        if holding_ids:
+            lots_query = lots_query.filter(~models.Lot.holding_id.in_(holding_ids))
+        return {
+            "holdings": int(holdings_query.count()),
+            "lots": int(lots_query.count()),
+        }
+    finally:
+        db.close()
+
+
 def news_cache_info(max_age_hours: int = 6) -> Dict[str, Optional[object]]:
     path = os.path.join("data", "intel_news.json")
     if not os.path.exists(path):
         return {"status": "missing", "items": 0, "age_hours": None}
     try:
-        with open(path, "r", encoding="ascii") as handle:
+        with open(path, "r", encoding="utf-8") as handle:
             payload = json.load(handle)
         ts = int(payload.get("ts", 0) or 0)
         items = payload.get("items") or []
@@ -112,7 +136,7 @@ def report_cache_info() -> Dict[str, Optional[object]]:
     if not os.path.exists(path):
         return {"status": "missing", "items": 0}
     try:
-        with open(path, "r", encoding="ascii") as handle:
+        with open(path, "r", encoding="utf-8") as handle:
             payload = json.load(handle)
         if isinstance(payload, list):
             count = len(payload)

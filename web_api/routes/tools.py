@@ -7,6 +7,7 @@ from web_api.diagnostics import (
     duplicate_account_summary,
     feed_status,
     news_cache_info,
+    orphaned_counts,
     report_cache_info,
     system_snapshot,
     tracker_status,
@@ -30,6 +31,7 @@ def diagnostics(_auth: None = Depends(require_api_key)):
         },
         "clients": client_counts(),
         "duplicates": {"accounts": duplicate_account_summary()},
+        "orphans": orphaned_counts(),
         "reports": report_cache_info(),
     }
     warnings = validate_payload(

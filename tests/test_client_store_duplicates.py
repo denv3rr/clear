@@ -36,13 +36,26 @@ def _seed_duplicates(session):
         holdings_map={"AAPL": 1.0},
         lots={"AAPL": [{"qty": 1.0, "basis": 100.0, "timestamp": "2024-01-01T00:00:00"}]},
         manual_holdings=[],
-        extra={"source": "seed"},
-        current_value=100.0,
-        active_interval="1M",
         client_id=client.id,
     )
-    session.add(models.Account(account_uid="a1", **account_payload))
-    session.add(models.Account(account_uid="a2", **account_payload))
+    session.add(
+        models.Account(
+            account_uid="a1",
+            extra={"source": "seed"},
+            current_value=100.0,
+            active_interval="1M",
+            **account_payload,
+        )
+    )
+    session.add(
+        models.Account(
+            account_uid="a2",
+            extra={"note": "dup"},
+            current_value=250.0,
+            active_interval="1Y",
+            **account_payload,
+        )
+    )
     session.commit()
 
 
@@ -70,6 +83,85 @@ def test_cleanup_duplicate_accounts(tmp_path, monkeypatch):
         store = client_store.DbClientStore(session)
         result = store.remove_duplicate_accounts()
         assert result["removed"] == 1
+        assert result["remaining"]["count"] == 0
         assert session.query(models.Account).count() == 1
+    finally:
+        session.close()
+
+
+def test_detect_duplicates_with_legacy_holdings(tmp_path, monkeypatch):
+    session_local = _setup_temp_db(tmp_path, monkeypatch)
+    db_management.create_db_and_tables()
+    session = session_local()
+    try:
+        client = models.Client(client_uid="c2", name="Legacy Client")
+        session.add(client)
+        session.flush()
+        account_a = models.Account(account_uid="legacy-a", name="Legacy", account_type="Taxable", client_id=client.id)
+        account_b = models.Account(account_uid="legacy-b", name="Legacy", account_type="Taxable", client_id=client.id)
+        session.add(account_a)
+        session.add(account_b)
+        session.flush()
+        session.add(models.Holding(ticker="AAPL", quantity=1.0, account_id=account_a.id))
+        session.add(models.Holding(ticker="AAPL", quantity=1.0, account_id=account_b.id))
+        session.commit()
+        store = client_store.DbClientStore(session)
+        result = store.find_duplicate_accounts()
+        assert result["count"] == 1
+    finally:
+        session.close()
+
+
+def test_detect_duplicates_with_lot_variants(tmp_path, monkeypatch):
+    session_local = _setup_temp_db(tmp_path, monkeypatch)
+    db_management.create_db_and_tables()
+    session = session_local()
+    try:
+        client = models.Client(client_uid="c3", name="Lot Client")
+        session.add(client)
+        session.flush()
+        account_payload = dict(
+            name=" Primary ",
+            account_type="Taxable",
+            ownership_type="Individual",
+            custodian="Fidelity",
+            tags=["Core", "LongTerm"],
+            tax_settings={"jurisdiction": "US", "account_currency": "USD"},
+            holdings_map={"AAPL": 1.0},
+            manual_holdings=[{"name": "Real Estate", "total_value": 1000.0}],
+            client_id=client.id,
+        )
+        session.add(
+            models.Account(
+                account_uid="lot-a",
+                lots={
+                    "AAPL": [
+                        {"qty": 1.0, "basis": 100.0, "timestamp": "2024-01-01T00:00:00"}
+                    ]
+                },
+                **account_payload,
+            )
+        )
+        session.add(
+            models.Account(
+                account_uid="lot-b",
+                lots={
+                    "AAPL": [
+                        {
+                            "basis": 100.0,
+                            "qty": 1.0,
+                            "timestamp": "2024-01-01T00:00:00",
+                            "source": "LEGACY_DB",
+                            "kind": "lot",
+                        }
+                    ]
+                },
+                **account_payload,
+            )
+        )
+        session.commit()
+        store = client_store.DbClientStore(session)
+        result = store.find_duplicate_accounts()
+        assert result["count"] == 1
     finally:
         session.close()

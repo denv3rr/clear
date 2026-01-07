@@ -1,4 +1,5 @@
 import sys
+from typing import Optional
 from rich.console import Console
 
 # Import internal modules
@@ -8,6 +9,7 @@ from utils.input import InputSafe
 from modules.market_data.feed import MarketFeed
 from modules.client_mgr.manager import ClientManager
 from interfaces.settings import SettingsModule
+from interfaces.assistant import AssistantModule
 
 class ClearApp:
     """
@@ -22,6 +24,7 @@ class ClearApp:
         self._market_feed: Optional[MarketFeed] = None
         self._client_manager: Optional[ClientManager] = None
         self._settings_module: Optional[SettingsModule] = None
+        self._assistant_module: Optional[AssistantModule] = None
 
     @property
     def market_feed(self) -> MarketFeed:
@@ -40,6 +43,12 @@ class ClearApp:
         if self._settings_module is None:
             self._settings_module = SettingsModule()
         return self._settings_module
+
+    @property
+    def assistant_module(self) -> AssistantModule:
+        if self._assistant_module is None:
+            self._assistant_module = AssistantModule()
+        return self._assistant_module
 
 
     def run(self):
@@ -80,6 +89,9 @@ class ClearApp:
         elif action == "settings":
             # Use the already initialized instance
             self.settings_module.run()
+
+        elif action == "assistant":
+            self.assistant_module.run()
 
     # Using this as temp page when adding new modules
     def placeholder_module(self, name: str):

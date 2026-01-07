@@ -704,6 +704,7 @@ const demoDiagnosticsPayload = {
   trackers: { warning_count: 1, count: demoTrackerPoints.length, warnings: ["OpenSky demo data active."] },
   intel: { news_cache: { status: "fresh", items: demoNewsPayload.items.length, age_hours: 0.5 } },
   clients: { clients: demoClients.length, accounts: 3, holdings: 30, lots: 120 },
+  orphans: { holdings: 0, lots: 0 },
   reports: { items: 4, status: "warm" }
 };
 

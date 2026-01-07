@@ -117,7 +117,7 @@ def _validate_settings_json() -> None:
     if not os.path.exists(settings_path):
         return
     try:
-        with open(settings_path, "r", encoding="ascii") as f:
+        with open(settings_path, "r", encoding="utf-8") as f:
             payload = json.load(f)
         if not isinstance(payload, dict):
             raise ValueError("settings.json must contain a JSON object.")
@@ -233,7 +233,7 @@ def _validate_clients_json() -> None:
     if not os.path.exists(clients_path):
         return
     try:
-        with open(clients_path, "r", encoding="ascii") as f:
+        with open(clients_path, "r", encoding="utf-8") as f:
             payload = json.load(f)
     except Exception as exc:
         print(f">> WARNING: Invalid data/clients.json ({exc}).")
@@ -242,7 +242,7 @@ def _validate_clients_json() -> None:
         from modules.client_mgr.data_handler import DataHandler
         payload, migrated = DataHandler._migrate_clients_payload(payload)
         if migrated:
-            with open(clients_path, "w", encoding="ascii") as wf:
+            with open(clients_path, "w", encoding="utf-8") as wf:
                 json.dump(payload, wf, indent=4)
             print(">> INFO: Normalized legacy lot timestamps to ISO-8601.")
     except Exception:

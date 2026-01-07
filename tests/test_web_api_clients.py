@@ -148,6 +148,7 @@ def test_duplicate_account_cleanup(client, session):
     assert response.status_code == 200
     cleaned = response.json()
     assert cleaned["removed"] == 1
+    assert cleaned["remaining"]["count"] == 0
 
     response = client.get("/api/clients/duplicates")
     assert response.status_code == 200

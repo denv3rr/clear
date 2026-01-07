@@ -55,8 +55,101 @@ def _normalize_holdings_map(raw: Any) -> Dict[str, Any]:
     for ticker, qty in raw.items():
         if not isinstance(ticker, str):
             continue
-        holdings[normalize_ticker(ticker)] = qty
+        holdings[normalize_ticker(ticker)] = _normalize_number(qty)
     return holdings
+
+
+def _normalize_text(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip().lower()
+
+
+def _normalize_number(value: Any, *, precision: int = 8) -> float:
+    try:
+        return round(float(value), precision)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _normalize_tags(tags: Any) -> List[str]:
+    if not isinstance(tags, (list, tuple, set)):
+        return []
+    return sorted({t for t in (_normalize_text(t) for t in tags) if t})
+
+
+def _normalize_dict_payload(payload: Any) -> Dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {}
+    normalized: Dict[str, Any] = {}
+    for key in sorted(payload.keys()):
+        value = payload.get(key)
+        if isinstance(value, dict):
+            normalized[key] = _normalize_dict_payload(value)
+        elif isinstance(value, list):
+            normalized[key] = _normalize_list_payload(value)
+        elif isinstance(value, (int, float)):
+            normalized[key] = _normalize_number(value)
+        elif isinstance(value, str):
+            normalized[key] = value.strip()
+        else:
+            normalized[key] = value
+    return normalized
+
+
+def _normalize_list_payload(items: Any) -> List[Any]:
+    if not isinstance(items, list):
+        return []
+    normalized: List[Any] = []
+    for item in items:
+        if isinstance(item, dict):
+            normalized.append(_normalize_dict_payload(item))
+        elif isinstance(item, list):
+            normalized.append(_normalize_list_payload(item))
+        elif isinstance(item, (int, float)):
+            normalized.append(_normalize_number(item))
+        elif isinstance(item, str):
+            normalized.append(item.strip())
+        else:
+            normalized.append(item)
+    normalized.sort(key=lambda entry: json.dumps(entry, sort_keys=True, default=str))
+    return normalized
+
+
+def _normalize_lots_payload(raw: Any) -> Dict[str, List[Dict[str, Any]]]:
+    lots: Dict[str, List[Dict[str, Any]]] = {}
+    if not isinstance(raw, dict):
+        return lots
+    for ticker, entries in raw.items():
+        if not isinstance(ticker, str):
+            continue
+        normalized_entries: List[Dict[str, Any]] = []
+        if isinstance(entries, list):
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                qty = entry.get("qty")
+                if qty is None:
+                    qty = entry.get("quantity", entry.get("shares"))
+                basis = entry.get("basis")
+                if basis is None:
+                    basis = entry.get("price", entry.get("cost_basis"))
+                timestamp = entry.get("timestamp")
+                if timestamp is None:
+                    timestamp = entry.get("date", entry.get("purchase_date"))
+                normalized_entries.append(
+                    {
+                        "qty": _normalize_number(qty),
+                        "basis": _normalize_number(basis),
+                        "timestamp": str(timestamp).strip() if timestamp else "",
+                    }
+                )
+        if normalized_entries:
+            normalized_entries.sort(
+                key=lambda row: (row.get("timestamp", ""), row.get("qty", 0.0), row.get("basis", 0.0))
+            )
+            lots[normalize_ticker(ticker)] = normalized_entries
+    return lots
 
 
 def _normalize_account_payload(payload: Dict[str, Any]) -> Dict[str, Any]:      
@@ -86,19 +179,40 @@ def _normalize_account_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _account_fingerprint(account: models.Account) -> str:
+    holdings = account.holdings_map or {}
+    if not holdings and account.holdings:
+        holdings = {row.ticker: row.quantity for row in account.holdings}
+    lots = account.lots or {}
+    if not lots and account.holdings:
+        recovered: Dict[str, List[Dict[str, Any]]] = {}
+        for holding in account.holdings:
+            entries = []
+            for lot in getattr(holding, "lots", []) or []:
+                ts = None
+                if lot.purchase_date is not None:
+                    ts = lot.purchase_date.isoformat() + "T00:00:00"
+                entries.append(
+                    {
+                        "qty": lot.quantity,
+                        "basis": lot.purchase_price,
+                        "timestamp": ts or "LEGACY",
+                        "source": "LEGACY_DB",
+                        "kind": "lot",
+                    }
+                )
+            if entries:
+                recovered[holding.ticker] = entries
+        lots = recovered or lots
     payload: Dict[str, Any] = {
-        "name": account.name or "",
-        "account_type": account.account_type or "",
-        "ownership_type": account.ownership_type or "",
-        "custodian": account.custodian or "",
-        "tags": sorted(list(account.tags or [])),
-        "tax_settings": account.tax_settings or {},
-        "holdings_map": account.holdings_map or {},
-        "lots": account.lots or {},
-        "manual_holdings": account.manual_holdings or [],
-        "extra": account.extra or {},
-        "current_value": float(account.current_value or 0.0),
-        "active_interval": account.active_interval or "1M",
+        "name": _normalize_text(account.name),
+        "account_type": _normalize_text(account.account_type),
+        "ownership_type": _normalize_text(account.ownership_type),
+        "custodian": _normalize_text(account.custodian),
+        "tags": _normalize_tags(account.tags or []),
+        "tax_settings": _normalize_dict_payload(account.tax_settings or {}),
+        "holdings_map": _normalize_holdings_map(holdings),
+        "lots": _normalize_lots_payload(lots),
+        "manual_holdings": _normalize_list_payload(account.manual_holdings or []),
     }
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
 
@@ -407,7 +521,18 @@ class DbClientStore:
                     client_count += 1
             if removed:
                 db.commit()
-            return {"removed": removed, "clients": client_count}
+            remaining_store = self
+            if self._db is not None:
+                remaining_store = DbClientStore()
+            remaining = remaining_store.find_duplicate_accounts()
+            return {
+                "removed": removed,
+                "clients": client_count,
+                "remaining": {
+                    "count": int(remaining.get("count", 0) or 0),
+                    "clients": int(remaining.get("clients", 0) or 0),
+                },
+            }
 
     def _sync_accounts(
         self,
@@ -568,7 +693,7 @@ def bootstrap_clients_from_json() -> bool:
     finally:
         session.close()
     try:
-        with open(CLIENTS_JSON_PATH, "r", encoding="ascii") as f:
+        with open(CLIENTS_JSON_PATH, "r", encoding="utf-8") as f:
             payload = json.load(f)
     except Exception:
         return False

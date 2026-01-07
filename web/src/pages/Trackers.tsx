@@ -329,7 +329,7 @@ export default function Trackers() {
     return () => {
       mounted = false;
     };
-  }, [maplibre]);
+  }, []);
 
   useEffect(() => {
     let raf = 0;
@@ -561,7 +561,7 @@ export default function Trackers() {
       window.cancelAnimationFrame(raf);
       window.clearTimeout(timeout);
     };
-  }, []);
+  }, [maplibre]);
 
   useEffect(() => {
     return () => {
@@ -578,7 +578,7 @@ export default function Trackers() {
       mapErrorRef.current = null;
       setMapStatus("Initializing map...");
     };
-  }, []);
+  }, [maplibre]);
 
   useEffect(() => {
     if (!mapInstance.current || !mapReady) return;
@@ -767,8 +767,8 @@ export default function Trackers() {
               <p>{mapStatus}</p>
               {mapDiagnostics.length ? (
                 <div className="mt-1 space-y-0.5">
-                  {mapDiagnostics.map((item) => (
-                    <p key={item}>{item}</p>
+                  {mapDiagnostics.map((item, idx) => (
+                    <p key={`${idx}-${item}`}>{item}</p>
                   ))}
                 </div>
               ) : null}

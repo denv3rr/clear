@@ -136,9 +136,13 @@ def cleanup_client_duplicates(
     result = store.remove_duplicate_accounts()
     warnings = validate_payload(
         result,
-        required_keys=("removed", "clients"),
+        required_keys=("removed", "clients", "remaining"),
         warnings=[],
     )
+    remaining = result.get("remaining", {}) if isinstance(result, dict) else {}
+    remaining_count = int(remaining.get("count", 0) or 0)
+    if remaining_count > 0:
+        warnings.append("Duplicate accounts still remain after cleanup.")
     return attach_meta(
         result,
         route="/api/clients/duplicates/cleanup",
