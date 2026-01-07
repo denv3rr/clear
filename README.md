@@ -455,9 +455,9 @@ All formulas are shown in plain text for consistent rendering. Inline citations 
 
 | Method | Formula / Procedure | Interpretation | Source |
 | --- | --- | --- | --- |
-| FFT spectrum | `FFT(x_t - mean(x_t))` then power `|X(f)|^2` | Dominant cycle frequencies. | [DSP Guide (FFT)](http://www.dspguide.com/ch12.htm) |
+| FFT spectrum | `FFT(x_t - mean(x_t))` then power `\|X(f)\|^2` | Dominant cycle frequencies. | [DSP Guide (FFT)](http://www.dspguide.com/ch12.htm) |
 | CUSUM change points | `S_t = max(0, S_{t-1} + x_t - mu - k)` | Flags shifts in mean. | [NIST/SEMATECH CUSUM](https://www.itl.nist.gov/div898/handbook/pmc/section3/pmc323.htm) |
-| Motif similarity | `||z_t - z_i||_2` on rolling windows | Similar historical regimes. | [Time series motifs](https://www.cs.ucr.edu/~eamonn/Time_Series_Motifs.pdf) |
+| Motif similarity | `\|\|z_t - z_i\|\|_2` on rolling windows, where `z_t` and `z_i` are z-scored time series windows and `\|\| . \|\|_2` is the Euclidean distance. | Similar historical regimes identified by comparing shape and magnitude of z-scored windows. | [Time series motifs](https://www.cs.ucr.edu/~eamonn/Time_Series_Motifs.pdf) |
 | Shannon entropy | `H = -sum(p_i * log2 p_i)` | Histogram-based return entropy; higher = more uniform outcomes, lower = concentrated outcomes. | [Shannon 1948](https://people.math.harvard.edu/~ctm/home/text/others/shannon/entropy/entropy.pdf) |
 | Permutation entropy | `H = -sum(p_i * log2 p_i) / log2(m!)` | Ordinal pattern entropy (order m, delay tau); higher = more complex ordering. Toolkit uses m=3, tau=1. | [Bandt & Pompe 2002](https://doi.org/10.1103/PhysRevLett.88.174102) |
 | Hurst exponent | `H = 2 * slope(log(lag), log(tau))` | <0.5 mean-revert, >0.5 trend. | [Hurst 1951](https://doi.org/10.1098/rspa.1951.0001) |
