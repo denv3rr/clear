@@ -476,6 +476,12 @@ def bootstrap_clients_from_json() -> bool:
     create_db_and_tables()
     if not os.path.exists(CLIENTS_JSON_PATH):
         return False
+    session = SessionLocal()
+    try:
+        if session.query(models.Client).first() or session.query(models.Account).first():
+            return False
+    finally:
+        session.close()
     try:
         with open(CLIENTS_JSON_PATH, "r", encoding="ascii") as f:
             payload = json.load(f)

@@ -209,3 +209,49 @@ def test_opensky_backoff_on_429(monkeypatch):
     assert points == []
     assert any("OpenSky HTTP 429" in warning for warning in warnings)
     assert TrackerProviders._OPENSKY_BACKOFF_UNTIL > time.time()
+
+
+def test_opensky_min_refresh_invalid_value(monkeypatch):
+    monkeypatch.delenv("FLIGHT_DATA_URL", raising=False)
+    monkeypatch.delenv("FLIGHT_DATA_PATH", raising=False)
+    monkeypatch.setenv("OPENSKY_MIN_REFRESH", "not-a-number")
+    monkeypatch.setenv("CLEAR_INCLUDE_COMMERCIAL", "1")
+    TrackerProviders._OPENSKY_BACKOFF_UNTIL = 0.0
+    TrackerProviders._OPENSKY_LAST_REQUEST = 0.0
+
+    class OpenSkyResponse:
+        status_code = 200
+
+        def json(self):
+            return {
+                "states": [
+                    [
+                        "abc123",
+                        "AAL123",
+                        "United States",
+                        1700000000,
+                        1700000001,
+                        -84.43,
+                        33.63,
+                        10000.0,
+                        False,
+                        200.0,
+                        90.0,
+                        0.0,
+                        None,
+                        11000.0,
+                        "1200",
+                        False,
+                        0,
+                    ]
+                ]
+            }
+
+    with mock.patch(
+        "modules.market_data.trackers.requests.get",
+        return_value=OpenSkyResponse(),
+    ) as mocked_get:
+        points, warnings = TrackerProviders.fetch_flights()
+    assert points
+    assert any("min refresh" in warning.lower() for warning in warnings)
+    mocked_get.assert_called_once()

@@ -338,11 +338,18 @@ class TrackerProviders:
         warnings: List[str] = []
         now = time.time()
         min_refresh_env = os.getenv("OPENSKY_MIN_REFRESH")
+        has_oauth = bool(os.getenv("OPENSKY_CLIENT_ID") and os.getenv("OPENSKY_CLIENT_SECRET"))
         if min_refresh_env is None:
-            has_oauth = bool(os.getenv("OPENSKY_CLIENT_ID") and os.getenv("OPENSKY_CLIENT_SECRET"))
             min_refresh = 0 if has_oauth else 120
         else:
-            min_refresh = int(min_refresh_env or 0)
+            try:
+                min_refresh = int(min_refresh_env or 0)
+            except ValueError:
+                warnings.append("OpenSky min refresh must be an integer (seconds).")
+                min_refresh = 0 if has_oauth else 120
+        if min_refresh < 0:
+            warnings.append("OpenSky min refresh must be non-negative; using default.")
+            min_refresh = 0 if has_oauth else 120
         if min_refresh > 0 and (now - TrackerProviders._OPENSKY_LAST_REQUEST) < min_refresh:
             wait = int(min_refresh - (now - TrackerProviders._OPENSKY_LAST_REQUEST))
             warnings.append(f"OpenSky refresh throttled; retry in {wait}s.")
