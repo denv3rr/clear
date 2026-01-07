@@ -1,9 +1,9 @@
 # AI Assistant Plan (Draft)
 
 ## Current Status
-- API route `/api/assistant/query` exists; limited rules-based summarizer handles client/news/tracker prompts.
+- API route `/api/assistant/query` accepts JSON payloads and returns structured responses (answer/sources/confidence/warnings/meta) from a rules-based summarizer.
 - Unsupported modes or questions return explicit "not implemented" payloads with a 501 status and `meta` warnings.
-- UI/CLI chat surfaces are not implemented yet.
+- Web chat drawer and CLI assistant module are implemented; persistence is still planned.
 
 ## Goals
 - Provide a deterministic insight layer on top of existing analytics, news, and client data.
@@ -51,8 +51,8 @@
 ## Implementation Plan
 1) Add shared prompt context builder for analytics + news payloads (started).
 2) Harden the API endpoint with strict schema validation and rate limits.
-3) Add UI chat drawer with history + export.
-4) Add CLI command that mirrors API payloads.
+3) Add UI chat drawer with history + export (done; persistence planned).
+4) Add CLI command that mirrors API payloads (done).
 5) Add tests for schema validation and deterministic output constraints.
 
 For the agent-based architecture, consult `AGENTS.md` when available locally.

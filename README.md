@@ -31,6 +31,7 @@
 [Stack](#stack) •
 [Data Sources](#data-sources) •
 [Financial Methods](#financial-methods) •
+[Docs](#docs) •
 [Sources Index](#sources-index) •
 [Disclaimer](#disclaimer)
 
@@ -230,6 +231,10 @@ Optional: validate Playwright browsers via the launcher:
 ```pwsh
 python clearctl.py doctor --web-tests
 ```
+
+## Docs
+
+- `docs/README.md`
 
 ## Configuration
 

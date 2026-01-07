@@ -7,6 +7,8 @@ These standards keep CLI, API, and web UI modular and future-proof.
 - Web UI and CLI render the same view-model payloads.
 - API is modularized by domain (routers) and shares auth dependencies.
 - Design system is tokenized and components are reusable across pages.
+- Analytics renderers should live in dedicated view modules (e.g., patterns/risk/regime) rather than monolithic toolkits.
+- Diagnostics and system info should be sourced from shared modules (SystemHost, DbClientStore, feed registry) to avoid drift.
 
 ## API Layout
 - `web_api/routes/*` contains domain routers (trackers, intel, clients, reports, settings, tools).
@@ -21,6 +23,11 @@ These standards keep CLI, API, and web UI modular and future-proof.
 - `web/src/lib/api.ts` hosts the shared API client, caching, and hooks.
 - `web/src/lib/stream.ts` hosts WebSocket hooks for live data.
 - `web/src/pages/*` contains feature pages; pages must use shared components and `useApi`.
+
+## Diagnostics + Registry
+- Feed registry lives in `modules/market_data/registry.py` and powers API/CLI/UI summaries.
+- System info should use `utils/system.py` to normalize CPU/memory/host data.
+- Diagnostics endpoints should surface provenance (source, timestamp, warnings) via `meta`.
 
 ## Extension Checklist
 - Add a view-model and/or shared helper in `modules/*`.

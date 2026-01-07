@@ -2,6 +2,10 @@
 
 Use these templates to run the CLEAR API as a background service. The web UI can be served by a reverse proxy or by a separate front-end service (Vite in dev).
 
+Notes:
+- Use `CLEAR_WEB_API_KEY` to gate API access in production and set it in service environments.
+- Load `.env` in your service environment if you rely on feed credentials.
+
 ## Windows (NSSM)
 
 1) Install NSSM: https://nssm.cc/
