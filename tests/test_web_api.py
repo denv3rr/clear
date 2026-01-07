@@ -137,6 +137,9 @@ def test_diagnostics_endpoint():
     assert "system" in payload
     assert "metrics" in payload
     assert "feeds" in payload
+    assert "registry" in payload["feeds"]
+    assert "summary" in payload["feeds"]
+    assert "health_counts" in payload["feeds"]["summary"]
     assert "duplicates" in payload
     assert "accounts" in payload["duplicates"]
     assert "orphans" in payload

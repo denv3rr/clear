@@ -699,7 +699,21 @@ const demoDiagnosticsPayload = {
   feeds: {
     flights: { configured: true, url_sources: 0, path_sources: 0 },
     shipping: { configured: false },
-    opensky: { credentials_set: true }
+    opensky: { credentials_set: true },
+    registry: {
+      sources: [
+        { id: "finnhub", label: "Finnhub", category: "market", status: "degraded" },
+        { id: "rss::CNBC Top", label: "CNBC Top", category: "news", status: "ok" },
+        { id: "trackers::snapshot", label: "Tracker Snapshot", category: "trackers", status: "ok" },
+        { id: "intel::news_cache", label: "Intel News Cache", category: "intel", status: "backoff" }
+      ]
+    },
+    summary: {
+      total: 8,
+      configured: 6,
+      warnings: ["No configured sources for market."],
+      health_counts: { ok: 5, degraded: 1, backoff: 1, unknown: 1 }
+    }
   },
   trackers: { warning_count: 1, count: demoTrackerPoints.length, warnings: ["OpenSky demo data active."] },
   intel: { news_cache: { status: "fresh", items: demoNewsPayload.items.length, age_hours: 0.5 } },

@@ -9,6 +9,7 @@ from modules.client_mgr.data_handler import DataHandler
 from core.database import SessionLocal
 from core import models
 from modules.client_store import DbClientStore
+from modules.market_data.registry import build_feed_registry, summarize_feed_registry
 from modules.market_data.trackers import GlobalTrackers
 from utils.system import SystemHost
 
@@ -25,6 +26,42 @@ def feed_status() -> Dict[str, object]:
         auth_mode = "oauth"
     elif opensky_basic:
         auth_mode = "basic"
+    registry = build_feed_registry()
+    tracker_snapshot = tracker_status()
+    tracker_warnings = tracker_snapshot.get("warnings") or []
+    tracker_count = tracker_snapshot.get("count", 0) or 0
+    tracker_status_label = "ok"
+    if tracker_warnings:
+        tracker_status_label = "degraded"
+    elif tracker_count <= 0:
+        tracker_status_label = "unknown"
+    intel_cache = news_cache_info()
+    intel_cache_status = str(intel_cache.get("status", "unknown"))
+    intel_status_label = "ok"
+    if intel_cache_status in ("stale", "empty", "error"):
+        intel_status_label = "degraded"
+    elif intel_cache_status == "missing":
+        intel_status_label = "unknown"
+    registry_sources = registry.get("sources", [])
+    registry_sources.append({
+        "id": "trackers::snapshot",
+        "label": "Tracker Snapshot",
+        "category": "trackers",
+        "configured": bool(flight_urls or flight_paths or opensky_creds or shipping_url),
+        "notes": "Live tracker aggregate status.",
+        "status": tracker_status_label,
+        "health": {"warnings": tracker_warnings, "count": tracker_count},
+    })
+    registry_sources.append({
+        "id": "intel::news_cache",
+        "label": "Intel News Cache",
+        "category": "intel",
+        "configured": True,
+        "notes": "Cached intel/news payload health.",
+        "status": intel_status_label,
+        "health": intel_cache,
+    })
+    summary = summarize_feed_registry(registry)
     return {
         "flights": {
             "url_sources": len(flight_urls),
@@ -40,6 +77,8 @@ def feed_status() -> Dict[str, object]:
             "basic_credentials": opensky_basic,
             "oauth_credentials": opensky_oauth,
         },
+        "registry": registry,
+        "summary": summary,
     }
 
 

@@ -14,6 +14,21 @@ type DiagnosticsPayload = {
   feeds?: {
     flights?: { configured?: boolean };
     opensky?: { credentials_set?: boolean };
+    registry?: {
+      sources?: Array<{
+        id?: string;
+        label?: string;
+        category?: string;
+        status?: string;
+      }>;
+    };
+    summary?: {
+      health_counts?: {
+        ok?: number;
+        degraded?: number;
+        backoff?: number;
+      };
+    };
   };
   trackers?: { count?: number; warning_count?: number; warnings?: string[] };
   metrics?: {
@@ -40,6 +55,14 @@ export function ContextDrawer({ variant = "inline", onClose }: ContextDrawerProp
   const status = health?.status === "ok" ? "Online" : "Degraded";
   const feedConfigured = diagnostics?.feeds?.flights?.configured;
   const openskyConfigured = diagnostics?.feeds?.opensky?.credentials_set;
+  const feedHealth = diagnostics?.feeds?.summary?.health_counts;
+  const feedOk = feedHealth?.ok ?? 0;
+  const feedDegraded = feedHealth?.degraded ?? 0;
+  const feedBackoff = feedHealth?.backoff ?? 0;
+  const feedSources = diagnostics?.feeds?.registry?.sources ?? [];
+  const feedIssues = feedSources.filter(
+    (source) => source.status === "degraded" || source.status === "backoff"
+  );
   const { metrics } = useSystemMetrics();
 
   const panelClass =
@@ -92,6 +115,9 @@ export function ContextDrawer({ variant = "inline", onClose }: ContextDrawerProp
             ? `${diagnostics.system.hostname} • ${diagnostics.system.platform || "system"}`
             : "System info pending."}
         </p>
+        <p className="text-[11px] text-slate-400">
+          Feeds: {feedOk} ok • {feedDegraded} degraded • {feedBackoff} backoff
+        </p>
       </div>
       <div className="rounded-xl border border-slate-700 px-3 py-2 text-[11px] text-slate-300">
         {warningCount > 0 ? "Recent tracker warnings detected." : "All systems nominal."}
@@ -132,6 +158,19 @@ export function ContextDrawer({ variant = "inline", onClose }: ContextDrawerProp
       {trackerWarnings.length ? (
         <div className="rounded-xl border border-slate-700 px-3 py-2 text-[11px] text-slate-300">
           {trackerWarnings[0]}
+        </div>
+      ) : null}
+      {feedIssues.length ? (
+        <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-200">
+          <p className="font-semibold">Feed issues</p>
+          <ul className="mt-1 space-y-1">
+            {feedIssues.slice(0, 2).map((source) => (
+              <li key={source.id || source.label}>
+                {source.label || source.id} • {source.status}
+              </li>
+            ))}
+            {feedIssues.length > 2 ? <li>+{feedIssues.length - 2} more</li> : null}
+          </ul>
         </div>
       ) : null}
       <div className="space-y-2">

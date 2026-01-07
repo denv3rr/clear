@@ -40,6 +40,26 @@ type DiagnosticsPayload = {
     };
     shipping?: { configured?: boolean };
     opensky?: { credentials_set?: boolean };
+    registry?: {
+      sources?: Array<{
+        id?: string;
+        label?: string;
+        category?: string;
+        configured?: boolean;
+        status?: string;
+      }>;
+    };
+    summary?: {
+      total?: number;
+      configured?: number;
+      warnings?: string[];
+      health_counts?: {
+        ok?: number;
+        degraded?: number;
+        backoff?: number;
+        unknown?: number;
+      };
+    };
   };
   trackers?: { warning_count?: number; count?: number };
   intel?: { news_cache?: { status?: string; items?: number; age_hours?: number | null } };
@@ -89,6 +109,17 @@ export default function System() {
   const duplicateClients = data?.duplicates?.accounts?.clients ?? 0;
   const orphanHoldings = data?.orphans?.holdings ?? 0;
   const orphanLots = data?.orphans?.lots ?? 0;
+  const feedTotal = data?.feeds?.summary?.total ?? 0;
+  const feedConfigured = data?.feeds?.summary?.configured ?? 0;
+  const feedWarnings = data?.feeds?.summary?.warnings ?? [];
+  const feedHealth = data?.feeds?.summary?.health_counts;
+  const feedOk = feedHealth?.ok ?? 0;
+  const feedDegraded = feedHealth?.degraded ?? 0;
+  const feedBackoff = feedHealth?.backoff ?? 0;
+  const feedSources = data?.feeds?.registry?.sources ?? [];
+  const flaggedFeeds = feedSources.filter((source) =>
+    source?.status === "degraded" || source?.status === "backoff"
+  );
 
   const onNormalize = async () => {
     try {
@@ -291,7 +322,30 @@ export default function System() {
           </p>
           <p>Shipping Feed: {data?.feeds?.shipping?.configured ? "Configured" : "Missing"}</p>
           <p>OpenSky Creds: {data?.feeds?.opensky?.credentials_set ? "Present" : "Missing"}</p>
-          <p>Tracker Warnings: {data?.trackers?.warning_count ?? "—"}</p>
+          <p>
+            Feed Sources: {feedConfigured}/{feedTotal} configured
+            {feedWarnings.length ? ` • ${feedWarnings.length} warning` : ""}
+            {feedWarnings.length === 1 ? "" : feedWarnings.length ? "s" : ""}
+          </p>
+          <p>
+            Feed Health: {feedOk} ok • {feedDegraded} degraded • {feedBackoff} backoff
+          </p>
+          {flaggedFeeds.length ? (
+            <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 p-2 text-xs text-amber-200">
+              <p className="font-semibold">Feed issues</p>
+              <ul className="mt-1 space-y-1">
+                {flaggedFeeds.slice(0, 4).map((source) => (
+                  <li key={source.id || source.label}>
+                    {source.label || source.id} • {source.status}
+                  </li>
+                ))}
+                {flaggedFeeds.length > 4 ? (
+                  <li>+{flaggedFeeds.length - 4} more</li>
+                ) : null}
+              </ul>
+            </div>
+          ) : null}
+          <p>Tracker Warnings: {data?.trackers?.warning_count ?? "—"}</p>       
           <p>
             Orphaned Holdings: {orphanHoldings} • Orphaned Lots: {orphanLots}
           </p>

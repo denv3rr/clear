@@ -18,6 +18,7 @@ from interfaces.shell import ShellRenderer
 from interfaces.menu_layout import build_sidebar, build_status_header, compact_for_width
 from interfaces.navigator import Navigator
 from modules.client_store import DbClientStore
+from modules.market_data.registry import build_feed_registry, summarize_feed_registry
 
 class SettingsModule:
     def __init__(self):
@@ -1051,7 +1052,67 @@ class SettingsModule:
             mem_bar = Text("N/A")    
         table.add_row("Memory Load", sys_info['mem_usage'], mem_bar)
 
-        self.console.print(table)
+        feed_registry = build_feed_registry()
+        feed_summary = summarize_feed_registry(feed_registry)
+        health_counts = feed_summary.get("health_counts", {})
+        health_line = (
+            f"ok {health_counts.get('ok', 0)} | "
+            f"degraded {health_counts.get('degraded', 0)} | "
+            f"backoff {health_counts.get('backoff', 0)} | "
+            f"unknown {health_counts.get('unknown', 0)}"
+        )
+
+        feed_summary_table = Table(box=box.SIMPLE, show_header=False)
+        feed_summary_table.add_column("Metric", style="dim", width=16)
+        feed_summary_table.add_column("Value", style="white")
+        feed_summary_table.add_row(
+            "Sources",
+            f"{feed_summary.get('configured', 0)}/{feed_summary.get('total', 0)}",
+        )
+        feed_summary_table.add_row("Unconfigured", str(feed_summary.get("unconfigured", 0)))
+        feed_summary_table.add_row("Health", health_line)
+
+        category_panel = None
+        categories = feed_summary.get("categories", {}) or {}
+        if categories:
+            category_table = Table(box=box.SIMPLE, show_header=True)
+            category_table.add_column("Category", style="bold cyan")
+            category_table.add_column("Configured", justify="right")
+            category_table.add_column("Total", justify="right")
+            for name in sorted(categories.keys()):
+                stats = categories.get(name, {})
+                category_table.add_row(
+                    name.title(),
+                    str(stats.get("configured", 0)),
+                    str(stats.get("total", 0)),
+                )
+            category_panel = Panel(
+                category_table,
+                title="Feed Categories",
+                border_style="cyan",
+                box=box.SIMPLE,
+            )
+
+        warnings_panel = None
+        warnings = feed_summary.get("warnings") or []
+        if warnings:
+            warning_text = "\n".join(f"- {warning}" for warning in warnings)
+            warnings_panel = Panel(
+                Text(warning_text, style="yellow"),
+                title="Feed Warnings",
+                border_style="yellow",
+                box=box.SIMPLE,
+            )
+
+        panels = [
+            table,
+            Panel(feed_summary_table, title="Feed Registry", border_style="cyan", box=box.SIMPLE),
+        ]
+        if category_panel:
+            panels.append(category_panel)
+        if warnings_panel:
+            panels.append(warnings_panel)
+        self.console.print(Group(*panels))
         InputSafe.pause()
 
     def _duplicate_accounts_summary(self):

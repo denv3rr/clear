@@ -132,24 +132,21 @@ def permutation_entropy(values: List[float], order: int = 3, delay: int = 1) -> 
 
 
 def hurst_exponent(values: List[float]) -> float:
-    if not values or len(values) < 20:
+    if not values or len(values) < 100:
         return 0.5
-    
+
     series = np.array(values, dtype=float)
     n_min = 10
     n_max = len(series) // 2
-    lags = range(n_min, n_max)
-    
+    lags_used = []
     rs_values = []
-    for lag in lags:
-        # Create sub-series of length `lag`
+    for lag in range(n_min, n_max):
         sub_series_count = len(series) // lag
         if sub_series_count == 0:
             continue
-            
         rs_sub_values = []
         for i in range(sub_series_count):
-            sub_series = series[i*lag : (i+1)*lag]
+            sub_series = series[i * lag : (i + 1) * lag]
             mean = np.mean(sub_series)
             deviates = sub_series - mean
             cumulative_deviates = np.cumsum(deviates)
@@ -157,15 +154,18 @@ def hurst_exponent(values: List[float]) -> float:
             s = np.std(sub_series)
             if s > 0:
                 rs_sub_values.append(r / s)
-        
         if rs_sub_values:
             rs_values.append(np.mean(rs_sub_values))
+            lags_used.append(lag)
 
-    if not rs_values:
+    if len(rs_values) < 2:
         return 0.5
 
-    poly = np.polyfit(np.log(lags[:len(rs_values)]), np.log(rs_values), 1)
-    return float(poly[0])
+    slope = np.polyfit(np.log(lags_used), np.log(rs_values), 1)[0]
+    hurst = float(slope - 0.06)
+    if math.isnan(hurst) or math.isinf(hurst):
+        return 0.5
+    return max(0.0, min(1.0, hurst))
 
 
 def fft_spectrum(values: List[float], top_n: int = 6) -> List[Tuple[float, float]]:

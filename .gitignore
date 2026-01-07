@@ -151,3 +151,5 @@ pnpm-debug.log*
 
 # Agents
 agents/
+.codex/
+.codex-cache/

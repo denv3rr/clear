@@ -24,6 +24,9 @@ from utils.input import InputSafe
 from interfaces.shell import ShellRenderer
 from modules.client_mgr import calculations
 from modules.client_mgr.regime import RegimeModels
+from modules.client_mgr.regime_views import RegimeRenderer
+from modules.client_mgr.patterns import PatternSuite, PatternRenderer
+from modules.client_mgr.risk_views import RiskRenderer
 from modules.client_mgr.client_model import Client, Account
 from modules.client_mgr.valuation import ValuationEngine
 from utils.report_synth import ReportSynthesizer, build_report_context, build_ai_sections
@@ -33,192 +36,6 @@ _CAPM_CACHE = {}  # key -> {"ts": int, "data": dict}
 _CAPM_TTL_SECONDS = 900  # 15 minutes
 
 # Metric glossary for Tools output (plain-language context).
-_METRIC_GLOSSARY = {
-    "mean_annual": {
-        "label": "Annual Return (mu)",
-        "definition": "Average return per year based on the observed period, annualized.",
-        "high_low": "Higher is better if positive; negative implies losses over the window.",
-        "range": "Varies by asset class; compare to a benchmark.",
-        "units": "Percent per year.",
-        "limits": "Sensitive to outliers and sample length; past mean may not persist.",
-    },
-    "vol_annual": {
-        "label": "Volatility (sigma)",
-        "definition": "Annualized standard deviation of returns.",
-        "high_low": "Higher means larger swings; lower means smoother returns.",
-        "range": "Equities often 10-40% annualized.",
-        "units": "Percent per year.",
-        "limits": "Assumes symmetric risk; does not capture tail risk well.",
-    },
-    "sharpe": {
-        "label": "Sharpe Ratio",
-        "definition": "Excess return per unit of total volatility.",
-        "high_low": "Higher is better; below 0 means underperforming risk-free rate.",
-        "range": "0-1 typical, >1 strong, >2 exceptional (context matters).",
-        "units": "Ratio.",
-        "limits": "Assumes normal returns; very window-dependent.",
-    },
-    "sortino": {
-        "label": "Sortino Ratio",
-        "definition": "Excess return per unit of downside volatility.",
-        "high_low": "Higher is better; focuses on negative moves only.",
-        "range": "Compare within strategy; not directly comparable across assets.",
-        "units": "Ratio.",
-        "limits": "Depends on downside threshold and sample size.",
-    },
-    "beta": {
-        "label": "Beta",
-        "definition": "Sensitivity to benchmark moves (systematic risk).",
-        "high_low": ">1 amplifies benchmark moves; <1 is defensive; <0 moves opposite.",
-        "range": "0-2 common; can be negative for hedges.",
-        "units": "Ratio.",
-        "limits": "Unstable with short histories or regime shifts.",
-    },
-    "alpha_annual": {
-        "label": "Alpha (Annual)",
-        "definition": "Annualized excess return vs CAPM expectation.",
-        "high_low": "Positive suggests outperformance after adjusting for beta.",
-        "range": "Depends on strategy; compare to peers.",
-        "units": "Percent per year.",
-        "limits": "Noisy; sensitive to beta, benchmark, and risk-free rate.",
-    },
-    "r_squared": {
-        "label": "R-Squared",
-        "definition": "Fraction of return variance explained by the benchmark.",
-        "high_low": "Higher means benchmark explains returns; low means more idiosyncratic.",
-        "range": "0 to 1.",
-        "units": "Ratio.",
-        "limits": "High R-squared does not imply good performance.",
-    },
-    "tracking_error": {
-        "label": "Tracking Error",
-        "definition": "Volatility of excess returns vs the benchmark.",
-        "high_low": "Higher means more active deviation from benchmark.",
-        "range": "Often 1-8% for active strategies.",
-        "units": "Percent per year.",
-        "limits": "Does not show direction; can be high for intentional tilts.",
-    },
-    "information_ratio": {
-        "label": "Information Ratio",
-        "definition": "Excess return per unit of tracking error.",
-        "high_low": "Higher is better; negative means underperforming benchmark.",
-        "range": "0-0.5 modest, >0.5 strong (context matters).",
-        "units": "Ratio.",
-        "limits": "Sensitive to window length and benchmark choice.",
-    },
-    "treynor": {
-        "label": "Treynor Ratio",
-        "definition": "Excess return per unit of beta (systematic risk).",
-        "high_low": "Higher is better for market risk taken.",
-        "range": "Compare within similar benchmark exposure.",
-        "units": "Percent per beta.",
-        "limits": "Assumes beta is stable and meaningful.",
-    },
-    "m_squared": {
-        "label": "M-squared",
-        "definition": "Risk-adjusted return scaled to benchmark volatility.",
-        "high_low": "Positive means outperformed at benchmark risk level.",
-        "range": "Compare to benchmark return.",
-        "units": "Percent per year.",
-        "limits": "Assumes benchmark is appropriate and volatility is stable.",
-    },
-    "max_drawdown": {
-        "label": "Max Drawdown",
-        "definition": "Worst peak-to-trough decline in the period.",
-        "high_low": "More negative is worse; close to 0 is better.",
-        "range": "-100% to 0%.",
-        "units": "Percent.",
-        "limits": "Single worst event; highly window-dependent.",
-    },
-    "var_95": {
-        "label": "VaR 95%",
-        "definition": "Historical loss threshold not exceeded 95% of the time.",
-        "high_low": "More negative means larger potential loss.",
-        "range": "Depends on asset and horizon.",
-        "units": "Percent per period.",
-        "limits": "Assumes future resembles past; ignores tail losses beyond VaR.",
-    },
-    "cvar_95": {
-        "label": "CVaR 95%",
-        "definition": "Average loss in the worst 5% of periods.",
-        "high_low": "More negative is worse; captures tail severity.",
-        "range": "Depends on asset and horizon.",
-        "units": "Percent per period.",
-        "limits": "Requires enough tail data; unstable with short samples.",
-    },
-    "var_99": {
-        "label": "VaR 99%",
-        "definition": "Historical loss threshold not exceeded 99% of the time.",
-        "high_low": "More negative means larger potential loss.",
-        "range": "Depends on asset and horizon.",
-        "units": "Percent per period.",
-        "limits": "Sparse tail data; sensitive to outliers.",
-    },
-    "cvar_99": {
-        "label": "CVaR 99%",
-        "definition": "Average loss in the worst 1% of periods.",
-        "high_low": "More negative is worse; focuses on extreme tail risk.",
-        "range": "Depends on asset and horizon.",
-        "units": "Percent per period.",
-        "limits": "Very unstable with limited history.",
-    },
-    "entropy": {
-        "label": "Entropy",
-        "definition": "Shannon entropy of the return distribution (bin-based).",
-        "high_low": "Higher implies more uniform return outcomes; lower implies concentrated outcomes.",
-        "range": "Depends on binning; compare within the same setup.",
-        "units": "Bits (relative).",
-        "limits": "Sensitive to bin choices and sample size; this is not permutation entropy.",
-    },
-    "perm_entropy": {
-        "label": "Permutation Entropy",
-        "definition": "Entropy of ordinal return patterns (order m, delay tau).",
-        "high_low": "Higher implies more complex or irregular time-order patterns.",
-        "range": "Normalized 0 to 1 for the chosen order.",
-        "units": "Ratio (0-1).",
-        "limits": "Sensitive to order and delay; short series can understate complexity. Configure in Settings -> Tools.",
-    },
-    "hurst": {
-        "label": "Hurst Exponent",
-        "definition": "Trend persistence measure from price path.",
-        "high_low": ">0.5 suggests trend persistence; <0.5 suggests mean reversion.",
-        "range": "Typically 0 to 1.",
-        "units": "Ratio.",
-        "limits": "Requires enough data; non-stationary series can mislead.",
-    },
-    "skew": {
-        "label": "Skewness",
-        "definition": "Asymmetry of returns around the mean.",
-        "high_low": "Positive skew implies more right-tail wins; negative implies downside tail.",
-        "range": "Often between -1 and 1 for liquid assets.",
-        "units": "Ratio.",
-        "limits": "Very noisy with small samples.",
-    },
-    "kurtosis": {
-        "label": "Kurtosis",
-        "definition": "Tail heaviness relative to normal distribution.",
-        "high_low": "Higher than 3 implies fatter tails.",
-        "range": "3 is normal; >3 heavy tails.",
-        "units": "Ratio.",
-        "limits": "Highly sensitive to outliers.",
-    },
-    "autocorr_lag1": {
-        "label": "Autocorr (Lag 1)",
-        "definition": "Correlation between returns and prior period returns.",
-        "high_low": "Positive suggests momentum; negative suggests mean reversion.",
-        "range": "-1 to 1.",
-        "units": "Correlation.",
-        "limits": "Unstable with short histories; can flip by regime.",
-    },
-    "downside_vol_annual": {
-        "label": "Downside Volatility",
-        "definition": "Annualized volatility of returns below the threshold.",
-        "high_low": "Higher means more downside variability.",
-        "range": "Varies; compare to total volatility.",
-        "units": "Percent per year.",
-        "limits": "Depends on chosen threshold and sample length.",
-    },
-}
 
 # Interval presets for toolkit models
 TOOLKIT_PERIOD = {"1W": "1mo", "1M": "6mo", "3M": "1y", "6M": "2y", "1Y": "5y"}
@@ -331,6 +148,10 @@ class FinancialToolkit:
         tool_settings = self._load_tool_settings()
         self.perm_entropy_order = tool_settings["perm_entropy_order"]
         self.perm_entropy_delay = tool_settings["perm_entropy_delay"]
+        self.patterns = PatternSuite(
+            perm_entropy_order=self.perm_entropy_order,
+            perm_entropy_delay=self.perm_entropy_delay,
+        )
         interval = str(self.client.active_interval or "1M").upper()
         self._selected_interval = interval if interval in TOOLKIT_PERIOD else "1M"
 
@@ -588,7 +409,7 @@ class FinancialToolkit:
 
         self.console.print(Align.center(results))
         self.console.print(
-            self._render_metric_glossary(
+            RiskRenderer.render_metric_glossary(
                 ["beta", "alpha_annual", "r_squared", "sharpe", "vol_annual"],
                 title="CAPM Metric Context",
             )
@@ -641,7 +462,7 @@ class FinancialToolkit:
         ai_panel = self._build_ai_panel(report, "capm_analysis")
         if ai_panel:
             self.console.print(ai_panel)
-        self.console.print(self._render_capm_context(capm))
+        self.console.print(RiskRenderer.render_capm_context(capm, self.benchmark_ticker))
 
         # Interpretation Logic
         if beta and beta > 1.2:
@@ -715,7 +536,7 @@ class FinancialToolkit:
 
         self.console.print("\n")
         self.console.print(Align.center(results))
-        self.console.print(self._render_black_scholes_context(spot_price, strike_price, time_years, volatility, risk_free))
+        self.console.print(RiskRenderer.render_black_scholes_context(spot_price, strike_price, time_years, volatility, risk_free))
         InputSafe.pause()
 
     def _run_multi_model_dashboard(self):
@@ -762,9 +583,9 @@ class FinancialToolkit:
             box=box.ROUNDED,
         )
         self.console.print(header)
-        self.console.print(self._render_risk_metrics_table(metrics))
-        self.console.print(self._render_return_distribution(returns))
-        self.console.print(self._render_risk_dashboard_context(interval, meta))
+        self.console.print(RiskRenderer.render_risk_metrics_table(metrics))
+        self.console.print(RiskRenderer.render_return_distribution(returns))
+        self.console.print(RiskRenderer.render_risk_dashboard_context(interval, meta))
         InputSafe.pause()
 
     def _aggregate_lots(self) -> Dict[str, List[Dict[str, Any]]]:
@@ -946,7 +767,7 @@ class FinancialToolkit:
 
         self.console.print(table)
         self.console.print(
-            self._render_metric_glossary(
+            RiskRenderer.render_metric_glossary(
                 [
                     "mean_annual",
                     "vol_annual",
@@ -962,7 +783,7 @@ class FinancialToolkit:
                 title="Diagnostics Metric Context",
             )
         )
-        self.console.print(self._render_diagnostics_context(interval, total_val, manual_total, sector_rows, hhi))
+        self.console.print(RiskRenderer.render_diagnostics_context(interval, total_val, manual_total, sector_rows, hhi))
         if sector_rows:
             sector_table = Table(box=box.SIMPLE, expand=True, title="Sector Concentration")
             sector_table.add_column("Sector", style="bold cyan")
@@ -1157,12 +978,12 @@ class FinancialToolkit:
 
             payload = self._get_pattern_payload(returns, interval, meta)
             self.console.print(
-                self._render_metric_glossary(
+                RiskRenderer.render_metric_glossary(
                     ["entropy", "perm_entropy", "hurst"],
                     title="Pattern Metric Context",
                 )
             )
-            self.console.print(self._render_entropy_panel(payload))
+            self.console.print(PatternRenderer.render_entropy_panel(payload))
             entropy = payload.get("entropy")
             perm_entropy = payload.get("perm_entropy")
             hurst = payload.get("hurst")
@@ -1229,13 +1050,13 @@ class FinancialToolkit:
             if choice == "x":
                 return
             if choice == "1":
-                self.console.print(self._render_spectrum_panel(payload))
+                self.console.print(PatternRenderer.render_spectrum_panel(payload))
             elif choice == "2":
-                self.console.print(self._render_changepoint_panel(payload))
+                self.console.print(PatternRenderer.render_changepoint_panel(payload))
             elif choice == "3":
-                self.console.print(self._render_motif_panel(payload))
+                self.console.print(PatternRenderer.render_motif_panel(payload))
             elif choice == "4":
-                self.console.print(self._render_vol_forecast_panel(payload))
+                self.console.print(PatternRenderer.render_vol_forecast_panel(payload))
             InputSafe.pause()
 
     def _get_pattern_payload(self, returns: pd.Series, interval: str, meta: str) -> Dict[str, Any]:
@@ -1244,195 +1065,9 @@ class FinancialToolkit:
         if cached:
             return cached
 
-        values = self._returns_to_values(returns)
-        spectrum = calculations.fft_spectrum(values, top_n=6)
-        change_points = calculations.cusum_change_points(returns, threshold=5.0)
-        motifs = calculations.motif_similarity(returns, window=20, top=3)
-        vol_forecast = calculations.ewma_vol_forecast(returns, lam=0.94, steps=6)
-        entropy = calculations.shannon_entropy(returns, bins=12)
-        perm_entropy = calculations.permutation_entropy(
-            values,
-            order=self.perm_entropy_order,
-            delay=self.perm_entropy_delay,
-        )
-        hurst = calculations.hurst_exponent(values)
-
-        payload = {
-            "interval": interval,
-            "meta": meta,
-            "returns": returns,
-            "values": values,
-            "spectrum": spectrum,
-            "change_points": change_points,
-            "motifs": motifs,
-            "vol_forecast": vol_forecast,
-            "entropy": entropy,
-            "perm_entropy": perm_entropy,
-            "perm_entropy_order": self.perm_entropy_order,
-            "perm_entropy_delay": self.perm_entropy_delay,
-            "hurst": hurst,
-        }
+        payload = self.patterns.build_payload(returns, interval, meta)
         self._pattern_cache[key] = payload
         return payload
-
-    @staticmethod
-    def _returns_to_values(returns: pd.Series) -> List[float]:
-        vals = [1.0]
-        for r in returns:
-            vals.append(vals[-1] * (1.0 + float(r)))
-        return vals[1:]
-
-    def _render_pattern_summary(self, payload: Dict[str, Any]) -> Table:
-        summary = Table(box=box.SIMPLE, expand=True)
-        summary.add_column("Signal", style="bold cyan")
-        summary.add_column("Value", justify="right")
-        summary.add_column("Notes", style="dim")
-
-        summary.add_row("Interval", payload["interval"], payload["meta"])
-        summary.add_row("Entropy", f"{payload['entropy']:.2f}", "Return distribution uniformity")
-        summary.add_row(
-            "Perm Entropy",
-            f"{payload['perm_entropy']:.2f}",
-            f"Ordering complexity (m={payload['perm_entropy_order']}, tau={payload['perm_entropy_delay']})",
-        )
-        summary.add_row("Hurst", f"{payload['hurst']:.2f}", "<0.5 mean-revert, >0.5 trend")
-        summary.add_row("Change Points", str(len(payload["change_points"])), "CUSUM regime shifts")
-        if payload["spectrum"]:
-            freq, power = payload["spectrum"][0]
-            summary.add_row("Top Frequency", f"{freq:.3f}", f"Power {power:.2f}")
-        return summary
-
-    def _render_spectrum_panel(self, payload: Dict[str, Any]) -> Panel:
-        values = payload["values"]
-        waveform = self._render_waveform(values, width=60, height=10)
-
-        spec = payload["spectrum"]
-        spec_table = Table(box=box.SIMPLE, expand=True)
-        spec_table.add_column("Freq", justify="right", style="bold cyan")
-        spec_table.add_column("Power", justify="right")
-        spec_table.add_column("Bar", justify="left")
-        max_power = max((p for _, p in spec), default=1.0)
-        for freq, power in spec:
-            intensity = min(power / max_power, 1.0)
-            bar = ChartRenderer.generate_heatmap_bar(intensity, width=18)
-            spec_table.add_row(f"{freq:.3f}", f"{power:.2f}", bar)
-
-        layout = Table.grid(expand=True)
-        layout.add_column(ratio=1)
-        layout.add_row(Panel(waveform, title="Waveform (normalized)", box=box.SQUARE))
-        layout.add_row(Panel(spec_table, title="Dominant Frequencies", box=box.SQUARE))
-        return Panel(layout, title="Spectrum + Waveform", box=box.ROUNDED, border_style="cyan")
-
-    def _render_changepoint_panel(self, payload: Dict[str, Any]) -> Panel:
-        points = payload["change_points"]
-        values = payload["values"]
-        length = len(values)
-        width = 60
-        line = ["-"] * width
-        for idx in points:
-            pos = int((idx / max(1, length - 1)) * (width - 1))
-            line[pos] = "|"
-        timeline = "".join(line)
-        table = Table(box=box.SIMPLE, expand=True)
-        table.add_column("Timeline", style="bold white")
-        table.add_column("Events", justify="right")
-        table.add_row(timeline, str(len(points)))
-        if points:
-            table.add_row("", f"Last @ {points[-1]}")
-        return Panel(table, title="Change-Point Timeline", box=box.ROUNDED, border_style="yellow")
-
-    def _render_motif_panel(self, payload: Dict[str, Any]) -> Panel:
-        motifs = payload["motifs"]
-        table = Table(box=box.SIMPLE, expand=True)
-        table.add_column("Window", style="bold cyan")
-        table.add_column("Distance", justify="right")
-        for match in motifs:
-            table.add_row(match["window"], f"{match['distance']:.3f}")
-        if not motifs:
-            table.add_row("N/A", "Insufficient history")
-        return Panel(table, title="Motif Similarity", box=box.ROUNDED, border_style="magenta")
-
-    def _render_vol_forecast_panel(self, payload: Dict[str, Any]) -> Panel:
-        forecast = payload["vol_forecast"]
-        table = Table(box=box.SIMPLE, expand=True)
-        table.add_column("Step", style="bold cyan")
-        table.add_column("Forecast", justify="right")
-        table.add_column("Heat", justify="center", width=6)
-        max_val = max(forecast) if forecast else 1.0
-        for idx, val in enumerate(forecast):
-            heat = ChartRenderer.generate_heatmap_bar(min(val / max_val, 1.0), width=6)
-            table.add_row(f"T+{idx+1}", f"{val:.4f}", heat)
-        return Panel(table, title="Volatility Forecast (EWMA)", box=box.ROUNDED, border_style="cyan")
-
-    def _render_entropy_panel(self, payload: Dict[str, Any]) -> Panel:
-        summary = self._render_pattern_summary(payload)
-        table = Table(box=box.SIMPLE, expand=True)
-        table.add_column("Metric", style="bold cyan")
-        table.add_column("Value", justify="right")
-        table.add_column("Signal", style="dim")
-        table.add_row("Entropy", f"{payload['entropy']:.2f}", "Uniformity of return distribution")
-        table.add_row(
-            "Perm Entropy",
-            f"{payload['perm_entropy']:.2f}",
-            f"Ordering complexity (m={payload['perm_entropy_order']}, tau={payload['perm_entropy_delay']})",
-        )
-        table.add_row("Hurst", f"{payload['hurst']:.2f}", "Trend vs mean-revert")
-        context = Table(box=box.SIMPLE, expand=True)
-        context.add_column("What it measures", style="bold white")
-        context.add_column("How to read it", style="dim")
-        context.add_row(
-            "Entropy (bins)",
-            "Higher = returns spread across bins; lower = clustered outcomes. Sensitive to bin count.",
-        )
-        context.add_row(
-            "Permutation entropy",
-            "Higher = more complex order patterns; lower = repetitive ordering. Needs enough points.",
-        )
-        context.add_row(
-            "Hurst exponent",
-            "<0.5 mean-reverting tendency; >0.5 trend persistence. Not a forecast.",
-        )
-        context.add_row(
-            "Change points",
-            "CUSUM flags shifts in mean level; best used to spot regime breaks.",
-        )
-        context.add_row(
-            "Spectrum",
-            "FFT highlights dominant cycle lengths; power shows cycle strength.",
-        )
-        return Panel(
-            Group(
-                Panel(summary, title="Pattern Summary", box=box.SIMPLE),
-                table,
-                Panel(context, title="Pattern Context", box=box.SIMPLE),
-            ),
-            title="Pattern Analysis",
-            box=box.ROUNDED,
-            border_style="blue",
-        )
-
-    @staticmethod
-    def _render_waveform(values: List[float], width: int = 60, height: int = 10) -> Text:
-        if not values:
-            return Text("No data", style="dim")
-        series = np.array(values[-width:], dtype=float)
-        if len(series) < width:
-            series = np.pad(series, (width - len(series), 0), mode="edge")
-        min_val = float(series.min())
-        max_val = float(series.max())
-        span = max_val - min_val or 1.0
-        rows = [[" " for _ in range(width)] for _ in range(height)]
-        for i, val in enumerate(series):
-            norm = (val - min_val) / span
-            pos = int(round((height - 1) * (1 - norm)))
-            rows[pos][i] = "█"
-        baseline = int(round((height - 1) * (1 - ((0 - min_val) / span))))
-        baseline = max(0, min(height - 1, baseline))
-        for i in range(width):
-            if rows[baseline][i] == " ":
-                rows[baseline][i] = "─"
-        lines = ["".join(r) for r in rows]
-        return Text("\n".join(lines), style="white")
 
     @staticmethod
     def _annualization_factor_from_index(returns: pd.Series) -> float:
@@ -1592,54 +1227,6 @@ class FinancialToolkit:
         snap["interval"] = interval
         return snap
 
-    @staticmethod
-    def _wave_surface(values: List[float], width: int = 32) -> Dict[str, Any]:
-        if not values:
-            return {"z": [], "x": [], "y": []}
-        cleaned = [float(v) for v in values if v is not None]
-        if not cleaned:
-            return {"z": [], "x": [], "y": []}
-        length = len(cleaned)
-        width = max(8, int(width))
-        rows = int(math.ceil(length / width))
-        padded = cleaned + [cleaned[-1]] * (rows * width - length)
-        grid = []
-        for r in range(rows):
-            start = r * width
-            grid.append(padded[start:start + width])
-        return {
-            "z": grid,
-            "x": list(range(width)),
-            "y": list(range(rows)),
-        }
-
-    @staticmethod
-    def _fft_surface(values: List[float], window: int = 48, step: int = 8, bins: int = 24) -> Dict[str, Any]:
-        if not values or len(values) < window:
-            return {"z": [], "x": [], "y": []}
-        series = np.array(values, dtype=float)
-        series = series - series.mean()
-        window = max(16, int(window))
-        step = max(4, int(step))
-        bins = max(8, int(bins))
-        rows = []
-        positions = []
-        freqs = None
-        for start in range(0, len(series) - window + 1, step):
-            segment = series[start:start + window]
-            spec = np.fft.rfft(segment)
-            power = np.abs(spec) ** 2
-            if freqs is None:
-                freqs = np.fft.rfftfreq(len(segment), d=1.0)
-            zrow = np.log1p(power[:bins]).tolist()
-            rows.append(zrow)
-            positions.append(start)
-        return {
-            "z": rows,
-            "x": list(freqs[:bins]) if freqs is not None else [],
-            "y": positions,
-        }
-
     def build_pattern_payload(
         self,
         holdings: Dict[str, float],
@@ -1670,8 +1257,7 @@ class FinancialToolkit:
             {"freq": float(freq), "power": float(power)}
             for freq, power in spectrum
         ]
-        wave_surface = self._wave_surface(values)
-        fft_surface = self._fft_surface(values)
+        wave_surface, fft_surface = self.patterns.build_surfaces(values)
         if wave_surface.get("z"):
             wave_surface["axis"] = {
                 "x_label": "Sample Index",
@@ -1806,185 +1392,6 @@ class FinancialToolkit:
             benchmark_returns,
             risk_free_annual,
         )
-
-    def _max_drawdown(self, returns: pd.Series) -> float:
-        if returns.empty:
-            return 0.0
-        cumulative = (1 + returns).cumprod()
-        peak = cumulative.cummax()
-        drawdown = (cumulative / peak) - 1.0
-        return float(drawdown.min())
-
-    def _historical_var_cvar(self, returns: pd.Series, confidence: float) -> Tuple[float, float]:
-        if returns.empty:
-            return 0.0, 0.0
-        q = returns.quantile(1 - confidence)
-        tail = returns[returns <= q]
-        cvar = float(tail.mean()) if not tail.empty else float(q)
-        return float(q), cvar
-
-    def _render_metric_glossary(self, keys: List[str], title: str = "Metric Context") -> Panel:
-        table = Table(box=box.SIMPLE, expand=True)
-        table.add_column("Metric", style="bold cyan", width=18)
-        table.add_column("Definition", style="white")
-        table.add_column("High/Low", style="dim")
-        table.add_column("Units/Range", style="dim")
-        table.add_column("Limits", style="dim")
-
-        seen = set()
-        for key in keys:
-            if key in seen:
-                continue
-            seen.add(key)
-            info = _METRIC_GLOSSARY.get(key)
-            if not info:
-                continue
-            units_range = f"{info.get('units')} | {info.get('range')}"
-            table.add_row(
-                info.get("label", key),
-                info.get("definition", ""),
-                info.get("high_low", ""),
-                units_range,
-                info.get("limits", ""),
-            )
-
-        return Panel(table, title=f"[bold]{title}[/bold]", box=box.ROUNDED, border_style="dim")
-
-    def _render_risk_metrics_table(self, metrics: Dict[str, Any]) -> Panel:
-        table = Table(box=box.SIMPLE, expand=True)
-        table.add_column("Metric", style="bold cyan")
-        table.add_column("Value", justify="right")
-        table.add_column("Notes", style="dim")
-
-        def fmt(value: Any, fmt_str: str, fallback: str = "N/A") -> str:
-            return fallback if value is None else fmt_str.format(value)
-
-        table.add_row("Annual Return (μ)", fmt(metrics.get("mean_annual"), "{:+.2%}"), "Avg period return * ann. factor")
-        table.add_row("Volatility (σ)", fmt(metrics.get("vol_annual"), "{:.2%}"), "Annualized std dev")
-        table.add_row("Sharpe Ratio", fmt(metrics.get("sharpe"), "{:.2f}"), "Risk-adjusted return")
-        table.add_row("Sortino Ratio", fmt(metrics.get("sortino"), "{:.2f}"), "Downside-adjusted")
-        table.add_row("Beta", fmt(metrics.get("beta"), "{:.2f}"), "Systemic sensitivity")
-        table.add_row("Alpha (Jensen)", fmt(metrics.get("alpha_annual"), "{:+.2%}"), "Excess return vs CAPM")
-        table.add_row("R-Squared", fmt(metrics.get("r_squared"), "{:.2f}"), "Fit vs benchmark")
-        table.add_row("Tracking Error", fmt(metrics.get("tracking_error"), "{:.2%}"), "Std dev of excess")
-        table.add_row("Information Ratio", fmt(metrics.get("information_ratio"), "{:.2f}"), "Excess / tracking error")
-        table.add_row("Treynor Ratio", fmt(metrics.get("treynor"), "{:.2%}"), "Return per beta")
-        table.add_row("M²", fmt(metrics.get("m_squared"), "{:+.2%}"), "Modigliani-Modigliani")
-        table.add_row("Max Drawdown", fmt(metrics.get("max_drawdown"), "{:.2%}"), "Peak-to-trough")
-        table.add_row("VaR 95%", fmt(metrics.get("var_95"), "{:+.2%}"), "Historical quantile")
-        table.add_row("CVaR 95%", fmt(metrics.get("cvar_95"), "{:+.2%}"), "Expected tail loss")
-        table.add_row("VaR 99%", fmt(metrics.get("var_99"), "{:+.2%}"), "Historical quantile")
-        table.add_row("CVaR 99%", fmt(metrics.get("cvar_99"), "{:+.2%}"), "Expected tail loss")
-
-        metrics_panel = Panel(table, title="[bold]Model Metrics[/bold]", box=box.ROUNDED, border_style="blue")
-        glossary = self._render_metric_glossary(
-            [
-                "mean_annual",
-                "vol_annual",
-                "sharpe",
-                "sortino",
-                "beta",
-                "alpha_annual",
-                "r_squared",
-                "tracking_error",
-                "information_ratio",
-                "treynor",
-                "m_squared",
-                "max_drawdown",
-                "var_95",
-                "cvar_95",
-                "var_99",
-                "cvar_99",
-            ],
-            title="Risk Metric Context",
-        )
-        return Group(metrics_panel, glossary)
-
-    def _render_return_distribution(self, returns: pd.Series) -> Panel:
-        bins = [-0.10, -0.05, -0.02, -0.01, 0.0, 0.01, 0.02, 0.05, 0.10]
-        labels = ["<-10%", "-10~-5%", "-5~-2%", "-2~-1%", "-1~0%", "0~1%", "1~2%", "2~5%", "5~10%", ">10%"]
-        counts = [0] * (len(bins) + 1)
-
-        for r in returns:
-            idx = 0
-            while idx < len(bins) and r > bins[idx]:
-                idx += 1
-            counts[idx] += 1
-
-        max_count = max(counts) if counts else 1
-
-        table = Table(box=box.SIMPLE, expand=True)
-        table.add_column("Bucket", style="bold white")
-        table.add_column("Freq", justify="right")
-        table.add_column("Distribution", justify="left")
-
-        for label, count in zip(labels, counts):
-            intensity = count / max_count if max_count > 0 else 0
-            blocks = int(round(intensity * 24))
-            blocks = max(1, blocks) if count > 0 else 0
-            color = "red" if label.startswith("-") or label.startswith("<") else "green"
-            bar = "█" * blocks if blocks > 0 else "·"
-            table.add_row(label, f"{count}", f"[{color}]{bar}[/{color}]")
-
-        return Panel(table, title="[bold]Return Distribution[/bold]", box=box.ROUNDED, border_style="magenta")
-
-    def _render_capm_context(self, capm: Dict[str, Any]) -> Panel:
-        points = capm.get("points") if isinstance(capm, dict) else None
-        points_label = str(points) if points else "N/A"
-        lines = [
-            f"CAPM compares the portfolio to {self.benchmark_ticker} to estimate beta and alpha.",
-            "Alpha is annualized excess return over CAPM expectations; beta is sensitivity to benchmark moves.",
-            "R-squared shows how much of the return variance the benchmark explains.",
-            f"Sample points: {points_label}; risk-free rate defaults to 4% annual unless configured.",
-            "Short histories or regime shifts can make beta/alpha unstable; treat as descriptive.",
-        ]
-        return Panel("\n".join(lines), title="[bold]CAPM Context[/bold]", box=box.SIMPLE, border_style="dim")
-
-    def _render_risk_dashboard_context(self, interval: str, meta: str) -> Panel:
-        lines = [
-            f"Metrics use historical returns for the selected interval ({interval}).",
-            "VaR/CVaR are historical tail summaries, not guaranteed loss limits.",
-            "Return distribution buckets show frequency, not probability of future outcomes.",
-            f"Data window: {meta}.",
-        ]
-        return Panel("\n".join(lines), title="[bold]Risk Dashboard Context[/bold]", box=box.SIMPLE, border_style="dim")
-
-    def _render_diagnostics_context(
-        self,
-        interval: str,
-        total_val: float,
-        manual_total: float,
-        sector_rows: List[Tuple[str, float]],
-        hhi: float,
-    ) -> Panel:
-        hhi_note = f"HHI {hhi:.3f}" if hhi > 0 else "HHI N/A"
-        manual_note = f"Manual assets included: {manual_total:,.0f}" if manual_total > 0 else "Manual assets excluded"
-        sector_note = "Sector mix based on available sector tags." if sector_rows else "Sector mix unavailable."
-        lines = [
-            f"Diagnostics summarize {interval} performance, concentration, and recent movers.",
-            manual_note,
-            sector_note,
-            f"{hhi_note} (higher = more concentrated).",
-            "Values use current market prices and do not include tax effects.",
-        ]
-        return Panel("\n".join(lines), title="[bold]Diagnostics Context[/bold]", box=box.SIMPLE, border_style="dim")
-
-    def _render_black_scholes_context(
-        self,
-        spot_price: float,
-        strike_price: float,
-        time_years: float,
-        volatility: float,
-        risk_free: float,
-    ) -> Panel:
-        lines = [
-            "Black-Scholes estimates European option fair value using spot, strike, time, volatility, and the risk-free rate.",
-            "Assumes constant volatility and rates, no dividends, and no early exercise.",
-            "Time uses a 365-day year; results are theoretical and ignore bid/ask spreads.",
-            f"Inputs: S={spot_price:.2f}, K={strike_price:.2f}, T={time_years:.2f}y, sigma={volatility:.2%}, r={risk_free:.2%}.",
-            "Higher spot or volatility increases call value; higher strike increases put value.",
-        ]
-        return Panel("\n".join(lines), title="[bold]Model Context[/bold]", box=box.SIMPLE, border_style="dim")
 
     def _render_regime_context(self, snap: Dict[str, Any]) -> Panel:
         interval = snap.get("interval", "N/A")
@@ -2124,380 +1531,6 @@ class FinancialToolkit:
             risk_free_annual=risk_free_annual,
             min_points=min_points,
         )
-
-    # toolkit.py changes
-
     @staticmethod
     def _compute_core_metrics(returns: pd.Series, benchmark_returns: pd.Series = None) -> dict:
         return calculations.compute_core_metrics(returns, benchmark_returns)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-class RegimeRenderer:
-    """
-    Renders RegimeSnapshot structures using Rich.
-    """
-
-    @staticmethod
-    def _fmt_pct(value: Any, decimals: int = 2) -> str:
-        try:
-            p = float(value or 0.0)
-        except (ValueError, TypeError):
-            p = 0.0
-        if p < 1.0:
-            cap = 100.0 - (10 ** (-decimals))
-            pct = min(p * 100.0, cap)
-        else:
-            pct = 100.0
-        return f"{pct:.{decimals}f}%"
-
-    @staticmethod
-    def render(snapshot: dict) -> Panel:
-        if "error" in snapshot:
-            return Panel(
-                Text(snapshot["error"], style="bold yellow"),
-                title="[bold]Market Regime[/bold]",
-                border_style="yellow"
-            )
-
-        # --- LEFT: summary ---
-        left = Table.grid(padding=(0, 2))
-        left.add_column(style="dim")
-        left.add_column(justify="right", style="bold white")
-
-        left.add_row()
-        left.add_row(
-            "State",
-            ChartRenderer.regime_strip(snapshot["current_regime"], width=10)
-        )
-        left.add_row("Model", snapshot["model"])
-        left.add_row("Horizon", snapshot["horizon"])
-        left.add_row("Current Regime", snapshot["current_regime"])
-        left.add_row("Confidence", RegimeRenderer._fmt_pct(snapshot["confidence"]))
-        left.add_row("Stability", RegimeRenderer._fmt_pct(snapshot["stability"]))
-        if "samples" in snapshot:
-            left.add_row("Samples", str(snapshot.get("samples")))
-        left.add_row(
-            "Avg Return (Ann.)",
-            RegimeRenderer._fmt_pct(snapshot["metrics"]["avg_return"])
-        )
-        left.add_row(
-            "Volatility (Ann.)",
-            RegimeRenderer._fmt_pct(snapshot["metrics"]["volatility"])
-        )
-
-        # --- RIGHT: regime probabilities ---
-        prob_table = Table(
-            box=box.SIMPLE,
-            show_header=True,
-            header_style="bold",
-            expand=False,
-            width=50
-        )
-
-        prob_table.add_column("Regime")
-        prob_table.add_column("Prob", justify="right")
-        prob_table.add_column("")
-
-        for name, p in snapshot["state_probs"].items():
-            bar = ChartRenderer.generate_heatmap_bar(p, width=18)
-            prob_table.add_row(
-                name,
-                RegimeRenderer._fmt_pct(p),
-                bar
-            )
-
-        layout = Table.grid(expand=True)
-        layout.add_column(ratio=2)
-        layout.add_column(ratio=3)
-
-        layout.add_row(
-            Panel(left, box=box.ROUNDED, title="[bold]Regime Summary[/bold]"),
-            Panel(prob_table, box=box.ROUNDED, title="[bold]Regime Probabilities[/bold]")
-        )
-
-        labels = list(snapshot["state_probs"].keys())
-        matrix = RegimeRenderer._render_transition_heatmap(
-            snapshot["transition_matrix"],
-            labels
-        )
-        trans_surf = RegimeRenderer._render_transition_surface(snapshot["transition_matrix"])
-
-        matrix_grid = Table.grid(expand=True)
-        matrix_grid.add_column(ratio=1)
-        matrix_grid.add_column(ratio=1)
-
-        matrix_grid.add_row(
-            Panel(matrix, title="[bold]Transition Matrix[/bold]", box=box.ROUNDED),
-            Panel(trans_surf, title="[bold]Transition Surface[/bold]", box=box.ROUNDED),
-        )
-
-        matrix_panel = Panel(
-            matrix_grid,
-            title="[bold]Transition Views[/bold] [dim](Matrix • Surface)[/dim]",
-            box=box.ROUNDED
-        )
-
-        # --- Surfaces ---
-        surfaces_group = None
-        if snapshot.get("stationary") and snapshot.get("evolution"):
-            stat_surf = RegimeRenderer._render_stationary_surface(snapshot["stationary"])
-            evo_surf = RegimeRenderer._render_evolution_surface(snapshot["evolution"], labels)
-
-            surfaces_group = Group(
-                Panel(stat_surf, title="[bold]Stationary (π)[/bold]", box=box.ROUNDED),
-                Panel(evo_surf, title="[bold]Evolution Surface[/bold]", box=box.ROUNDED),
-            )
-
-        # --- Matrix (full width) ---
-        stack = []
-        stack.append(matrix_panel)
-
-        # --- Surfaces (full width below matrix) ---
-        if surfaces_group is not None:
-            stack.append(
-                Panel(
-                    surfaces_group,
-                    title="[bold]Surfaces[/bold]",
-                    box=box.ROUNDED
-                )
-            )
-        else:
-            stack.append(
-                Panel(
-                    "[dim]Surface data not available.[/dim]",
-                    title="[bold]Surfaces[/bold]",
-                    box=box.ROUNDED
-                )
-            )
-
-        final = Group(
-            layout,
-            *stack
-        )
-
-        scope = snapshot.get("scope_label")
-        interval = snapshot.get("interval")
-        scope_suffix = ""
-        if scope and interval:
-            scope_suffix = f" [dim]({scope} • {interval})[/dim]"
-        elif scope:
-            scope_suffix = f" [dim]({scope})[/dim]"
-        elif interval:
-            scope_suffix = f" [dim]({interval})[/dim]"
-
-        return Panel(
-            final,
-            title=f"[bold gold1]Regime Projection[/bold gold1]{scope_suffix}",
-            border_style="yellow",
-            box=box.HEAVY
-        )
-
-    @staticmethod
-    def _render_transition_heatmap(P: list[list[float]], labels: list[str]) -> Table:
-        heat = Table(box=box.SIMPLE, show_header=True, header_style="bold cyan", pad_edge=False)
-        heat.add_column("FROM \\ TO", no_wrap=True, style="dim")
-        for lab in labels:
-            heat.add_column(str(lab)[:7], justify="center", no_wrap=True, width=8)
-
-        def cell(p: Any) -> Text:
-            try:
-                p = float(p or 0.0)
-            except (ValueError, TypeError):
-                p = 0.0
-
-            if p >= 0.95:   ch, col = "█", "bold red"
-            elif p >= 0.85: ch, col = "▇", "red"
-            elif p >= 0.70: ch, col = "▆", "yellow"
-            elif p >= 0.55: ch, col = "▅", "green"
-            elif p >= 0.40: ch, col = "▄", "cyan"
-            elif p >= 0.25: ch, col = "▃", "blue"
-            elif p >= 0.10: ch, col = "▂", "dim cyan"
-            else:               ch, col = "▁", "dim white"
-
-            blocks = f"[{col}]{ch * 6}[/{col}]"
-            return Text.from_markup(f"{blocks}\n[white bold]{RegimeRenderer._fmt_pct(p)}[/white bold]")
-
-        for i, row in enumerate(P):
-            row_label = labels[i] if i < len(labels) else "???"
-            r = [row_label]
-            for p in row:
-                r.append(cell(p))
-            heat.add_row(*r)
-        return heat
-
-    @staticmethod
-    def _render_transition_surface(P: list[list[float]]) -> Table:
-        """
-        Pseudo-3D surface using stacked blocks. This is a heightmap-like display suitable for terminals.
-        """
-        n = len(P)
-        console_width = Console().width
-        target_width = max(10, console_width // 2)
-        cell_width = max(2, int((target_width - max(0, n - 1)) / max(1, n)) // 2)
-        surf = Table(
-            box=box.SIMPLE,
-            show_header=False,
-            pad_edge=True,
-            expand=True,
-            padding=(0, 0),
-        )
-        surf.add_column("Surface", ratio=1, no_wrap=True)
-
-        # Render each row as a "ridge" of stacked blocks.
-        # Height is proportional to probability (0..1) mapped to 0..8 blocks.
-        def stack(p: float) -> str:
-            levels = "▁▂▃▄▅▆▇█"
-            idx = int(round(max(0.0, min(1.0, float(p))) * (len(levels) - 1)))
-            return levels[idx] * cell_width
-
-        def stack_color(p: float) -> str:
-            if p >= 0.90:
-                return "bold red"
-            if p >= 0.70:
-                return "red"
-            if p >= 0.50:
-                return "yellow"
-            if p >= 0.30:
-                return "green"
-            if p >= 0.15:
-                return "cyan"
-            return "dim white"
-
-        i = 0
-        lines = []
-        while i < n:
-            row = P[i]
-            j = 0
-            parts = []
-            while j < n:
-                block = stack(row[j])
-                color = stack_color(float(row[j] or 0.0))
-                parts.append(f"[{color}]{block}[/{color}]")
-                j += 1
-            lines.append(" ".join(parts))
-            i += 1
-
-        # Fit into a single column (table rows)
-        for ln in lines:
-            surf.add_row(Text.from_markup(ln))
-
-        return surf
-
-    @staticmethod
-    def _render_stationary_surface(stationary: dict) -> Table:
-        """
-        Stationary distribution as labeled bars.
-        """
-        tab = Table(box=box.SIMPLE, show_header=True, header_style="bold", pad_edge=False)
-        tab.add_column("Regime", no_wrap=True)
-        tab.add_column("π", justify="right", width=7)
-        tab.add_column("", no_wrap=True)
-
-        for name, p in stationary.items():
-            p = float(p or 0.0)
-            bar = ChartRenderer.generate_heatmap_bar(p, width=18)
-            tab.add_row(name, RegimeRenderer._fmt_pct(p), bar)
-
-        return tab
-
-    @staticmethod
-    def _render_evolution_surface(evolution: dict, labels: list[str]) -> Table:
-        series = evolution.get("series", []) if isinstance(evolution, dict) else []
-        series_to_render = series
-        if series:
-            try:
-                first = series[0]
-                if isinstance(first, dict):
-                    vals = list(first.values())
-                elif isinstance(first, (list, tuple)):
-                    vals = list(first)
-                else:
-                    vals = []
-                if vals:
-                    max_p = max(float(v or 0.0) for v in vals)
-                    if max_p >= 0.999 and len(series) > 1:
-                        series_to_render = series[1:]
-            except Exception:
-                series_to_render = series
-        heat = Table(box=box.SIMPLE, show_header=True, header_style="bold white", pad_edge=False)
-
-        heat.add_column("t (step)", justify="right", width=8, style="dim")
-        for lab in labels:
-            heat.add_column(str(lab)[:7], justify="center", no_wrap=True, width=9)
-
-        def cell(p: Any) -> Text:
-            # 1. Safe float conversion to prevent "Error 0"
-            try:
-                p_val = float(p or 0.0)
-            except (ValueError, TypeError):
-                p_val = 0.0
-
-            # 2. Detailed Gradient Logic
-            if p_val >= 0.90:   ch, col = "█", "bold red"
-            elif p_val >= 0.70: ch, col = "█", "red"
-            elif p_val >= 0.50: ch, col = "▓", "yellow"
-            elif p_val >= 0.40: ch, col = "▒", "green"
-            elif p_val >= 0.20: ch, col = "░", "blue"
-            elif p_val >= 0.10: ch, col = "░", "cyan"
-            else:               ch, col = "·", "white"
-
-            # 3. Assemble: Multiplied blocks on top, percentage on bottom
-            blocks = f"[{col}]{ch * 6}[/{col}]"
-            pct = f"[white bold]{RegimeRenderer._fmt_pct(p_val)}[/white bold]"
-            
-            return Text.from_markup(f"{blocks}\n{pct}")
-
-        # 4. Render each time step
-        total = len(series_to_render)
-        for t_idx, probs in enumerate(series_to_render):
-            row_label = f"T-{total-t_idx-1}"
-            row_data = [row_label]
-            
-            for i in range(len(labels)):
-                current_label = labels[i]
-                # Handle data whether it is a list of floats or a list of dicts
-                if isinstance(probs, dict):
-                    p_val = probs.get(current_label, 0.0)
-                elif isinstance(probs, (list, tuple)):
-                    p_val = probs[i] if i < len(probs) else 0.0
-                else:
-                    p_val = 0.0
-                    
-                row_data.append(cell(p_val))
-                
-            heat.add_row(*row_data)
-
-        return heat

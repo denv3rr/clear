@@ -53,6 +53,7 @@ A portfolio management, analytics, and global tracking platform with SQLite-back
 - Global flight and maritime tracking (OpenSky-only)
 - Intel and news aggregation with filters
 - Diagnostics + system health views
+- Feed registry with health summary (CLI + API + UI)
 - Reports and exports (CLI + web)
 - Web API + WebSocket streaming trackers
 
