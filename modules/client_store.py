@@ -133,7 +133,7 @@ class DbClientStore:
         self,
         payloads: List[Dict[str, Any]],
         *,
-        delete_missing: bool = True,
+        delete_missing: bool = False,
         overwrite: bool = True,
     ) -> None:
         self.ensure_schema()
@@ -355,7 +355,7 @@ class DbClientStore:
         client: models.Client,
         accounts: List[Account],
         *,
-        delete_missing: bool = True,
+        delete_missing: bool = False,
         overwrite: bool = True,
     ) -> None:
         existing = {acc.account_uid: acc for acc in client.accounts}

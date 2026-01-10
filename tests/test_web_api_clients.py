@@ -48,6 +48,17 @@ def test_create_client(client):
     assert data["risk_profile"] == "High"
     assert "client_id" in data
 
+
+def test_create_client_without_id(client):
+    response = client.post(
+        "/api/clients",
+        json={"name": "Auto ID Client", "risk_profile": "Low", "accounts": []},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "Auto ID Client"
+    assert data["client_id"]
+
 def test_get_clients(client):
     response = client.get("/api/clients")
     assert response.status_code == 200
@@ -81,6 +92,21 @@ def test_get_clients_with_accounts(client):
     
     assert found_client is not None
     assert found_client["accounts_count"] == 1
+
+
+def test_create_account_without_id(client):
+    client_id = "test_client_4"
+    client.post(
+        "/api/clients",
+        json={"client_id": client_id, "name": "Accountless", "risk_profile": "Low", "accounts": []},
+    )
+    response = client.post(
+        f"/api/clients/{client_id}/accounts",
+        json={"account_name": "Auto Account", "account_type": "Taxable"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["account"]["account_id"]
 
 
 def test_account_metadata_persists(client):

@@ -97,7 +97,40 @@ class TestDbClientStorePydantic(unittest.TestCase):
         self.assertEqual(len(clients), 1)
         self.assertEqual(clients[0]["client_id"], client_id_1)
 
+    def test_sync_clients_default_keeps_missing(self):
+        client_id_1 = str(uuid.uuid4())
+        client_id_2 = str(uuid.uuid4())
+        payloads = [
+            {"client_id": client_id_1, "name": "Client A", "accounts": []},
+            {"client_id": client_id_2, "name": "Client B", "accounts": []},
+        ]
+        self.store.sync_clients(payloads)
+        self.assertEqual(len(self.store.fetch_all_clients()), 2)
+
+        # Default behavior should keep missing clients unless explicitly deleted.
+        self.store.sync_clients([payloads[0]])
+        clients = self.store.fetch_all_clients()
+        self.assertEqual(len(clients), 2)
+
+    def test_sync_clients_generates_missing_ids(self):
+        payloads = [
+            {
+                "name": "Client Without ID",
+                "accounts": [
+                    {
+                        "account_name": "Account Without ID",
+                        "account_type": "Taxable",
+                    }
+                ],
+            }
+        ]
+        self.store.sync_clients(payloads)
+        clients = self.store.fetch_all_clients()
+        self.assertEqual(len(clients), 1)
+        self.assertTrue(clients[0]["client_id"])
+        self.assertEqual(len(clients[0]["accounts"]), 1)
+        self.assertTrue(clients[0]["accounts"][0]["account_id"])
+
 
 if __name__ == "__main__":
     unittest.main()
-

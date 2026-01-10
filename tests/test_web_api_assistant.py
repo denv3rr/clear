@@ -84,3 +84,153 @@ def test_summarize_news_warns_when_empty():
         }
         result = assistant_summarizer.summarize("news", None, None)
     assert "News feed returned no items." in result["warnings"]
+
+
+def test_summarize_clients_with_client_scope():
+    class DummyStore:
+        def fetch_client(self, client_ref):
+            if client_ref == "client-1":
+                return {
+                    "client_id": "client-1",
+                    "name": "Alpha",
+                    "accounts": [
+                        {
+                            "account_id": "acct-1",
+                            "account_name": "Main",
+                            "holdings": {"AAPL": 1},
+                        }
+                    ],
+                }
+            return None
+
+        def fetch_all_clients(self):
+            return []
+
+    with mock.patch.object(assistant_summarizer, "DbClientStore", DummyStore):
+        result = assistant_summarizer.summarize(
+            "client summary",
+            {"client_id": "client-1"},
+            None,
+        )
+    assert "Client client-1" in result["answer"]
+    assert result["sources"][0]["route"] == "/api/clients/client-1"
+    assert result["routing"]["rule"] == "clients"
+
+
+def test_summarize_clients_with_account_scope():
+    class DummyStore:
+        def fetch_client(self, client_ref):
+            return None
+
+        def fetch_all_clients(self):
+            return [
+                {
+                    "client_id": "client-1",
+                    "name": "Alpha",
+                    "accounts": [
+                        {
+                            "account_id": "acct-1",
+                            "account_name": "Main",
+                            "holdings": {"AAPL": 1},
+                        }
+                    ],
+                }
+            ]
+
+    with mock.patch.object(assistant_summarizer, "DbClientStore", DummyStore):
+        result = assistant_summarizer.summarize(
+            "client account",
+            {"account_id": "acct-1"},
+            None,
+        )
+    assert "Account acct-1" in result["answer"]
+    assert (
+        result["sources"][0]["route"]
+        == "/api/clients/client-1/accounts/acct-1"
+    )
+    assert result["routing"]["rule"] == "clients"
+
+
+def test_summarize_clients_warns_on_invalid_client_id():
+    with mock.patch.object(assistant_summarizer, "get_clients") as mocked:
+        mocked.return_value = {"clients": []}
+        result = assistant_summarizer.summarize(
+            "clients",
+            {"client_id": "../etc/passwd"},
+            None,
+        )
+    assert "Invalid client ID format; ignoring." in result["warnings"]
+    assert "No clients available." in result["warnings"]
+
+
+def test_assistant_export_endpoint_returns_payload():
+    client = TestClient(web_app.app)
+    payload = {
+        "history": [
+            {
+                "question": "How many clients?",
+                "answer": "You have 2 clients.",
+                "confidence": "Medium",
+                "warnings": [],
+                "sources": [{"route": "/api/clients", "source": "database", "timestamp": 1}],
+            }
+        ],
+        "context": {"region": "Global", "industry": "all"},
+        "format": "markdown",
+    }
+    resp = client.post(
+        "/api/assistant/history/export",
+        json=payload,
+        headers=_api_headers(),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["meta"]["route"] == "/api/assistant/history/export"
+    assert data["export"]["entries"][0]["question"] == "How many clients?"
+    assert "markdown" in data
+
+
+def test_assistant_query_requires_api_key_when_set(monkeypatch):
+    monkeypatch.setenv("CLEAR_WEB_API_KEY", "secret")
+    client = TestClient(web_app.app)
+    resp = client.post(
+        "/api/assistant/query",
+        json={"question": "How many clients?"},
+        headers={},
+    )
+    assert resp.status_code == 401
+
+
+def test_assistant_export_requires_api_key_when_set(monkeypatch):
+    monkeypatch.setenv("CLEAR_WEB_API_KEY", "secret")
+    client = TestClient(web_app.app)
+    resp = client.post(
+        "/api/assistant/history/export",
+        json={"history": []},
+        headers={},
+    )
+    assert resp.status_code == 401
+
+
+def test_assistant_query_blocks_unknown_scope():
+    client = TestClient(web_app.app)
+    resp = client.post(
+        "/api/assistant/query",
+        json={"question": "show file contents from disk"},
+        headers=_api_headers(),
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["confidence"] == "Low"
+    assert "Unsupported assistant query." in payload["warnings"]
+    assert "No data sources were returned." in payload["warnings"]
+
+
+def test_assistant_query_rejects_invalid_context():
+    client = TestClient(web_app.app)
+    resp = client.post(
+        "/api/assistant/query",
+        json={"question": "news", "context": ["invalid"]},
+        headers=_api_headers(),
+    )
+    assert resp.status_code == 422

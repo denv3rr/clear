@@ -50,12 +50,14 @@ A portfolio management, analytics, and global tracking platform with SQLite-back
 
 - Client and account management (DB-backed; JSON export/import)
 - Portfolio analytics + regime/pattern modeling
+- Toolkit analysis suite (CAPM, diagnostics, regime/pattern tools) in CLI + API
 - Market dashboard with macro snapshots + map fallback
 - Global flight and maritime tracking (OpenSky-only)
 - Intel and news aggregation with filters
 - Diagnostics + system health views
 - Feed registry with health summary (CLI + API + UI)
 - Reports and exports (CLI + web)
+- Assistant summaries with JSON/Markdown history export
 - Web API + WebSocket streaming trackers
 
 <details>
@@ -70,7 +72,8 @@ A portfolio management, analytics, and global tracking platform with SQLite-back
 - Tracker heat/volatility metrics and relevance tagging
 - Weather and conflict reporting with caching and exports
 - Health-aware sources with retry/backoff handling
-- AI assistant endpoint (draft) for deterministic summaries
+- Assistant coverage expansion across reports/tools surfaces
+- Assistant auth lifecycle scaffolding (rotation/expiry)
 
 </details>
 
@@ -283,9 +286,9 @@ OpenSky is the only flight feed right now; configure OAuth credentials in `.env`
 
 Flight operator metadata can be extended by copying `config/flight_operators.example.json` to `config/flight_operators.json`.
 
-### AI Assistant (Draft)
+### AI Assistant
 
-The assistant module is in progress. The API endpoint (`/api/assistant/query`) currently supports a limited rules-based summarizer; unsupported modes/questions return a 501 response with an explicit "not implemented" payload and `meta` warnings. UI/CLI chat surfaces are planned. See `docs/ai_assistant.md` for the draft plan.
+The assistant module exposes `/api/assistant/query` with a rules-based summarizer, routing metadata, and scoped context enforcement. Unsupported modes/questions return a 501 response with an explicit "not implemented" payload and `meta` warnings. UI/CLI chat surfaces are available; see `docs/assistant_usage.md` and the draft plan in `docs/ai_assistant.md`.
 
 ### AI Synthesis (Reports)
 

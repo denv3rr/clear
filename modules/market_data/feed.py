@@ -68,6 +68,7 @@ class MarketFeed:
         self._intel_cache = {}
         self._intel_last_report = None
         self._intel_export_format = "md"
+        self._tracker_last_analysis = None
         self._settings_file = os.path.join(os.getcwd(), "config", "settings.json")
 
     def toggle_interval(self):
@@ -952,6 +953,238 @@ class MarketFeed:
                 hist_panel = Panel(hist_table, title=f"History: {selection}", border_style="dim")
                 ShellRenderer.render(Group(summary_panel, hist_panel), show_header=False, show_main=True, show_back=True, show_exit=True)
 
+    def _export_tracker_analysis(self, analysis: dict, fmt: str = "json") -> str:
+        base_dir = os.path.join("data", "reports", "trackers")
+        os.makedirs(base_dir, exist_ok=True)
+        stamp = time.strftime("%Y%m%d_%H%M%S")
+        raw_id = str(analysis.get("id") or "tracker")
+        safe_id = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in raw_id)
+        filename = f"tracker_analysis_{safe_id}_{stamp}.{fmt}"
+        path = os.path.join(base_dir, filename)
+        if fmt == "json":
+            payload = json.dumps(analysis, indent=2)
+        else:
+            payload = self._format_tracker_analysis_md(analysis)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(payload)
+        return path
+
+    def _format_tracker_analysis_md(self, analysis: dict) -> str:
+        tracker_id = analysis.get("id", "unknown")
+        loiter = analysis.get("loiter", {}) or {}
+        geofences = analysis.get("geofences", {}) or {}
+        replay = analysis.get("replay", []) or []
+        lines = [
+            f"# Tracker Analysis: {tracker_id}",
+            "",
+            "## Summary",
+            f"- Replay window (sec): {analysis.get('window_sec', '-')}",
+            f"- Replay points: {analysis.get('point_count', len(replay))}",
+            f"- Loiter detected: {loiter.get('detected', False)}",
+            "",
+            "## Loiter Details",
+            f"- Center: {loiter.get('center', {}) or '-'}",
+            f"- Max distance km: {loiter.get('max_distance_km', '-')}",
+            f"- Duration sec: {loiter.get('duration_sec', '-')}",
+            "",
+            "## Geofence Events",
+        ]
+        events = geofences.get("events", []) or []
+        if events:
+            lines.append("| Time (UTC) | Event | Fence | Distance km |")
+            lines.append("| --- | --- | --- | --- |")
+            for event in events:
+                ts = event.get("ts")
+                time_label = "-"
+                if ts is not None:
+                    try:
+                        time_label = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(int(ts)))
+                    except Exception:
+                        time_label = str(ts)
+                lines.append(
+                    f"| {time_label} | {event.get('event', '-')} | {event.get('geofence_label', '-')}"
+                    f" | {event.get('distance_km', '-')} |"
+                )
+        else:
+            lines.append("- No geofence transitions recorded.")
+        lines.extend(["", "## Replay Trail (last 10)", ""])
+        if replay:
+            lines.append("| Time (UTC) | Lat | Lon | Speed kts |")
+            lines.append("| --- | --- | --- | --- |")
+            for point in replay[-10:]:
+                ts = point.get("ts")
+                time_label = "-"
+                if ts is not None:
+                    try:
+                        time_label = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(int(ts)))
+                    except Exception:
+                        time_label = str(ts)
+                speed = point.get("speed_kts", "-")
+                lines.append(
+                    f"| {time_label} | {point.get('lat', '-')}"
+                    f" | {point.get('lon', '-')} | {speed} |"
+                )
+        else:
+            lines.append("- No replay history available.")
+        warnings = analysis.get("warnings") or []
+        if warnings:
+            lines.extend(["", "## Warnings"])
+            for warn in warnings:
+                lines.append(f"- {warn}")
+        return "\n".join(lines) + "\n"
+
+    def _tracker_analysis_flow(self, snapshot: dict) -> None:
+        selection = InputSafe.get_string("Enter tracker ID for analysis (blank to cancel):").strip()
+        if not selection:
+            return
+        window_raw = InputSafe.get_string("Replay window seconds (default 3600):").strip()
+        try:
+            window_sec = int(window_raw) if window_raw else 3600
+        except ValueError:
+            window_sec = 3600
+        window_sec = max(60, window_sec)
+        radius_raw = InputSafe.get_string("Loiter radius km (default 10):").strip()
+        try:
+            loiter_radius = float(radius_raw) if radius_raw else 10.0
+        except ValueError:
+            loiter_radius = 10.0
+        loiter_radius = max(0.1, loiter_radius)
+        min_raw = InputSafe.get_string("Loiter min minutes (default 20):").strip()
+        try:
+            loiter_min = float(min_raw) if min_raw else 20.0
+        except ValueError:
+            loiter_min = 20.0
+        loiter_min = max(1.0, loiter_min)
+
+        geofences = []
+        add_fence = InputSafe.get_yes_no("Add a geofence?", default=False)
+        while add_fence:
+            lat_raw = InputSafe.get_string("Geofence latitude (blank to stop):").strip()
+            if not lat_raw:
+                break
+            try:
+                lat = float(lat_raw)
+            except ValueError:
+                self.console.print("[red]Latitude must be numeric.[/red]")
+                continue
+            lon = InputSafe.get_float("Geofence longitude:")
+            radius = InputSafe.get_float("Geofence radius km:", min_val=0.1)
+            label = InputSafe.get_string("Geofence label (optional):").strip()
+            geofences.append(
+                {
+                    "label": label or f"Fence {len(geofences) + 1}",
+                    "lat": lat,
+                    "lon": lon,
+                    "radius_km": radius,
+                }
+            )
+            add_fence = InputSafe.get_yes_no("Add another geofence?", default=False)
+
+        analysis = self.trackers.analyze_tracker(
+            selection,
+            window_sec=window_sec,
+            loiter_radius_km=loiter_radius,
+            loiter_min_minutes=loiter_min,
+            geofences=geofences,
+        )
+        self._tracker_last_analysis = analysis
+        loiter = analysis.get("loiter", {}) or {}
+        geofence_payload = analysis.get("geofences", {}) or {}
+        events = geofence_payload.get("events", []) or []
+        replay = analysis.get("replay", []) or []
+
+        summary = Table.grid(padding=(0, 1))
+        summary.add_column(style="bold cyan", width=16)
+        summary.add_column(style="white")
+        summary.add_row("Tracker", str(analysis.get("id", selection)))
+        summary.add_row("Window", f"{analysis.get('window_sec', window_sec)} sec")
+        summary.add_row("Replay Points", str(analysis.get("point_count", len(replay))))
+        summary.add_row("Loiter", "Detected" if loiter.get("detected") else "None")
+        summary.add_row("Geofence Events", str(len(events)))
+
+        loiter_lines = [
+            f"Center: {loiter.get('center', '-')}",
+            f"Max Distance km: {loiter.get('max_distance_km', '-')}",
+            f"Duration sec: {loiter.get('duration_sec', '-')}",
+        ]
+        loiter_panel = Panel(Text("\n".join(loiter_lines), style="dim"), title="Loiter Detail", border_style="dim")
+
+        replay_table = Table(box=box.SIMPLE, show_header=True)
+        replay_table.add_column("Time", width=10)
+        replay_table.add_column("Lat", width=8)
+        replay_table.add_column("Lon", width=8)
+        replay_table.add_column("Spd", width=6)
+        for point in replay[-8:]:
+            ts = point.get("ts")
+            try:
+                ts_label = time.strftime("%H:%M:%S", time.localtime(int(ts)))
+            except Exception:
+                ts_label = str(ts or "-")
+            replay_table.add_row(
+                ts_label,
+                f"{float(point.get('lat', 0.0)):.2f}",
+                f"{float(point.get('lon', 0.0)):.2f}",
+                "-" if point.get("speed_kts") is None else f"{float(point.get('speed_kts', 0.0)):.0f}",
+            )
+        if not replay:
+            replay_table.add_row("-", "-", "-", "-")
+        replay_panel = Panel(replay_table, title="Replay Trail", border_style="dim")
+
+        event_table = Table(box=box.SIMPLE, show_header=True)
+        event_table.add_column("Time", width=10)
+        event_table.add_column("Event", width=8)
+        event_table.add_column("Fence", width=16)
+        event_table.add_column("Dist km", width=8)
+        for event in events[-8:]:
+            ts = event.get("ts")
+            try:
+                ts_label = time.strftime("%H:%M:%S", time.localtime(int(ts)))
+            except Exception:
+                ts_label = str(ts or "-")
+            event_table.add_row(
+                ts_label,
+                str(event.get("event", "-")).upper(),
+                str(event.get("geofence_label", "-"))[:16],
+                f"{float(event.get('distance_km', 0.0)):.2f}",
+            )
+        if not events:
+            event_table.add_row("-", "-", "No geofence events", "-")
+        event_panel = Panel(event_table, title="Geofence Events", border_style="dim")
+
+        warnings = analysis.get("warnings", []) or []
+        warn_panel = None
+        if warnings:
+            warn_panel = Panel(Text("\n".join(warnings), style="yellow"), title="Warnings", border_style="yellow")
+
+        layout = Table.grid(expand=True)
+        layout.add_column(ratio=1)
+        layout.add_row(Panel(summary, title="Tracker Analysis", border_style="cyan"))
+        layout.add_row(Group(loiter_panel, event_panel, replay_panel))
+        if warn_panel:
+            layout.add_row(warn_panel)
+
+        options = {
+            "1": "Export JSON",
+            "2": "Export Markdown",
+            "0": "Back",
+        }
+        choice = ShellRenderer.render_and_prompt(
+            Group(layout),
+            context_actions=options,
+            valid_choices=list(options.keys()),
+            prompt_label=">",
+            show_main=True,
+            show_back=True,
+            show_exit=True,
+            show_header=False,
+        )
+        if choice == "1":
+            path = self._export_tracker_analysis(analysis, fmt="json")
+            self._show_export_notice(path)
+        elif choice == "2":
+            path = self._export_tracker_analysis(analysis, fmt="md")
+            self._show_export_notice(path)
+
     def run_global_trackers(self):
         mode = "combined"
         cadence_options = [5, 10, 15, 30]
@@ -1004,6 +1237,7 @@ class MarketFeed:
                 "F": "Category Filter",
                 "A": "Filter: All",
                 "S": "Search Flights",
+                "T": "Tracker Analysis",
                 "G": "Open GUI Tracker",
                 "0": "Back",
             }
@@ -1027,7 +1261,7 @@ class MarketFeed:
                     ],
                     compact=compact,
                 ) if not compact_height else None
-                footer_text = "N/P page | 1/2/3 mode | 4 refresh | F filter | A all | S search | G gui | 0 back | M main | X exit"
+                footer_text = "N/P page | 1/2/3 mode | 4 refresh | F filter | A all | S search | T analysis | G gui | 0 back | M main | X exit"
                 footer_panel = (
                     Text(footer_text, style="dim")
                     if compact_height
@@ -1122,6 +1356,9 @@ class MarketFeed:
                 if key == "s":
                     self._tracker_search_flow(snapshot)
                     continue
+                if key == "t":
+                    self._tracker_analysis_flow(snapshot)
+                    continue
 
         from rich.live import Live
         from rich.table import Table
@@ -1138,6 +1375,7 @@ class MarketFeed:
             "F": "Category Filter",
             "A": "Filter: All",
             "S": "Search Flights",
+            "T": "Tracker Analysis",
             "SPC": "Pause/Resume",
             "G": "Open GUI Tracker",
             "0": "Back",
@@ -1168,7 +1406,7 @@ class MarketFeed:
             compact = compact_for_width(self.console.width)
             compact_height = self.console.height < 32
             sidebar = build_sidebar(
-                [("Trackers", {k: v for k, v in options.items() if k in ("1", "2", "3", "4", "C", "F", "A", "SPC", "0")})],
+                [("Trackers", {k: v for k, v in options.items() if k in ("1", "2", "3", "4", "C", "F", "A", "T", "SPC", "0")})],
                 show_main=True,
                 show_back=True,
                 show_exit=True,
@@ -1184,7 +1422,7 @@ class MarketFeed:
                 (status, "bold green" if status == "LIVE" else "bold yellow"),
                 (" | Cadence: ", "dim"),
                 (f"{cadence}s", "bold cyan"),
-                (" | Arrows scroll PgUp/PgDn page | 1/2/3 mode 4 refresh C cadence F filter A all S search Space pause 0 back M main X exit", "dim"),
+                (" | Arrows scroll PgUp/PgDn page | 1/2/3 mode 4 refresh C cadence F filter A all S search T analysis Space pause 0 back M main X exit", "dim"),
             )
             mode_hint = Text.assemble(
                 ("Mode: ", "dim"),
@@ -1330,6 +1568,9 @@ class MarketFeed:
                             dirty = True
                         elif key == "s":
                             self._tracker_search_flow(snapshot)
+                            dirty = True
+                        elif key == "t":
+                            self._tracker_analysis_flow(snapshot)
                             dirty = True
                         elif key == "g":
                             self._run_tracker_gui()

@@ -483,6 +483,31 @@ const demoTrackerHistory: Record<string, any> = {
   }
 };
 
+const demoTrackerAnalysis = (trackerId: string) => {
+  const detail = demoTrackerHistory[trackerId] || demoTrackerHistory["flt-001"];
+  const replay = detail?.history || [];
+  return {
+    id: trackerId,
+    window_sec: 3600,
+    point_count: replay.length,
+    replay,
+    loiter: {
+      detected: false,
+      center: replay.length ? { lat: replay[0].lat, lon: replay[0].lon } : null,
+      radius_km: 10,
+      max_distance_km: 0.0,
+      duration_sec: replay.length ? 1800 : 0,
+      start_ts: replay.length ? replay[0].ts : null,
+      end_ts: replay.length ? replay[replay.length - 1].ts : null
+    },
+    geofences: {
+      events: [],
+      active: []
+    },
+    warnings: []
+  };
+};
+
 export function getMockTrackerSnapshot(mode: string) {
   const filtered =
     mode === "combined"
@@ -863,7 +888,10 @@ export function getMockResponse(path: string) {
       };
     }
     if (parts[2] === "detail" && parts[3]) {
-      return demoTrackerHistory[parts[3]] || demoTrackerHistory["flt-001"];
+      return demoTrackerHistory[parts[3]] || demoTrackerHistory["flt-001"];     
+    }
+    if (parts[2] === "analysis" && parts[3]) {
+      return demoTrackerAnalysis(parts[3]);
     }
   }
 

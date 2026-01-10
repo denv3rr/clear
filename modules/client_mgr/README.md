@@ -7,6 +7,9 @@ logic used by the CLI and API to compute risk, regime, and pattern outputs.
 - `manager.py`: Orchestrates analytics workflows and payload assembly.
 - `calculations.py`: Canonical math utilities (annualization, CAPM, core stats).
 - `toolkit.py`: Aggregates tool outputs; delegates to view modules.
+- `toolkit_payloads.py`: Shared payload builders + toolkit interval presets.
+- `toolkit_runs.py`: CLI toolkit run flows for analysis tools.
+- `toolkit_menu.py`: Shared toolkit menu prompt helpers + CLI loop.
 - `patterns.py`: Pattern suite payloads, surfaces, and renderers.
 - `risk_views.py`: Risk summaries and view-ready payloads.
 - `regime.py`: Regime model calculations and metrics.

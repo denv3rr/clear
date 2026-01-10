@@ -110,10 +110,34 @@ def _npm_available() -> str | None:
     return _find_npm()
 
 
+def _module_path(web_dir: Path, module: str) -> Path:
+    parts = module.split("/")
+    return web_dir / "node_modules" / Path(*parts)
+
+
+def _node_modules_ready(web_dir: Path) -> tuple[bool, list[str]]:
+    node_modules = web_dir / "node_modules"
+    if not node_modules.is_dir():
+        return False, ["node_modules"]
+    required = [
+        "@tailwindcss/postcss",
+        "autoprefixer",
+        "tailwindcss",
+        "vite",
+        "@vitejs/plugin-react",
+    ]
+    missing = [name for name in required if not _module_path(web_dir, name).exists()]
+    return not missing, missing
+
+
 def _ensure_node_modules(web_dir: Path, npm_path: str, auto_yes: bool) -> bool:
-    if (web_dir / "node_modules").is_dir():
+    ready, missing = _node_modules_ready(web_dir)
+    if ready:
         return True
-    print(">> Web dependencies not installed (node_modules missing).")
+    if missing == ["node_modules"]:
+        print(">> Web dependencies not installed (node_modules missing).")
+    else:
+        print(">> Web dependencies out of date:", ", ".join(missing))
     try:
         subprocess.check_call([npm_path, "install"], cwd=str(web_dir))
         return True

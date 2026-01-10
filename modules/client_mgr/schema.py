@@ -26,7 +26,7 @@ class Lot(BaseModel):
 class Account(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
-    account_id: str = Field(..., alias="account_uid")
+    account_id: Optional[str] = Field(None, alias="account_uid")
     account_name: str = Field(..., alias="name")
     account_type: str
     current_value: float = 0.0
@@ -44,7 +44,7 @@ class Account(BaseModel):
 class Client(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
-    client_id: str = Field(..., alias="client_uid")
+    client_id: Optional[str] = Field(None, alias="client_uid")
     name: str
     risk_profile: str = "Not Assessed"
     risk_profile_source: str = "auto"
@@ -56,4 +56,3 @@ class Client(BaseModel):
 
 class ClientPayload(BaseModel):
     clients: List[Client]
-

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import os
+import time
 from typing import Any, Dict, List, Optional
 
 from rich.console import Console, Group
@@ -9,6 +12,7 @@ from rich import box
 
 from interfaces.shell import ShellRenderer
 from interfaces.menu_layout import build_sidebar, compact_for_width
+from modules.assistant_exports import build_assistant_export, render_assistant_export_markdown
 from utils.input import InputSafe
 from web_api.summarizer import summarize
 
@@ -17,14 +21,7 @@ class AssistantModule:
     def __init__(self) -> None:
         self.console = Console()
         self.history: List[Dict[str, Any]] = []
-        self.context: Dict[str, Any] = {
-            "region": "Global",
-            "industry": "all",
-            "tickers": "",
-            "sources": "",
-            "client_id": "",
-            "account_id": "",
-        }
+        self.context: Dict[str, Any] = self._load_context()
 
     def run(self) -> None:
         while True:
@@ -39,12 +36,15 @@ class AssistantModule:
                 self._edit_context()
             elif choice == "3":
                 self.history = []
+            elif choice == "4":
+                self._export_history()
 
     def _render_menu(self) -> str:
         options = {
             "1": "Ask a question",
             "2": "Edit context",
             "3": "Clear history",
+            "4": "Export history",
             "0": "Back",
         }
         compact = compact_for_width(self.console.width)
@@ -82,12 +82,24 @@ class AssistantModule:
                 sources = item.get("sources") or []
                 if sources:
                     source_list = ", ".join(
-                        f"{src.get('route', '')}" for src in sources
+                        (
+                            f"{src.get('route', '')} ({src.get('source')})"
+                            if src.get("source")
+                            else f"{src.get('route', '')}"
+                        )
+                        for src in sources
                     )
                     lines.append(f"Sources: {source_list}")
                 warnings = item.get("warnings") or []
                 if warnings:
                     lines.append(f"Warnings: {', '.join(warnings)}")
+                routing = item.get("routing") or {}
+                if routing.get("rule"):
+                    handler = routing.get("handler")
+                    if handler:
+                        lines.append(f"Routing: {routing.get('rule')} ({handler})")
+                    else:
+                        lines.append(f"Routing: {routing.get('rule')}")
                 lines.append("")
             body = Text("\n".join(lines).strip())
         return Panel(body, title="[bold]Assistant History[/bold]", box=box.ROUNDED)
@@ -119,6 +131,7 @@ class AssistantModule:
                 "confidence": response.get("confidence"),
                 "sources": response.get("sources"),
                 "warnings": response.get("warnings"),
+                "routing": response.get("routing"),
             }
         )
         InputSafe.pause("Press Enter to continue...")
@@ -142,6 +155,34 @@ class AssistantModule:
         self.context["account_id"] = self._prompt_context_value(
             "Account ID", self.context.get("account_id", "")
         )
+        self._save_context()
+
+    def _export_history(self) -> None:
+        if not self.history:
+            InputSafe.pause("No assistant history to export.")
+            return
+        format_choice = InputSafe.get_string("Export format [json/md]").strip().lower()
+        if format_choice not in ("md", "markdown"):
+            format_choice = "json"
+        export_payload = build_assistant_export(
+            self.history,
+            self.context,
+            generated_by="cli",
+        )
+        export_dir = os.path.join(os.getcwd(), "data", "exports")
+        os.makedirs(export_dir, exist_ok=True)
+        timestamp = int(time.time())
+        if format_choice == "json":
+            filename = f"assistant_history_{timestamp}.json"
+            path = os.path.join(export_dir, filename)
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(export_payload, handle, indent=2, sort_keys=True)
+        else:
+            filename = f"assistant_history_{timestamp}.md"
+            path = os.path.join(export_dir, filename)
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write(render_assistant_export_markdown(export_payload))
+        InputSafe.pause(f"Exported assistant history to {path}.")
 
     def _prompt_context_value(self, label: str, current: str) -> str:
         prompt = f"{label} [{current}]"
@@ -154,3 +195,43 @@ class AssistantModule:
             return None
         items = [item.strip() for item in str(value).split(",") if item.strip()]
         return items or None
+
+    @staticmethod
+    def _default_context() -> Dict[str, Any]:
+        return {
+            "region": "Global",
+            "industry": "all",
+            "tickers": "",
+            "sources": "",
+            "client_id": "",
+            "account_id": "",
+        }
+
+    def _context_path(self) -> str:
+        return os.path.join(os.getcwd(), "data", "assistant_context.json")
+
+    def _load_context(self) -> Dict[str, Any]:
+        defaults = self._default_context()
+        path = self._context_path()
+        if not os.path.exists(path):
+            return defaults
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+            if not isinstance(data, dict):
+                return defaults
+            for key, value in defaults.items():
+                if isinstance(data.get(key), str):
+                    defaults[key] = data[key]
+            return defaults
+        except (OSError, json.JSONDecodeError):
+            return defaults
+
+    def _save_context(self) -> None:
+        path = self._context_path()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        try:
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(self.context, handle, indent=2, sort_keys=True)
+        except OSError:
+            return

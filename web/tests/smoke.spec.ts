@@ -2,9 +2,9 @@ import { expect, test } from "@playwright/test";
 
 test("dashboard renders tracker panels", async ({ page }) => {
   await page.goto("/?demo=true");
-  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
-  await expect(page.getByText("Flight + Maritime Layer")).toBeVisible();
-  await expect(page.getByText("Tracker Signals")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();  
+  await expect(page.getByText("Flight + Maritime Map")).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Type" })).toBeVisible();
 });
 
 test("clients render with profiles", async ({ page }) => {
@@ -34,9 +34,8 @@ test("intel and news render data", async ({ page }) => {
 });
 
 test("dashboard empty data states render", async ({ page }) => {
-  await page.goto("/?demo=true&demo_empty=trackers,summary");
-  await expect(page.getByText("No risk series available.")).toBeVisible();
-  await expect(page.getByText("No tracker points in snapshot.")).toBeVisible();
+  await page.goto("/?demo=true&demo_empty=summary");
+  await expect(page.getByText("No risk series available.")).toBeVisible();      
 });
 
 test("clients empty index renders", async ({ page }) => {

@@ -938,12 +938,247 @@ class GlobalTrackers:
             "summary": history.get("summary", {}),
         }
 
+    def analyze_tracker(
+        self,
+        tracker_id: str,
+        window_sec: int = 3600,
+        loiter_radius_km: float = 10.0,
+        loiter_min_minutes: float = 20.0,
+        geofences: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        history_payload = self.get_history(tracker_id)
+        history = list(history_payload.get("history", []) or [])
+        warnings: List[str] = []
+        if not history:
+            warnings.append("No tracker history available.")
+        replay = self._slice_history_window(history, window_sec)
+        dwell = self._detect_loiter(
+            replay,
+            radius_km=loiter_radius_km,
+            min_minutes=loiter_min_minutes,
+        )
+        fences = self._normalize_geofences(geofences or [], warnings)
+        geofence_events = self._detect_geofence_events(replay, fences)
+        return {
+            "id": tracker_id,
+            "window_sec": window_sec,
+            "point_count": len(replay),
+            "replay": replay,
+            "loiter": dwell,
+            "geofences": geofence_events,
+            "warnings": warnings,
+        }
+
+    @staticmethod
+    def _slice_history_window(
+        history: List[Dict[str, Any]],
+        window_sec: int,
+    ) -> List[Dict[str, Any]]:
+        if not history or window_sec <= 0:
+            return history
+        latest = history[-1].get("ts")
+        if latest is None:
+            return history
+        try:
+            cutoff = int(latest) - int(window_sec)
+        except Exception:
+            return history
+        return [pt for pt in history if pt.get("ts") is not None and int(pt["ts"]) >= cutoff]
+
+    def _detect_loiter(
+        self,
+        history: List[Dict[str, Any]],
+        radius_km: float,
+        min_minutes: float,
+    ) -> Dict[str, Any]:
+        if not history or radius_km <= 0 or min_minutes <= 0:
+            return {"detected": False}
+        lats = [pt.get("lat") for pt in history if pt.get("lat") is not None]
+        lons = [pt.get("lon") for pt in history if pt.get("lon") is not None]
+        if not lats or not lons or len(lats) != len(lons):
+            return {"detected": False}
+        center_lat = sum(float(lat) for lat in lats) / len(lats)
+        center_lon = sum(float(lon) for lon in lons) / len(lons)
+        max_dist = 0.0
+        for pt in history:
+            if pt.get("lat") is None or pt.get("lon") is None:
+                continue
+            dist = self._haversine_km(center_lat, center_lon, float(pt["lat"]), float(pt["lon"]))
+            max_dist = max(max_dist, dist)
+        start_ts = history[0].get("ts")
+        end_ts = history[-1].get("ts")
+        duration_sec = None
+        if start_ts is not None and end_ts is not None:
+            try:
+                duration_sec = max(0, int(end_ts) - int(start_ts))
+            except Exception:
+                duration_sec = None
+        detected = (
+            max_dist <= radius_km
+            and duration_sec is not None
+            and duration_sec >= int(min_minutes * 60)
+        )
+        return {
+            "detected": detected,
+            "center": {"lat": round(center_lat, 4), "lon": round(center_lon, 4)},
+            "radius_km": radius_km,
+            "max_distance_km": round(max_dist, 3),
+            "duration_sec": duration_sec,
+            "start_ts": start_ts,
+            "end_ts": end_ts,
+        }
+
+    @staticmethod
+    def _normalize_geofences(
+        geofences: List[Dict[str, Any]],
+        warnings: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        normalized: List[Dict[str, Any]] = []
+        for idx, fence in enumerate(geofences):
+            if not isinstance(fence, dict):
+                if warnings is not None:
+                    warnings.append("Invalid geofence entry ignored.")
+                continue
+            try:
+                lat = float(fence.get("lat"))
+                lon = float(fence.get("lon"))
+                radius = float(fence.get("radius_km", fence.get("radius", 0)))
+            except Exception:
+                if warnings is not None:
+                    warnings.append("Geofence coordinates invalid.")
+                continue
+            if radius <= 0:
+                if warnings is not None:
+                    warnings.append("Geofence radius must be positive.")
+                continue
+            fence_id = str(fence.get("id") or fence.get("label") or f"fence-{idx}")
+            label = str(fence.get("label") or fence_id)
+            normalized.append(
+                {
+                    "id": fence_id,
+                    "label": label,
+                    "lat": lat,
+                    "lon": lon,
+                    "radius_km": radius,
+                }
+            )
+        return normalized
+
+    def _detect_geofence_events(
+        self,
+        history: List[Dict[str, Any]],
+        geofences: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        if not history or not geofences:
+            return {"events": [], "active": []}
+        events: List[Dict[str, Any]] = []
+        active: Dict[str, bool] = {fence["id"]: False for fence in geofences}
+        for pt in history:
+            lat = pt.get("lat")
+            lon = pt.get("lon")
+            ts = pt.get("ts")
+            if lat is None or lon is None or ts is None:
+                continue
+            for fence in geofences:
+                dist = self._haversine_km(
+                    fence["lat"],
+                    fence["lon"],
+                    float(lat),
+                    float(lon),
+                )
+                inside = dist <= float(fence["radius_km"])
+                was_inside = active.get(fence["id"], False)
+                if inside and not was_inside:
+                    events.append(
+                        {
+                            "geofence_id": fence["id"],
+                            "geofence_label": fence["label"],
+                            "event": "enter",
+                            "ts": ts,
+                            "lat": float(lat),
+                            "lon": float(lon),
+                            "distance_km": round(dist, 3),
+                        }
+                    )
+                if not inside and was_inside:
+                    events.append(
+                        {
+                            "geofence_id": fence["id"],
+                            "geofence_label": fence["label"],
+                            "event": "exit",
+                            "ts": ts,
+                            "lat": float(lat),
+                            "lon": float(lon),
+                            "distance_km": round(dist, 3),
+                        }
+                    )
+                active[fence["id"]] = inside
+        active_list = [
+            fence["id"] for fence in geofences if active.get(fence["id"], False)
+        ]
+        return {"events": events, "active": active_list}
+
     @staticmethod
     def apply_category_filter(snapshot: Dict[str, Any], category: Optional[str]) -> Dict[str, Any]:
         if not category or str(category).lower() == "all":
             return snapshot
         wanted = str(category).lower()
         filtered = [pt for pt in snapshot.get("points", []) if str(pt.get("category", "")).lower() == wanted]
+        return {
+            **snapshot,
+            "count": len(filtered),
+            "points": filtered,
+        }
+
+    @staticmethod
+    def apply_filters(
+        snapshot: Dict[str, Any],
+        category: Optional[str] = None,
+        country: Optional[str] = None,
+        operator: Optional[str] = None,
+        bbox: Optional[Tuple[float, float, float, float]] = None,
+    ) -> Dict[str, Any]:
+        points = snapshot.get("points", [])
+        filtered = points
+        if category and str(category).lower() != "all":
+            wanted = str(category).lower()
+            filtered = [
+                pt
+                for pt in filtered
+                if str(pt.get("category", "")).lower() == wanted
+            ]
+        if country and str(country).strip():
+            needle = str(country).strip().lower()
+            filtered = [
+                pt
+                for pt in filtered
+                if needle in str(pt.get("country", "")).lower()
+            ]
+        if operator and str(operator).strip():
+            needle = str(operator).strip().lower()
+
+            def _match_operator(point: Dict[str, Any]) -> bool:
+                op = str(point.get("operator", ""))
+                op_name = str(point.get("operator_name", ""))
+                return needle in op.lower() or needle in op_name.lower()
+
+            filtered = [pt for pt in filtered if _match_operator(pt)]
+        if bbox:
+            min_lat, min_lon, max_lat, max_lon = bbox
+
+            def _in_bbox(point: Dict[str, Any]) -> bool:
+                lat = point.get("lat")
+                lon = point.get("lon")
+                if lat is None or lon is None:
+                    return False
+                try:
+                    lat_f = float(lat)
+                    lon_f = float(lon)
+                except Exception:
+                    return False
+                return min_lat <= lat_f <= max_lat and min_lon <= lon_f <= max_lon
+
+            filtered = [pt for pt in filtered if _in_bbox(pt)]
         return {
             **snapshot,
             "count": len(filtered),

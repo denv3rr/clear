@@ -14,7 +14,7 @@ import {
   YAxis
 } from "recharts";
 import L from "leaflet";
-import { loadMapLibre } from "../lib/maplibre";
+import { loadMapLibre, mapLibreWorkerUrl } from "../lib/maplibre";
 import type { MapLibre } from "../lib/maplibre";
 import { Collapsible } from "../components/ui/Collapsible";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
@@ -27,6 +27,7 @@ import { useTrackerPause } from "../lib/trackerPause";
 import { useTrackerStream } from "../lib/stream";
 import {
   checkWorkerClass,
+  preflightWorkerScript,
   preflightMapResources,
   preflightStyle
 } from "../lib/mapDiagnostics";
@@ -88,7 +89,7 @@ export default function Dashboard() {
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapStatus, setMapStatus] = useState("Initializing map...");
-  const [mapFallback, setMapFallback] = useState(false);
+  const [mapFallback, setMapFallback] = useState(true);
   const [mapDiagnostics, setMapDiagnostics] = useState<string[]>([]);
   const leafletRef = useRef<HTMLDivElement | null>(null);
   const leafletMap = useRef<L.Map | null>(null);
@@ -106,6 +107,7 @@ export default function Dashboard() {
   const [mapOpen, setMapOpen] = useState(true);
   const [feedOpen, setFeedOpen] = useState(true);
   const accentColor = "#48f1a6";
+  const preferLeaflet = true;
   const { paused } = useTrackerPause();
   const {
     data: trackerStream,
@@ -146,6 +148,13 @@ export default function Dashboard() {
 
   useEffect(() => {
     let mounted = true;
+    if (preferLeaflet) {
+      setMapFallback(true);
+      setMapStatus("Leaflet map active.");
+      return () => {
+        mounted = false;
+      };
+    }
     loadMapLibre()
       .then((lib) => {
         if (mounted) {
@@ -164,8 +173,10 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
+    if (mapFallback) return;
     let raf = 0;
     let timeout = 0;
+    let readyInterval = 0;
     const initMap = () => {
       if (mapInitRef.current || mapInstance.current) return;
       if (!mapRef.current) {
@@ -198,6 +209,14 @@ export default function Dashboard() {
       const diagnostics: string[] = [];
       diagnostics.push(checkWorkerClass(maplibre));
       setMapDiagnostics(diagnostics);
+      preflightWorkerScript(mapLibreWorkerUrl).then((line) => {
+        if (!mapActiveRef.current) return;
+        setMapDiagnostics((prev) => {
+          const next = prev.filter((item) => !item.startsWith("Worker script"));
+          next.push(line);
+          return next;
+        });
+      });
       mapActiveRef.current = true;
       const styleUrl =
         "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
@@ -323,6 +342,22 @@ export default function Dashboard() {
         setMapFallback(true);
       });
       mapInstance.current = map;
+      readyInterval = window.setInterval(() => {
+        if (!mapActiveRef.current || mapReadyRef.current) return;
+        const isStyleLoaded = map.isStyleLoaded ? map.isStyleLoaded() : false;
+        const isLoaded = map.loaded ? map.loaded() : false;
+        if (isStyleLoaded || isLoaded) {
+          setMapReady(true);
+          mapReadyRef.current = true;
+          setMapError(null);
+          mapErrorRef.current = null;
+          setMapStatus("Map ready.");
+          initLayers();
+          map.resize();
+          map.triggerRepaint();
+          window.clearInterval(readyInterval);
+        }
+      }, 500);
       timeout = window.setTimeout(() => {
         if (!mapReadyRef.current && !mapErrorRef.current) {
           if (!styleRequested.current) {
@@ -333,6 +368,7 @@ export default function Dashboard() {
             setMapStatus("Map load timeout. Check CSP/worker settings.");
           }
           setMapFallback(true);
+          window.clearInterval(readyInterval);
           if (
             styleLoaded.current ||
             (styleDataSeenRef.current && map.isStyleLoaded && map.isStyleLoaded())
@@ -355,6 +391,7 @@ export default function Dashboard() {
     return () => {
       window.cancelAnimationFrame(raf);
       window.clearTimeout(timeout);
+      window.clearInterval(readyInterval);
     };
   }, [maplibre]);
 
@@ -389,19 +426,31 @@ export default function Dashboard() {
   useEffect(() => {
     if (!mapFallback || !leafletRef.current || leafletMap.current) return;
     setLeafletStatus("Booting fallback map...");
-    const map = L.map(leafletRef.current, { center: [15, 0], zoom: 2 });
-    const tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: "&copy; OpenStreetMap contributors"
+    const map = L.map(leafletRef.current, {
+      center: [15, 0],
+      zoom: 2,
+      zoomControl: true
     });
+    const tiles = L.tileLayer(
+      "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+      {
+        subdomains: "abcd",
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap contributors &copy; CARTO"
+      }
+    );
     tiles.on("tileerror", () => {
       setLeafletStatus("Tile load error. Check CSP or network.");
+      setMapError("Leaflet tile load error.");
     });
     tiles.addTo(map);
     const layer = L.layerGroup().addTo(map);
     leafletMap.current = map;
     leafletLayer.current = layer;
-    setLeafletStatus("Fallback map ready.");
+    setLeafletStatus("Leaflet map ready.");
+    setMapReady(true);
+    setMapError(null);
+    map.invalidateSize();
   }, [mapFallback]);
 
   useEffect(() => {
@@ -415,12 +464,12 @@ export default function Dashboard() {
     points.slice(0, 200).forEach((point) => {
       const color = point.kind === "ship" ? "#8892a0" : accentColor;
       L.circleMarker([point.lat, point.lon], {
-        radius: 4,
+        radius: 4.5,
         color,
-        weight: 1,
+        weight: 1.2,
         opacity: 0.9,
         fillColor: color,
-        fillOpacity: 0.6
+        fillOpacity: 0.75
       }).addTo(layer);
     });
     if (points.length) {

@@ -47,6 +47,29 @@ export function checkWorkerClass(maplibre: { workerClass?: new () => Worker }) {
   }
 }
 
+export async function preflightWorkerScript(url: string) {
+  try {
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) {
+      return `Worker script: HTTP ${response.status}`;
+    }
+    const contentType = response.headers.get("content-type") || "";
+    const snippet = (await response.text()).slice(0, 32).trim();
+    if (snippet.startsWith("<")) {
+      return "Worker script: HTML response";
+    }
+    if (contentType && !contentType.includes("javascript")) {
+      return `Worker script: ${contentType}`;
+    }
+    return "Worker script: ok";
+  } catch (err) {
+    if (err instanceof Error) {
+      return `Worker script: ${err.message}`;
+    }
+    return "Worker script: failed";
+  }
+}
+
 function resolveTemplate(url: string, tokens: Record<string, string>) {
   let next = url;
   Object.entries(tokens).forEach(([key, value]) => {

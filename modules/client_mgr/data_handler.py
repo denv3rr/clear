@@ -50,7 +50,7 @@ class DataHandler:
         """Saves the current list of Client objects to the database."""
         try:
             store = DbClientStore()
-            store.sync_clients([c.to_dict() for c in clients])
+            store.sync_clients([c.to_dict() for c in clients], delete_missing=False)
             DataHandler.console.print("[dim green]Client data saved successfully.[/dim green]")
         except Exception as e:
             DataHandler.console.print(f"[red]CRITICAL: Could not save client data. {e}[/red]")

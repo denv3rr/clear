@@ -193,6 +193,7 @@ def test_tracker_search_endpoint_stubbed():
 def test_tracker_snapshot_endpoint_stubbed():
     client = TestClient(web_app.app)
     sample = {
+        "mode": "combined",
         "count": 1,
         "warnings": [],
         "points": [{"id": "abc123", "kind": "flight", "label": "AAL762"}],
@@ -206,6 +207,59 @@ def test_tracker_snapshot_endpoint_stubbed():
     assert payload["count"] == len(payload["points"])
 
 
+def test_tracker_snapshot_filters_stubbed():
+    client = TestClient(web_app.app)
+    sample = {
+        "mode": "combined",
+        "count": 2,
+        "warnings": [],
+        "points": [
+            {
+                "id": "abc123",
+                "kind": "flight",
+                "label": "AAL762",
+                "category": "commercial",
+                "country": "United States",
+                "operator": "AAL",
+                "operator_name": "American Airlines",
+                "lat": 35.0,
+                "lon": -120.0,
+            },
+            {
+                "id": "ship-1",
+                "kind": "ship",
+                "label": "MSC TEST",
+                "category": "cargo",
+                "country": "Canada",
+                "operator": "MSC",
+                "operator_name": "MSC",
+                "lat": 10.0,
+                "lon": 10.0,
+            },
+        ],
+    }
+    with mock.patch.object(tracker_routes.GlobalTrackers, "get_snapshot") as mocked:
+        mocked.return_value = sample
+        resp = client.get(
+            "/api/trackers/snapshot?mode=combined&category=commercial&country=united&operator=aal&bbox=30,-130,40,-110",
+            headers=_api_headers(),
+        )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["count"] == 1
+    assert payload["points"][0]["id"] == "abc123"
+
+
+def test_tracker_snapshot_invalid_bbox():
+    client = TestClient(web_app.app)
+    resp = client.get(
+        "/api/trackers/snapshot?bbox=1,2,3",
+        headers=_api_headers(),
+    )
+    assert resp.status_code == 400
+    assert "bbox" in resp.json()["detail"]
+
+
 def test_tracker_detail_endpoint_stubbed():
     client = TestClient(web_app.app)
     with mock.patch.object(tracker_routes.GlobalTrackers, "get_detail") as mocked:
@@ -213,6 +267,48 @@ def test_tracker_detail_endpoint_stubbed():
         resp = client.get("/api/trackers/detail/abc123", headers=_api_headers())
     assert resp.status_code == 200
     assert resp.json()["point"]["label"] == "AAL762"
+
+
+def test_tracker_analysis_endpoint_stubbed():
+    client = TestClient(web_app.app)
+    sample = {
+        "id": "abc123",
+        "replay": [{"ts": 1, "lat": 10.0, "lon": 20.0}],
+        "loiter": {"detected": False},
+        "geofences": {"events": [], "active": []},
+    }
+    with mock.patch.object(tracker_routes.GlobalTrackers, "analyze_tracker") as mocked:
+        mocked.return_value = sample
+        resp = client.get("/api/trackers/analysis/abc123", headers=_api_headers())
+    assert resp.status_code == 200
+    assert resp.json()["id"] == "abc123"
+
+
+def test_tracker_analysis_custom_endpoint_stubbed():
+    client = TestClient(web_app.app)
+    sample = {
+        "id": "abc123",
+        "replay": [{"ts": 1, "lat": 10.0, "lon": 20.0}],
+        "loiter": {"detected": False},
+        "geofences": {"events": [], "active": []},
+    }
+    with mock.patch.object(tracker_routes.GlobalTrackers, "analyze_tracker") as mocked:
+        mocked.return_value = sample
+        resp = client.post(
+            "/api/trackers/analysis",
+            json={
+                "tracker_id": "abc123",
+                "window_sec": 3600,
+                "loiter_radius_km": 10.0,
+                "loiter_min_minutes": 20.0,
+                "geofences": [
+                    {"id": "f1", "label": "Test", "lat": 10.0, "lon": 20.0, "radius_km": 5.0}
+                ],
+            },
+            headers=_api_headers(),
+        )
+    assert resp.status_code == 200
+    assert resp.json()["id"] == "abc123"
 
 
 def test_client_dashboard_endpoint_stubbed():

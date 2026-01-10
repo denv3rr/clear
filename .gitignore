@@ -39,6 +39,7 @@ data/clients.json
 data/intel_news.json
 data/news_health.json
 data/ai_report_cache.json
+data/assistant_context.json
 data/*.md
 data/*.csv
 data/*.tsv
