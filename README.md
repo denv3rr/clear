@@ -171,6 +171,7 @@ python -m modules.reporting.cli --client-id <CLIENT_ID> --format md --output dat
   ```
 
   Startup safety checks:
+
   - `run.py` performs a syntax compile pass across core modules and warns if `config/settings.json` is invalid JSON.
   - `run.py` warns if `data/clients.json` exists and fails schema checks (legacy import/export file).
   - Legacy lot timestamps are normalized to ISO-8601 on startup (and can be forced via Settings -> Diagnostics -> Normalize Lot Timestamps).
@@ -194,6 +195,7 @@ Install instructions:
 - Linux: `curl -fsSL https://ollama.com/install.sh | sh`
 
 Local HTTP servers:
+
 - llama.cpp server with OpenAI-compatible endpoints (`/v1/chat/completions`)
 - vLLM or similar local endpoint
 
@@ -213,7 +215,7 @@ npx playwright install
 npm run test:e2e
 ```
 
-Optional: validate Playwright browsers via the launcher:
+Optional: validate Playwright browsers in launcher:
 
 ```pwsh
 python clearctl.py doctor --web-tests
@@ -414,7 +416,7 @@ Scroll text settings live in `config/settings.json` under `display.scroll_text`:
 
 - **Finnhub**: symbols and quotes (optional - see [configuration](#configuration))
 - **Yahoo Finance**: historical data and macro snapshots
-- **OpenSky**: flight tracking feed (only source right now; OAuth for new accounts, legacy basic auth optional; shipping optional via `SHIPPING_DATA_URL`)
+- **OpenSky**: flight tracking feed (shipping optional via `SHIPPING_DATA_URL`)
 - **Open-Meteo**: weather signals for reports
 - **GDELT**: conflict signals for reports (RSS fallback)
 - **RSS News**: CNBC Top/World, MarketWatch, BBC Business (cached, health-aware)

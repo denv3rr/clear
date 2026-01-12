@@ -169,12 +169,11 @@ export default function Dashboard() {
     >
       <div className="space-y-3 text-sm text-slate-300">
         <p>
-          Live trackers and OSINT intelligence load from the dedicated OSINT hub
-          to keep the splash page fast.
+          Live trackers and OSINT.
         </p>
         {intelAuthError ? (
           <p className="text-xs text-amber-200">
-            Intel summary requires an API key. Set it in Settings.
+            Summaries require an API key. Set it in Settings.
           </p>
         ) : null}
         <a
