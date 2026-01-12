@@ -177,13 +177,13 @@ export function ContextDrawer({ variant = "inline", onClose }: ContextDrawerProp
         <p className="text-[11px] text-slate-400 uppercase tracking-[0.2em]">Quick Actions</p>
         <div className="flex flex-wrap gap-2 text-xs">
           <NavLink
-            to="/trackers"
+            to="/osint?tab=trackers"
             className="rounded-full border border-slate-700 px-3 py-1 text-slate-100 hover:text-green-500"
           >
             Live Trackers
           </NavLink>
           <NavLink
-            to="/news"
+            to="/osint?tab=news"
             className="rounded-full border border-slate-700 px-3 py-1 text-slate-100 hover:text-green-500"
           >
             News Feed

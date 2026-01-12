@@ -31,7 +31,7 @@ export function Sidebar({ items }: SidebarProps) {
         <p className="tag text-xs text-emerald-300">Seperet LLC</p>
         <p className="tag text-xs text-emerald-300">https://seperet.com</p>
         <p className="text-sm text-slate-400 mt-2">
-          Markets • Risk • Global Tracking
+          Markets • Risk • OSINT
         </p>
       </div>
       <nav className="space-y-2">

@@ -11,7 +11,7 @@ from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple
 from modules.client_mgr.client_model import Client
 from modules.client_mgr.holdings import compute_weighted_avg_cost, normalize_ticker
 from modules.client_mgr.valuation import ValuationEngine
-from modules.market_data.trackers import GlobalTrackers
+from modules.market_data.trackers import GlobalTrackers, TrackerRelevance
 from modules.view_models import (
     account_dashboard,
     account_patterns,
@@ -411,7 +411,16 @@ class ReportEngine:
         news_items = filter_fresh_news_items(news_items, max_age_hours=freshness_hours)
         news_rows, news_meta = _news_section(news_items, holdings.keys())
 
-        tracker_rows, tracker_meta = _tracker_section()
+        account_tags = {
+            acc.account_name: acc.tags
+            for acc in client.accounts
+            if acc.tags
+        }
+        rules, matched_accounts = TrackerRelevance.match_rules(account_tags)
+        if rules:
+            tracker_rows, tracker_meta = _tracker_section(rules)
+        else:
+            tracker_rows, tracker_meta = [], {"relevant": False}
 
         risk_rows = [
             ["Risk Notes", "Risk metrics require market history; offline mode uses templates."],
@@ -423,22 +432,30 @@ class ReportEngine:
             ReportSection("Ticker News", news_rows),
             ReportSection("Risk Notes", risk_rows),
             ReportSection("Conflict/Geo Notes", conflict_rows),
-            ReportSection("Aviation/Maritime Notes", tracker_rows),
         ]
+        if tracker_meta.get("relevant"):
+            sections.append(ReportSection("Aviation/Maritime Notes", tracker_rows))
 
         data = {
-            "citations": portfolio_meta.get("citations", []) + news_meta.get("citations", []) + tracker_meta.get("citations", []),
+            "citations": portfolio_meta.get("citations", []) + news_meta.get("citations", []),
             "news_count": news_meta.get("news_count", 0),
         }
+        if tracker_meta.get("relevant"):
+            data["citations"] = data["citations"] + tracker_meta.get("citations", [])
+            data["tracker_tags"] = sorted({
+                tag for tags in matched_accounts.values() for tag in tags
+            })
         data_freshness = {
             "portfolio": portfolio_meta.get("as_of", "unknown"),
             "news_cache": news_meta.get("cache_ts", "unknown"),
-            "trackers_cache": tracker_meta.get("cache_ts", "unknown"),
         }
+        if tracker_meta.get("relevant"):
+            data_freshness["trackers_cache"] = tracker_meta.get("cache_ts", "unknown")
         methodology = [
             "Cost basis uses weighted average of lots and aggregate entries.",
             "Market value uses offline prices unless a live price service is enabled.",
             "News section uses cached feeds only unless refresh is explicitly run.",
+            "Aviation/maritime notes render only when account tags map to tracker relevance rules and cached tracker data exists.",
         ]
         return ReportPayload(
             report_type="client_weekly_brief",
@@ -945,17 +962,29 @@ def _conflict_rows(items: List[Dict[str, Any]]) -> List[List[str]]:
     return rows[:6]
 
 
-def _tracker_section() -> Tuple[List[List[str]], Dict[str, Any]]:
+def _tracker_section(
+    rules: List[Dict[str, set]],
+) -> Tuple[List[List[str]], Dict[str, Any]]:
     tracker = GlobalTrackers()
     snapshot = tracker.get_snapshot(mode="combined", allow_refresh=False)
-    points = snapshot.get("flights", []) + snapshot.get("ships", [])
-    rows = []
-    if points:
-        rows.append(["Tracker Points", f"{len(points)} cached entities"])
-    else:
-        rows.append(["Tracker Points", "No cached tracker points available."])
+    points = snapshot.get("points", []) or []
     cache_ts = tracker._last_refresh if hasattr(tracker, "_last_refresh") else None
     cache_label = "unknown"
     if cache_ts:
         cache_label = datetime.fromtimestamp(int(cache_ts), UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    return rows, {"citations": ["Flight Feed", "Shipping Feed"], "cache_ts": cache_label}
+    if not points or not rules:
+        return [], {"relevant": False, "cache_ts": cache_label}
+    filtered = TrackerRelevance.filter_points(points, rules)
+    if not filtered:
+        return [], {"relevant": False, "cache_ts": cache_label}
+    summary = TrackerRelevance.summarize(filtered)
+    rows = [
+        ["Relevant Tracker Points", str(summary.get("point_count", 0))],
+        ["Avg Speed (kts)", _format_number(summary.get("avg_speed_kts"), 1)],
+        ["Max Speed (kts)", _format_number(summary.get("max_speed_kts"), 1)],
+    ]
+    return rows, {
+        "citations": ["Flight Feed", "Shipping Feed"],
+        "cache_ts": cache_label,
+        "relevant": True,
+    }

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test("tracker map focus and filters respond", async ({ page }) => {
-  await page.goto("/trackers?demo=true");
+  await page.goto("/osint?tab=trackers&demo=true");
   await expect(page.getByRole("heading", { name: "Live Trackers" })).toBeVisible();
   await expect(page.getByText("Map Focus")).toBeVisible();
 

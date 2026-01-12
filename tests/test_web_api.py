@@ -268,6 +268,16 @@ def test_tracker_detail_endpoint_stubbed():
     assert resp.status_code == 200
     assert resp.json()["point"]["label"] == "AAL762"
 
+def test_tracker_history_endpoint_stubbed():
+    client = TestClient(web_app.app)
+    with mock.patch.object(tracker_routes.GlobalTrackers, "get_history") as mocked:
+        mocked.return_value = {"id": "abc123", "history": [{"ts": 1, "lat": 10.0, "lon": 20.0}]}
+        resp = client.get("/api/trackers/history/abc123", headers=_api_headers())
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["id"] == "abc123"
+    assert payload["history"]
+
 
 def test_tracker_analysis_endpoint_stubbed():
     client = TestClient(web_app.app)

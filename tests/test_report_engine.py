@@ -46,6 +46,41 @@ class TestReportEngine(unittest.TestCase):
         self.assertIn("Portfolio Snapshot", result.content)
         self.assertFalse(result.used_model)
 
+    def test_weekly_brief_skips_trackers_without_tags(self):
+        client = Client(client_id="client-5", name="No Tags")
+        acct = Account(account_name="Primary")
+        acct.holdings = {"AAPL": 1.0}
+        client.accounts.append(acct)
+
+        engine = ReportEngine(model_runner=NoModelRunner())
+        with mock.patch("modules.reporting.engine.GlobalTrackers") as trackers:
+            result = engine.generate_client_weekly_brief(client, output_format="md")
+        titles = [section.title for section in result.payload.sections]
+        self.assertNotIn("Aviation/Maritime Notes", titles)
+        trackers.assert_not_called()
+
+    def test_weekly_brief_includes_trackers_with_relevance(self):
+        client = Client(client_id="client-6", name="Logistics Client")
+        acct = Account(account_name="Primary")
+        acct.holdings = {"AAPL": 1.0}
+        acct.tags = ["shipping"]
+        client.accounts.append(acct)
+
+        mock_tracker = mock.MagicMock()
+        mock_tracker._last_refresh = int(time.time())
+        mock_tracker.get_snapshot.return_value = {
+            "points": [
+                {"kind": "ship", "category": "cargo", "label": "VESSEL-1"}
+            ]
+        }
+
+        engine = ReportEngine(model_runner=NoModelRunner())
+        with mock.patch("modules.reporting.engine.GlobalTrackers", return_value=mock_tracker):
+            result = engine.generate_client_weekly_brief(client, output_format="md")
+        titles = [section.title for section in result.payload.sections]
+        self.assertIn("Aviation/Maritime Notes", titles)
+        self.assertIn("trackers_cache", result.payload.data_freshness)
+
     def test_renderer_json(self):
         payload = ReportPayload(
             report_type="demo",

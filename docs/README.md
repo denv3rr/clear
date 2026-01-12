@@ -8,4 +8,5 @@
 - `docs/diagnostics.md` — diagnostics sources, registry health, and consistency checks.
 - `docs/feed_registry.md` — feed registry sources and health semantics.
 - `docs/launchers.md` — launcher behavior and startup/shutdown guarantees.
+- `docs/osint.md` — OSINT workspace, tracker configuration, and relevance tags.
 - `docs/platform_services.md` — service templates for running the API in the background.

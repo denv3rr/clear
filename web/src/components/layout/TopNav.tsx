@@ -35,7 +35,7 @@ export function TopNav({ items, onToggleContext, onToggleAssistant }: TopNavProp
           </button>
           <span className="text-lg font-semibold tracking-tight">[ CLEAR ]</span>
           <span className="hidden text-xs text-slate-500 md:inline">
-            Markets • Risk • Trackers
+            Markets • Risk • OSINT
           </span>
         </div>
         <nav className="hidden min-[1800px]:flex flex-1 min-w-0">

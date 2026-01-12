@@ -52,7 +52,7 @@ A portfolio management, analytics, and global tracking platform with SQLite-back
 - Portfolio analytics + regime/pattern modeling
 - Toolkit analysis suite (CAPM, diagnostics, regime/pattern tools) in CLI + API
 - Market dashboard with macro snapshots + map fallback
-- Global flight and maritime tracking (OpenSky-only)
+- OSINT workspace with flight tracking (OpenSky-only) and optional maritime feeds
 - Intel and news aggregation with filters
 - Diagnostics + system health views
 - Feed registry with health summary (CLI + API + UI)
@@ -232,6 +232,7 @@ python clearctl.py doctor --web-tests
 | `docs/diagnostics.md` | Diagnostics sources, registry health, consistency checks |
 | `docs/feed_registry.md` | Feed registry sources and health semantics |
 | `docs/launchers.md` | Launcher behavior and startup/shutdown guarantees |
+| `docs/osint.md` | OSINT workspace, tracker configuration, and relevance tags |
 | `docs/platform_services.md` | Service templates for running the API |
 
 ## Configuration
@@ -413,7 +414,7 @@ Scroll text settings live in `config/settings.json` under `display.scroll_text`:
 
 - **Finnhub**: symbols and quotes (optional - see [configuration](#configuration))
 - **Yahoo Finance**: historical data and macro snapshots
-- **OpenSky**: flight tracking feed (only source right now; OAuth for new accounts, legacy basic auth optional)
+- **OpenSky**: flight tracking feed (only source right now; OAuth for new accounts, legacy basic auth optional; shipping optional via `SHIPPING_DATA_URL`)
 - **Open-Meteo**: weather signals for reports
 - **GDELT**: conflict signals for reports (RSS fallback)
 - **RSS News**: CNBC Top/World, MarketWatch, BBC Business (cached, health-aware)

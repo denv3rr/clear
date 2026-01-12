@@ -6,11 +6,12 @@ for a primary feature area.
 ## Current pages
 - `Dashboard.tsx`: Overview metrics, maps, and system summaries.
 - `Clients.tsx`: Client/account dashboards and analytics.
-- `Intel.tsx`: Intel ingestion and filters.
-- `News.tsx`: News feed, sources, and filters.
+- `Osint.tsx`: OSINT hub for trackers, intel, and news.
+- `Intel.tsx`: Intel ingestion and filters (OSINT tab).
+- `News.tsx`: News feed, sources, and filters (OSINT tab).
 - `Reports.tsx`: Report exports and summaries.
 - `System.tsx`: System diagnostics and maintenance actions.
-- `Trackers.tsx`: Live tracker streams and status.
+- `Trackers.tsx`: Live tracker streams and status (OSINT tab).
 
 ## Usage notes
 - Use the shared API client in `web/src/lib/api.ts`.

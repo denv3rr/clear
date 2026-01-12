@@ -171,7 +171,7 @@ type TrackerAnalysis = {
   };
 };
 
-export default function Trackers() {
+export function TrackersPanel() {
   const [mode, setMode] = useState<"combined" | "flights" | "ships">("combined");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [includeCommercial, setIncludeCommercial] = useState(false);
@@ -2027,4 +2027,8 @@ export default function Trackers() {
       </div>
     </Card>
   );
+}
+
+export default function Trackers() {
+  return <TrackersPanel />;
 }
