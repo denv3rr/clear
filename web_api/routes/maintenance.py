@@ -4,7 +4,8 @@ import json
 import os
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
+from pydantic import BaseModel
 
 from modules.client_mgr.data_handler import DataHandler
 from core import models
@@ -16,8 +17,17 @@ from web_api.view_model import attach_meta, validate_payload
 router = APIRouter()
 
 
+class MaintenanceConfirmPayload(BaseModel):
+    confirm: bool = False
+
+
 @router.post("/api/maintenance/normalize-lots")
-def normalize_lot_timestamps(_auth: None = Depends(require_api_key)):
+def normalize_lot_timestamps(
+    payload: MaintenanceConfirmPayload = Body(default_factory=MaintenanceConfirmPayload),
+    _auth: None = Depends(require_api_key),
+):
+    if not payload.confirm:
+        raise HTTPException(status_code=400, detail="confirm=true required.")
     bootstrap_clients_from_json()
     path = DataHandler.CLIENT_FILE
     if not os.path.exists(path):
@@ -44,7 +54,12 @@ def normalize_lot_timestamps(_auth: None = Depends(require_api_key)):
 
 
 @router.post("/api/maintenance/clear-report-cache")
-def clear_report_cache(_auth: None = Depends(require_api_key)):
+def clear_report_cache(
+    payload: MaintenanceConfirmPayload = Body(default_factory=MaintenanceConfirmPayload),
+    _auth: None = Depends(require_api_key),
+):
+    if not payload.confirm:
+        raise HTTPException(status_code=400, detail="confirm=true required.")
     path = os.path.join("data", "ai_report_cache.json")
     removed = False
     if os.path.exists(path):
@@ -61,7 +76,12 @@ def clear_report_cache(_auth: None = Depends(require_api_key)):
 
 
 @router.post("/api/maintenance/cleanup-orphans")
-def cleanup_orphans(_auth: None = Depends(require_api_key)):
+def cleanup_orphans(
+    payload: MaintenanceConfirmPayload = Body(default_factory=MaintenanceConfirmPayload),
+    _auth: None = Depends(require_api_key),
+):
+    if not payload.confirm:
+        raise HTTPException(status_code=400, detail="confirm=true required.")
     db = SessionLocal()
     try:
         account_ids = {row[0] for row in db.query(models.Account.id).all()}

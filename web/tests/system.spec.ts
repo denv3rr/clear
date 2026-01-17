@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test("system maintenance actions invoke API flows", async ({ page }) => {
+  const bodies: Record<string, any> = {};
   await page.route("**/api/tools/diagnostics", async (route) => {
     await route.fulfill({
       status: 200,
@@ -27,6 +28,7 @@ test("system maintenance actions invoke API flows", async ({ page }) => {
     });
   });
   await page.route("**/api/maintenance/normalize-lots", async (route) => {
+    bodies.normalize = route.request().postDataJSON();
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -34,6 +36,7 @@ test("system maintenance actions invoke API flows", async ({ page }) => {
     });
   });
   await page.route("**/api/maintenance/clear-report-cache", async (route) => {
+    bodies.clearCache = route.request().postDataJSON();
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -41,6 +44,7 @@ test("system maintenance actions invoke API flows", async ({ page }) => {
     });
   });
   await page.route("**/api/maintenance/cleanup-orphans", async (route) => {
+    bodies.cleanupOrphans = route.request().postDataJSON();
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -48,6 +52,7 @@ test("system maintenance actions invoke API flows", async ({ page }) => {
     });
   });
   await page.route("**/api/clients/duplicates/cleanup", async (route) => {
+    bodies.cleanupDuplicates = route.request().postDataJSON();
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -64,13 +69,17 @@ test("system maintenance actions invoke API flows", async ({ page }) => {
 
   await page.getByRole("button", { name: "Normalize Lot Timestamps" }).click();
   await expect(page.getByText("Normalization complete.")).toBeVisible();
+  expect(bodies.normalize).toMatchObject({ confirm: true });
 
   await page.getByRole("button", { name: "Clear Report Cache" }).click();
   await expect(page.getByText("Report cache cleared.")).toBeVisible();
+  expect(bodies.clearCache).toMatchObject({ confirm: true });
 
   await page.getByRole("button", { name: "Remove Orphaned Holdings/Lots" }).click();
   await expect(page.getByText("Removed 1 orphaned holdings and 2 orphaned lots.")).toBeVisible();
+  expect(bodies.cleanupOrphans).toMatchObject({ confirm: true });
 
   await page.getByRole("button", { name: "Remove duplicates" }).click();
   await expect(page.getByText("Removed 2 duplicate accounts.")).toBeVisible();
+  expect(bodies.cleanupDuplicates).toMatchObject({ confirm: true });
 });

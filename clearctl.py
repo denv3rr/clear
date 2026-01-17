@@ -36,6 +36,13 @@ from utils.launcher import (
     write_pid,
 )
 
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except Exception:
+    pass
+
 API_PID = RUNTIME_DIR / "api.pid"
 WEB_PID = RUNTIME_DIR / "web.pid"
 API_LOG = LOG_DIR / "api.log"
@@ -202,8 +209,12 @@ def _ensure_playwright(npm_path: str, web_dir: Path, auto_yes: bool) -> bool:
 
 def _health_check(api_port: int) -> bool:
     url = f"http://127.0.0.1:{api_port}/api/health"
+    headers = {}
+    api_key = os.getenv("CLEAR_WEB_API_KEY", "")
+    if api_key:
+        headers["X-API-Key"] = api_key
     try:
-        response = httpx.get(url, timeout=2.0, trust_env=False)
+        response = httpx.get(url, timeout=2.0, trust_env=False, headers=headers)
         return response.status_code == 200
     except Exception:
         return False

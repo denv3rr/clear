@@ -55,8 +55,26 @@ def test_cleanup_orphans(client):
     finally:
         session.close()
 
-    resp = test_client.post("/api/maintenance/cleanup-orphans")
+    resp = test_client.post("/api/maintenance/cleanup-orphans", json={"confirm": True})
     assert resp.status_code == 200
     payload = resp.json()
     assert payload["removed_holdings"] == 1
     assert payload["removed_lots"] == 1
+
+
+def test_cleanup_orphans_requires_confirm(client):
+    test_client, _ = client
+    resp = test_client.post("/api/maintenance/cleanup-orphans", json={"confirm": False})
+    assert resp.status_code == 400
+
+
+def test_clear_report_cache_requires_confirm(client):
+    test_client, _ = client
+    resp = test_client.post("/api/maintenance/clear-report-cache", json={"confirm": False})
+    assert resp.status_code == 400
+
+
+def test_normalize_lots_requires_confirm(client):
+    test_client, _ = client
+    resp = test_client.post("/api/maintenance/normalize-lots", json={"confirm": False})
+    assert resp.status_code == 400

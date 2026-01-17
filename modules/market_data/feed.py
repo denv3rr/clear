@@ -1244,6 +1244,7 @@ class MarketFeed:
             while True:
                 compact = compact_for_width(self.console.width)
                 compact_height = self.console.height < 32
+                compact_view = compact or compact_height
                 sidebar = build_sidebar(
                     [("Trackers", {k: v for k, v in options.items() if k not in ("0",)})],
                     show_main=True,
@@ -1282,6 +1283,7 @@ class MarketFeed:
                         footer_panel=footer_panel,
                         include_commercial=include_commercial,
                         include_private=include_private,
+                        compact_view=compact_view,
                     )
 
                 page_size = fit_renderable_to_height(
@@ -1390,12 +1392,14 @@ class MarketFeed:
                 offset = scroll_offset
             else:
                 offset = _clamp_offset(offset_override, len(points), page_size)
+            compact_view = compact or compact_height
             panel = self.trackers.render(
                 mode=mode,
                 snapshot=filtered,
                 filter_label=category_filter,
                 max_rows=page_size,
                 row_offset=offset,
+                compact=compact_view,
             )
             if include_commercial:
                 warn = Text(
@@ -1406,7 +1410,7 @@ class MarketFeed:
             compact = compact_for_width(self.console.width)
             compact_height = self.console.height < 32
             sidebar = build_sidebar(
-                [("Trackers", {k: v for k, v in options.items() if k in ("1", "2", "3", "4", "C", "F", "A", "T", "SPC", "0")})],
+                [("Trackers", {k: v for k, v in options.items() if k in ("1", "2", "3", "4", "C", "F", "A", "S", "T", "SPC", "G", "0")})],
                 show_main=True,
                 show_back=True,
                 show_exit=True,
@@ -1650,6 +1654,7 @@ class MarketFeed:
         footer_panel: Optional[object],
         include_commercial: bool,
         include_private: bool,
+        compact_view: bool = False,
     ) -> Group:
         filtered = GlobalTrackers.apply_category_filter(snapshot, category_filter)
         panel = self.trackers.render(
@@ -1658,6 +1663,7 @@ class MarketFeed:
             filter_label=category_filter,
             max_rows=max_rows,
             row_offset=row_offset,
+            compact=compact_view,
         )
         sections: List = []
         if status_panel:

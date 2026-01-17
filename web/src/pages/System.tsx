@@ -122,9 +122,14 @@ export default function System() {
   );
 
   const onNormalize = async () => {
+    const confirmed = window.confirm(
+      "Normalize legacy lot timestamps? This will update stored client data."
+    );
+    if (!confirmed) return;
     try {
       const result = await apiPost<MaintenanceResponse>(
-        "/api/maintenance/normalize-lots"
+        "/api/maintenance/normalize-lots",
+        { confirm: true }
       );
       setCleanupMessage(result.message || "Normalization complete.");
     } catch (err) {
@@ -134,9 +139,14 @@ export default function System() {
   };
 
   const onClearCache = async () => {
+    const confirmed = window.confirm(
+      "Clear the report cache? This will remove cached report artifacts."
+    );
+    if (!confirmed) return;
     try {
       const result = await apiPost<MaintenanceResponse>(
-        "/api/maintenance/clear-report-cache"
+        "/api/maintenance/clear-report-cache",
+        { confirm: true }
       );
       if (result.cleared) {
         setCleanupMessage("Report cache cleared.");
@@ -162,7 +172,8 @@ export default function System() {
     if (!confirmed) return;
     try {
       const result = await apiPost<MaintenanceResponse>(
-        "/api/maintenance/cleanup-orphans"
+        "/api/maintenance/cleanup-orphans",
+        { confirm: true }
       );
       setCleanupMessage(
         `Removed ${result.removed_holdings ?? 0} orphaned holdings and ${result.removed_lots ?? 0} orphaned lots.`

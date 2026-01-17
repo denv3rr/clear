@@ -1192,6 +1192,7 @@ class GlobalTrackers:
         filter_label: Optional[str] = None,
         max_rows: Optional[int] = None,
         row_offset: int = 0,
+        compact: bool = False,
     ) -> Panel:
         snapshot = snapshot or self.get_snapshot(mode=mode)
         points = snapshot.get("points", [])
@@ -1202,20 +1203,29 @@ class GlobalTrackers:
         no_shipping = any("no vessel feed" in str(w).lower() for w in warnings)
 
         table = Table(box=box.MINIMAL_DOUBLE_HEAD, expand=True)
-        table.add_column("Type", style="bold", width=8)
-        table.add_column("Category", width=10)
-        table.add_column("Label", width=12)
-        table.add_column("Country", width=10)
-        table.add_column("Lat", justify="right", width=7)
-        table.add_column("Lon", justify="right", width=8)
-        table.add_column("Alt(ft)", justify="right", width=8)
-        table.add_column("Spd(kts)", justify="right", width=8)
-        table.add_column("Spd Heat", justify="center", width=6)
-        table.add_column("Vol(kts)", justify="right", width=8)
-        table.add_column("Vol Heat", justify="center", width=6)
-        table.add_column("Hdg", justify="right", width=5)
-        table.add_column("Age", justify="right", width=5)
-        table.add_column("Industry", width=10)
+        if compact:
+            table.add_column("Type", style="bold", width=5)
+            table.add_column("Cat", width=7)
+            table.add_column("Label", width=12)
+            table.add_column("Lat", justify="right", width=7)
+            table.add_column("Lon", justify="right", width=8)
+            table.add_column("Spd", justify="right", width=6)
+            table.add_column("Age", justify="right", width=5)
+        else:
+            table.add_column("Type", style="bold", width=8)
+            table.add_column("Category", width=10)
+            table.add_column("Label", width=12)
+            table.add_column("Country", width=10)
+            table.add_column("Lat", justify="right", width=7)
+            table.add_column("Lon", justify="right", width=8)
+            table.add_column("Alt(ft)", justify="right", width=8)
+            table.add_column("Spd(kts)", justify="right", width=8)
+            table.add_column("Spd Heat", justify="center", width=6)
+            table.add_column("Vol(kts)", justify="right", width=8)
+            table.add_column("Vol Heat", justify="center", width=6)
+            table.add_column("Hdg", justify="right", width=5)
+            table.add_column("Age", justify="right", width=5)
+            table.add_column("Industry", width=10)
 
         sample_limit = max_rows if max_rows is not None else 60
         sample, clamped_offset, total_rows = self._slice_points(
@@ -1264,25 +1274,41 @@ class GlobalTrackers:
                 except Exception:
                     age = "-"
             country = str(pt.get("country", "") or "-")[:10]
-            table.add_row(
-                kind,
-                Text(cat, style=style) if style else cat,
-                str(pt.get("label", "n/a"))[:12],
-                country,
-                f"{pt.get('lat', 0.0):.2f}",
-                f"{pt.get('lon', 0.0):.2f}",
-                "-" if alt is None else f"{alt:,.0f}",
-                "-" if spd is None else f"{spd:,.0f}",
-                speed_bar,
-                "-" if vol_kts is None else f"{float(vol_kts):,.0f}",
-                vol_bar,
-                "-" if hdg is None else f"{hdg:,.0f}",
-                age,
-                str(pt.get("industry", "") or "-")[:10],
-            )
+            label = str(pt.get("label", "n/a"))[:12]
+            if compact:
+                short_kind = "flt" if kind == "flight" else "ship" if kind == "ship" else kind[:4]
+                table.add_row(
+                    short_kind,
+                    Text(cat[:7], style=style) if style else cat[:7],
+                    label,
+                    f"{pt.get('lat', 0.0):.2f}",
+                    f"{pt.get('lon', 0.0):.2f}",
+                    "-" if spd is None else f"{spd:,.0f}",
+                    age,
+                )
+            else:
+                table.add_row(
+                    kind,
+                    Text(cat, style=style) if style else cat,
+                    label,
+                    country,
+                    f"{pt.get('lat', 0.0):.2f}",
+                    f"{pt.get('lon', 0.0):.2f}",
+                    "-" if alt is None else f"{alt:,.0f}",
+                    "-" if spd is None else f"{spd:,.0f}",
+                    speed_bar,
+                    "-" if vol_kts is None else f"{float(vol_kts):,.0f}",
+                    vol_bar,
+                    "-" if hdg is None else f"{hdg:,.0f}",
+                    age,
+                    str(pt.get("industry", "") or "-")[:10],
+                )
 
         if not sample:
-            table.add_row("N/A", "N/A", "No live data", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-")
+            if compact:
+                table.add_row("N/A", "N/A", "No live data", "-", "-", "-", "-")
+            else:
+                table.add_row("N/A", "N/A", "No live data", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-")
 
         if warnings:
             warn_lines = list(dict.fromkeys(warnings))

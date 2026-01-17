@@ -52,7 +52,6 @@ A portfolio management, analytics, and global tracking platform with SQLite-back
 - Portfolio analytics + regime/pattern modeling
 - Toolkit analysis suite (CAPM, diagnostics, regime/pattern tools) in CLI + API
 - Market dashboard with macro snapshots + map fallback
-- OSINT workspace with flight tracking (OpenSky-only) and optional maritime feeds
 - Intel and news aggregation with filters
 - Diagnostics + system health views
 - Feed registry with health summary (CLI + API + UI)

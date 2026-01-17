@@ -20,6 +20,15 @@ def test_health_endpoint():
     assert resp.json()["status"] == "ok"
 
 
+def test_health_endpoint_requires_key(monkeypatch):
+    monkeypatch.setenv("CLEAR_WEB_API_KEY", "test_key")
+    client = TestClient(web_app.app)
+    resp = client.get("/api/health")
+    assert resp.status_code == 401
+    resp = client.get("/api/health", headers={"X-API-Key": "test_key"})
+    assert resp.status_code == 200
+
+
 def test_settings_endpoint():
     client = TestClient(web_app.app)
     resp = client.get("/api/settings", headers=_api_headers())

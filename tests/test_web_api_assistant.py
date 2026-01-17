@@ -163,6 +163,46 @@ def test_summarize_clients_warns_on_invalid_client_id():
     assert "No clients available." in result["warnings"]
 
 
+def test_summarize_clients_warns_on_account_not_found_for_client():
+    class DummyStore:
+        def fetch_client(self, client_ref):
+            if client_ref == "client-1":
+                return {"client_id": "client-1", "name": "Alpha", "accounts": []}
+            return None
+
+        def fetch_all_clients(self):
+            return []
+
+    with mock.patch.object(assistant_summarizer, "DbClientStore", DummyStore):
+        result = assistant_summarizer.summarize(
+            "client summary",
+            {"client_id": "client-1", "account_id": "acct-1"},
+            None,
+        )
+    assert "Account ID not found for client." in result["warnings"]
+    assert result["sources"][0]["route"] == "/api/clients/client-1"
+
+
+def test_summarize_clients_warns_on_ambiguous_account_id():
+    class DummyStore:
+        def fetch_client(self, client_ref):
+            return None
+
+        def fetch_all_clients(self):
+            return [
+                {"client_id": "client-1", "name": "Alpha", "accounts": [{"account_id": "acct-1"}]},
+                {"client_id": "client-2", "name": "Beta", "accounts": [{"account_id": "acct-1"}]},
+            ]
+
+    with mock.patch.object(assistant_summarizer, "DbClientStore", DummyStore):
+        result = assistant_summarizer.summarize(
+            "clients",
+            {"account_id": "acct-1"},
+            None,
+        )
+    assert "Account ID matches multiple clients; provide a client ID." in result["warnings"]
+
+
 def test_assistant_export_endpoint_returns_payload():
     client = TestClient(web_app.app)
     payload = {
