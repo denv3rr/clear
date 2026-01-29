@@ -3,7 +3,9 @@ import { expect, test } from "@playwright/test";
 test("dashboard renders overview and OSINT callout", async ({ page }) => {
   await page.goto("/?demo=true");
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
-  await expect(page.getByText("OSINT")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "OSINT Trackers + Intel + News" })
+  ).toBeVisible();
   await expect(page.getByRole("link", { name: "Open OSINT" })).toBeVisible();
 });
 

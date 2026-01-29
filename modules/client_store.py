@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from core.db_management import create_db_and_tables
 from core.database import SessionLocal
 from core import models
-from modules.client_mgr.schema import Client, Account
+from modules.client_mgr.schema import Client, Account, ClientPatch, AccountPatch
 
 
 CLIENTS_JSON_PATH = os.path.join("data", "clients.json")
@@ -114,17 +114,23 @@ class DbClientStore:
                 return None
             
             try:
-                validated_payload = Client.model_validate(payload, from_attributes=True)
+                validated_payload = ClientPatch.model_validate(payload, from_attributes=True)
             except ValidationError as e:
                 logging.error(f"Client data validation failed: {e}")
                 raise
 
-            client.name = validated_payload.name
-            client.risk_profile = validated_payload.risk_profile
-            client.risk_profile_source = validated_payload.risk_profile_source
-            client.active_interval = validated_payload.active_interval
-            client.tax_profile = validated_payload.tax_profile
-            client.extra = validated_payload.extra
+            if validated_payload.name is not None:
+                client.name = validated_payload.name
+            if validated_payload.risk_profile is not None:
+                client.risk_profile = validated_payload.risk_profile
+            if validated_payload.risk_profile_source is not None:
+                client.risk_profile_source = validated_payload.risk_profile_source
+            if validated_payload.active_interval is not None:
+                client.active_interval = validated_payload.active_interval
+            if validated_payload.tax_profile is not None:
+                client.tax_profile = validated_payload.tax_profile
+            if validated_payload.extra is not None:
+                client.extra = validated_payload.extra
             db.commit()
             db.refresh(client)
             return self._client_to_dict(client)
@@ -135,6 +141,7 @@ class DbClientStore:
         *,
         delete_missing: bool = False,
         overwrite: bool = True,
+        allow_name_merge: bool = False,
     ) -> None:
         self.ensure_schema()
         
@@ -157,7 +164,7 @@ class DbClientStore:
             for payload in validated_payloads:
                 client_uid = payload.client_id or str(uuid.uuid4())
                 client = existing.get(client_uid)
-                if client is None:
+                if client is None and allow_name_merge:
                     name_key = str(payload.name or "").strip().lower()
                     if name_key:
                         client = existing_by_name.get(name_key)
@@ -250,23 +257,38 @@ class DbClientStore:
                 return None
             
             try:
-                validated_payload = Account.model_validate(payload, from_attributes=True)
+                validated_payload = AccountPatch.model_validate(payload, from_attributes=True)
             except ValidationError as e:
                 logging.error(f"Account data validation failed: {e}")
                 raise
 
-            account.name = validated_payload.account_name
-            account.account_type = validated_payload.account_type
-            account.current_value = validated_payload.current_value
-            account.active_interval = validated_payload.active_interval
-            account.ownership_type = validated_payload.ownership_type
-            account.custodian = validated_payload.custodian
-            account.tags = validated_payload.tags
-            account.tax_settings = validated_payload.tax_settings
-            account.holdings_map = validated_payload.holdings
-            account.lots = {k: [lot.model_dump() for lot in v] for k, v in validated_payload.lots.items()}
-            account.manual_holdings = validated_payload.manual_holdings
-            account.extra = validated_payload.extra
+            if validated_payload.account_name is not None:
+                account.name = validated_payload.account_name
+            if validated_payload.account_type is not None:
+                account.account_type = validated_payload.account_type
+            if validated_payload.current_value is not None:
+                account.current_value = validated_payload.current_value
+            if validated_payload.active_interval is not None:
+                account.active_interval = validated_payload.active_interval
+            if validated_payload.ownership_type is not None:
+                account.ownership_type = validated_payload.ownership_type
+            if validated_payload.custodian is not None:
+                account.custodian = validated_payload.custodian
+            if validated_payload.tags is not None:
+                account.tags = validated_payload.tags
+            if validated_payload.tax_settings is not None:
+                account.tax_settings = validated_payload.tax_settings
+            if validated_payload.holdings is not None:
+                account.holdings_map = validated_payload.holdings
+            if validated_payload.lots is not None:
+                account.lots = {
+                    k: [lot.model_dump() for lot in v]
+                    for k, v in validated_payload.lots.items()
+                }
+            if validated_payload.manual_holdings is not None:
+                account.manual_holdings = validated_payload.manual_holdings
+            if validated_payload.extra is not None:
+                account.extra = validated_payload.extra
             db.commit()
             db.refresh(account)
             return self._account_to_dict(account)

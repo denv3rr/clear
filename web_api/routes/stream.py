@@ -14,10 +14,11 @@ router = APIRouter()
 
 @router.websocket("/ws/trackers")
 async def trackers_stream(websocket: WebSocket, mode: Optional[str] = None, interval: int = 5):
-    await websocket.accept()
-    if not require_websocket_key(websocket):
+    ok, subprotocol = require_websocket_key(websocket)
+    if not ok:
         await websocket.close(code=1008, reason="Invalid API key")
         return
+    await websocket.accept(subprotocol=subprotocol)
     trackers = GlobalTrackers()
     stream_mode = mode or "combined"
     stream_interval = max(1, min(int(interval or 5), 60))

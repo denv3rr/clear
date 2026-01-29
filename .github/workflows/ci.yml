@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+      - name: Run pytest
+        run: |
+          mkdir -p artifacts
+          python -m pytest --junitxml=artifacts/pytest.xml
+      - name: Publish pytest report
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: pytest
+          path: artifacts/pytest.xml
+          reporter: java-junit
+      - name: Upload pytest artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-artifacts
+          path: artifacts
+
+  web-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install web deps
+        run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+      - name: Run Playwright
+        run: npx playwright test
+      - name: Publish Playwright report
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: playwright
+          path: web/test-results/junit.xml
+          reporter: java-junit
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            web/test-results
+            web/playwright-report

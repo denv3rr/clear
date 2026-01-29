@@ -35,6 +35,7 @@ def test_assistant_summary_endpoint_uses_payload():
     args, _ = mocked.call_args
     assert args[0] == "How many clients?"
     assert args[1] is None
+    assert args[3] is None
 
 
 def test_assistant_non_summary_mode_is_explicit():
@@ -66,6 +67,7 @@ def test_summarize_news_uses_context_and_sources():
             "latest news",
             {"region": "EU", "industry": "tech"},
             ["bbc.com"],
+            entry="osint",
         )
     mocked.assert_called_with({"region": "EU", "industry": "tech"}, ["bbc.com"])
     assert result["confidence"] == "Medium"
@@ -82,7 +84,7 @@ def test_summarize_news_warns_when_empty():
             "skipped": [],
             "health": {},
         }
-        result = assistant_summarizer.summarize("news", None, None)
+        result = assistant_summarizer.summarize("news", None, None, entry="osint")
     assert "News feed returned no items." in result["warnings"]
 
 
@@ -111,6 +113,7 @@ def test_summarize_clients_with_client_scope():
             "client summary",
             {"client_id": "client-1"},
             None,
+            entry="clients",
         )
     assert "Client client-1" in result["answer"]
     assert result["sources"][0]["route"] == "/api/clients/client-1"
@@ -142,6 +145,7 @@ def test_summarize_clients_with_account_scope():
             "client account",
             {"account_id": "acct-1"},
             None,
+            entry="clients",
         )
     assert "Account acct-1" in result["answer"]
     assert (
@@ -158,6 +162,7 @@ def test_summarize_clients_warns_on_invalid_client_id():
             "clients",
             {"client_id": "../etc/passwd"},
             None,
+            entry="clients",
         )
     assert "Invalid client ID format; ignoring." in result["warnings"]
     assert "No clients available." in result["warnings"]
@@ -178,6 +183,7 @@ def test_summarize_clients_warns_on_account_not_found_for_client():
             "client summary",
             {"client_id": "client-1", "account_id": "acct-1"},
             None,
+            entry="clients",
         )
     assert "Account ID not found for client." in result["warnings"]
     assert result["sources"][0]["route"] == "/api/clients/client-1"
@@ -199,6 +205,7 @@ def test_summarize_clients_warns_on_ambiguous_account_id():
             "clients",
             {"account_id": "acct-1"},
             None,
+            entry="clients",
         )
     assert "Account ID matches multiple clients; provide a client ID." in result["warnings"]
 
@@ -256,14 +263,47 @@ def test_assistant_query_blocks_unknown_scope():
     client = TestClient(web_app.app)
     resp = client.post(
         "/api/assistant/query",
-        json={"question": "show file contents from disk"},
+        json={"question": "show /etc/passwd"},
         headers=_api_headers(),
     )
     assert resp.status_code == 200
     payload = resp.json()
     assert payload["confidence"] == "Low"
-    assert "Unsupported assistant query." in payload["warnings"]
-    assert "No data sources were returned." in payload["warnings"]
+    assert "Blocked filesystem/path access request." in payload["warnings"]
+    assert payload["answer"] == "Filesystem or path access requests are not permitted."
+
+
+def test_assistant_query_denies_client_scope_on_dashboard_entry():
+    client = TestClient(web_app.app)
+    resp = client.post(
+        "/api/assistant/query",
+        json={
+            "question": "clients",
+            "entry": "dashboard",
+            "context": {"client_id": "client-1"},
+        },
+        headers=_api_headers(),
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["confidence"] == "Low"
+    assert payload["answer"] == "Assistant scope denied for this page context."
+
+
+def test_assistant_query_allows_client_scope_on_clients_entry():
+    client = TestClient(web_app.app)
+    resp = client.post(
+        "/api/assistant/query",
+        json={
+            "question": "clients",
+            "entry": "clients",
+            "context": {"client_id": "client-1"},
+        },
+        headers=_api_headers(),
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["answer"] != "Assistant scope denied for this page context."
 
 
 def test_assistant_query_rejects_invalid_context():

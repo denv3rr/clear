@@ -1,6 +1,8 @@
 import os
 from unittest import mock
 
+import pytest
+
 from fastapi.testclient import TestClient
 
 from web_api import app as web_app
@@ -27,6 +29,48 @@ def test_health_endpoint_requires_key(monkeypatch):
     assert resp.status_code == 401
     resp = client.get("/api/health", headers={"X-API-Key": "test_key"})
     assert resp.status_code == 200
+
+
+@pytest.mark.parametrize(
+    "path,method,body",
+    [
+        ("/api/clients", "get", None),
+        ("/api/trackers/snapshot", "get", None),
+        ("/api/intel/news", "get", None),
+        ("/api/reports/client/test-client", "get", None),
+        ("/api/tools/diagnostics", "get", None),
+    ],
+)
+def test_protected_endpoints_require_key(monkeypatch, path, method, body):
+    monkeypatch.setenv("CLEAR_WEB_API_KEY", "secret")
+    client = TestClient(web_app.app)
+    request = getattr(client, method)
+    resp = request(path) if body is None else request(path, json=body)
+    assert resp.status_code == 401
+
+
+def test_cors_allows_localhost_origin():
+    client = TestClient(web_app.app)
+    resp = client.options(
+        "/api/health",
+        headers={
+            "Origin": "http://127.0.0.1:5173",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert resp.headers.get("access-control-allow-origin") == "http://127.0.0.1:5173"
+
+
+def test_cors_blocks_non_local_origin():
+    client = TestClient(web_app.app)
+    resp = client.options(
+        "/api/health",
+        headers={
+            "Origin": "https://evil.example",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert "access-control-allow-origin" not in resp.headers
 
 
 def test_settings_endpoint():

@@ -60,26 +60,26 @@ test("system maintenance actions invoke API flows", async ({ page }) => {
     });
   });
 
-  page.on("dialog", async (dialog) => {
-    await dialog.accept();
-  });
-
   await page.goto("/system");
   await expect(page.getByText("System Settings & Diagnostics")).toBeVisible();
 
   await page.getByRole("button", { name: "Normalize Lot Timestamps" }).click();
+  await page.getByRole("button", { name: "Confirm" }).click();
   await expect(page.getByText("Normalization complete.")).toBeVisible();
   expect(bodies.normalize).toMatchObject({ confirm: true });
 
   await page.getByRole("button", { name: "Clear Report Cache" }).click();
+  await page.getByRole("button", { name: "Confirm" }).click();
   await expect(page.getByText("Report cache cleared.")).toBeVisible();
   expect(bodies.clearCache).toMatchObject({ confirm: true });
 
   await page.getByRole("button", { name: "Remove Orphaned Holdings/Lots" }).click();
+  await page.getByRole("button", { name: "Confirm" }).click();
   await expect(page.getByText("Removed 1 orphaned holdings and 2 orphaned lots.")).toBeVisible();
   expect(bodies.cleanupOrphans).toMatchObject({ confirm: true });
 
   await page.getByRole("button", { name: "Remove duplicates" }).click();
+  await page.getByRole("button", { name: "Confirm" }).click();
   await expect(page.getByText("Removed 2 duplicate accounts.")).toBeVisible();
   expect(bodies.cleanupDuplicates).toMatchObject({ confirm: true });
 });

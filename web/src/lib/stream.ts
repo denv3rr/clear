@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { DEMO_MODE, getMockTrackerSnapshot } from "./mockData";
-import { extractWarnings, getApiBase, getApiKey, isDemoOverride } from "./api";
+import { extractWarnings, getApiBase, getApiKey, getAuthHint, isDemoOverride } from "./api";
 import { useTrackerPause } from "./trackerPause";
 
 const API_BASE = getApiBase();
@@ -54,13 +54,11 @@ export function useTrackerStream<T>(options: StreamOptions = {}) {
       params.set("mode", mode);
       params.set("interval", String(interval));
       const apiKey = getApiKey();
-      if (apiKey) {
-        params.set("api_key", apiKey);
-      }
       const baseUrl = new URL(API_BASE);
       const wsProtocol = baseUrl.protocol === "https:" ? "wss:" : "ws:";
       const wsUrl = `${wsProtocol}//${baseUrl.host}/ws/trackers?${params.toString()}`;
-      const ws = new WebSocket(wsUrl);
+      const protocols = apiKey ? [`clear-key.${apiKey}`] : undefined;
+      const ws = new WebSocket(wsUrl, protocols);
       socketRef.current = ws;
 
       ws.onopen = () => {
@@ -71,15 +69,15 @@ export function useTrackerStream<T>(options: StreamOptions = {}) {
       ws.onclose = (event) => {
         setConnected(false);
         if (event.code === 1008) {
-          setError("WebSocket rejected. Check API key settings.");
+          setError(`WebSocket rejected. ${getAuthHint()}`);
         } else if (event.code === 1006) {
-          setError("WebSocket closed unexpectedly. Check API base and auth.");
+          setError(`WebSocket closed unexpectedly. ${getAuthHint()}`);
         }
         scheduleReconnect();
       };
       ws.onerror = () => {
         setConnected(false);
-        setError("WebSocket connection failed. Check API base and auth.");
+        setError(`WebSocket connection failed. ${getAuthHint()}`);
         scheduleReconnect();
       };
       ws.onmessage = (event) => {

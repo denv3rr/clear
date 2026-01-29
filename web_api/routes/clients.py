@@ -18,7 +18,7 @@ from modules.view_models import (
     portfolio_dashboard,
 )
 from modules.client_store import DbClientStore
-from modules.client_mgr.schema import Client, Account
+from modules.client_mgr.schema import Client, Account, ClientPatch, AccountPatch
 from web_api.auth import require_api_key
 from web_api.view_model import attach_meta, validate_payload
 
@@ -148,12 +148,15 @@ def client_create(payload: Client, _auth: None = Depends(require_api_key), db: S
 @router.patch("/api/clients/{client_id}")
 def client_update(
     client_id: str,
-    payload: Client,
+    payload: ClientPatch,
     _auth: None = Depends(require_api_key),
     db: Session = Depends(get_db)
 ):
     store = DbClientStore(db)
-    updated = store.update_client(client_id, payload.model_dump())
+    updated = store.update_client(
+        client_id,
+        payload.model_dump(exclude_unset=True, exclude_none=True),
+    )
     if updated is None:
         raise HTTPException(status_code=404, detail="Client not found")
     response = client_detail(updated)
@@ -222,12 +225,16 @@ def account_create(
 def account_update(
     client_id: str,
     account_id: str,
-    payload: Account,
+    payload: AccountPatch,
     _auth: None = Depends(require_api_key),
     db: Session = Depends(get_db)
 ):
     store = DbClientStore(db)
-    account_payload = store.update_account(client_id, account_id, payload.model_dump())
+    account_payload = store.update_account(
+        client_id,
+        account_id,
+        payload.model_dump(exclude_unset=True, exclude_none=True),
+    )
     if account_payload is None:
         raise HTTPException(status_code=404, detail="Account not found")
     client_payload = store.fetch_client(client_id)

@@ -42,11 +42,12 @@ def test_terminate_port_processes_auto_yes(monkeypatch) -> None:
         return True
 
     monkeypatch.setattr(clearctl, "find_pids_by_port", fake_find_pids)
+    monkeypatch.setattr(clearctl, "filter_matching_pids", lambda pids, _tokens: pids)
     monkeypatch.setattr(clearctl, "terminate_pid", fake_terminate)
     monkeypatch.setattr(clearctl, "wait_for_port_release", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(clearctl, "port_in_use", lambda *_args, **_kwargs: False)
 
-    assert clearctl._terminate_port_processes(8000, "API") is True
+    assert clearctl._terminate_port_processes(8000, "API", tokens=["uvicorn"]) is True
     assert killed == [222, 333]
 
 

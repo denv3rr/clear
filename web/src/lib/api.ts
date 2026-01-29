@@ -9,6 +9,10 @@ const runtimeHost =
 const API_BASE =
   import.meta.env.VITE_API_BASE || `http://${runtimeHost}:8000`;
 const ENV_API_KEY = import.meta.env.VITE_API_KEY;
+const LOCAL_KEY = "clear_api_key";
+const SESSION_KEY = "clear_api_key_session";
+
+type ApiKeyScope = "session" | "local" | "env" | "none";
 
 export function getApiBase(): string {
   return API_BASE;
@@ -85,15 +89,39 @@ async function parseJson<T>(response: Response): Promise<T> {
 
 export function getApiKey(): string | null {
   try {
-    return localStorage.getItem("clear_api_key") || ENV_API_KEY || null;
+    return (
+      sessionStorage.getItem(SESSION_KEY) ||
+      localStorage.getItem(LOCAL_KEY) ||
+      ENV_API_KEY ||
+      null
+    );
   } catch {
     return ENV_API_KEY || null;
   }
 }
 
-export function setApiKey(value: string): void {
+export function getApiKeyScope(): ApiKeyScope {
   try {
-    localStorage.setItem("clear_api_key", value);
+    if (sessionStorage.getItem(SESSION_KEY)) return "session";
+    if (localStorage.getItem(LOCAL_KEY)) return "local";
+  } catch {
+    return ENV_API_KEY ? "env" : "none";
+  }
+  return ENV_API_KEY ? "env" : "none";
+}
+
+export function setApiKey(
+  value: string,
+  options: { persist?: boolean } = {}
+): void {
+  try {
+    localStorage.removeItem(LOCAL_KEY);
+    sessionStorage.removeItem(SESSION_KEY);
+    if (options.persist) {
+      localStorage.setItem(LOCAL_KEY, value);
+    } else {
+      sessionStorage.setItem(SESSION_KEY, value);
+    }
   } catch {
     return;
   }
@@ -101,10 +129,29 @@ export function setApiKey(value: string): void {
 
 export function clearApiKey(): void {
   try {
-    localStorage.removeItem("clear_api_key");
+    localStorage.removeItem(LOCAL_KEY);
+    sessionStorage.removeItem(SESSION_KEY);
   } catch {
     return;
   }
+}
+
+export function getAuthHint(): string {
+  const scope = getApiKeyScope();
+  if (scope === "env") {
+    return "API key is set in the environment. Verify CLEAR_WEB_API_KEY matches.";
+  }
+  if (scope === "local" || scope === "session") {
+    return "Check the API key in System settings or clear and re-enter it.";
+  }
+  return "Set an API key in System settings if CLEAR_WEB_API_KEY is enabled.";
+}
+
+function formatApiError(status: number): string {
+  if (status === 401 || status === 403) {
+    return `API ${status}: authentication required. ${getAuthHint()}`;
+  }
+  return `API ${status}`;
 }
 
 export async function apiGet<T>(path: string, ttl = 0, signal?: AbortSignal): Promise<T> {
@@ -139,7 +186,7 @@ export async function apiGet<T>(path: string, ttl = 0, signal?: AbortSignal): Pr
     throw new Error(`API unreachable at ${API_BASE}. ${detail}${cspHint}`);
   }
   if (!response.ok) {
-    throw new Error(`API ${response.status}`);
+    throw new Error(formatApiError(response.status));
   }
   const payload = await parseJson<T>(response);
   if (ttl > 0) {
@@ -171,7 +218,7 @@ async function apiWrite<T>(path: string, method: WriteMethod, body?: unknown): P
     throw new Error(`API unreachable at ${API_BASE}. ${detail}`);
   }
   if (!response.ok) {
-    throw new Error(`API ${response.status}`);
+    throw new Error(formatApiError(response.status));
   }
   return parseJson<T>(response);
 }

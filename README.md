@@ -99,6 +99,12 @@ python clearctl.py start
 python clearctl.py stop
 ```
 
+Dependency integrity:
+- Auto-install only runs with `requirements.txt` hashes (`pip-compile --generate-hashes`) and `web/package-lock.json` present. Otherwise install deps manually.
+
+Auth note:
+- When `CLEAR_WEB_API_KEY` is set, the web UI stores API keys in session storage by default (local persistence is opt-in via System settings).
+
 If npm is not found, install Node.js first (includes npm) and retry:
 
 - Windows (winget): `winget install OpenJS.NodeJS.LTS`

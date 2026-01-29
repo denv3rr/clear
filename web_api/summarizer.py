@@ -21,6 +21,23 @@ from web_api.summarizer_rules import (
 
 SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
+ALLOWED_CONTEXT_BY_ENTRY = {
+    "dashboard": {"region", "industry", "tickers", "sources"},
+    "clients": {"client_id", "account_id"},
+    "reports": {"client_id", "account_id"},
+    "osint": {"region", "industry", "tickers", "sources"},
+    "trackers": {"region", "industry", "tickers", "sources"},
+    "intel": {"region", "industry", "tickers", "sources"},
+    "news": {"region", "industry", "tickers", "sources"},
+    "system": set(),
+    "unknown": {"region", "industry", "tickers", "sources"},
+}
+
+PATH_GUARD_RE = re.compile(
+    r"(file://|[A-Za-z]:\\\\|[A-Za-z]:/|\\\.\.\\|/\.\./|/etc/|/var/|/usr/|/home/|/users/)",
+    re.IGNORECASE,
+)
+
 
 def _build_source(route: str, source: str) -> Dict[str, Any]:
     return {"route": route, "source": source, "timestamp": int(time.time())}
@@ -83,6 +100,34 @@ def _normalize_context(context: Optional[dict]) -> tuple[Dict[str, Any], List[st
     if account_id:
         normalized["account_id"] = account_id
     return normalized, warnings
+
+
+def _filter_context_by_entry(
+    entry: Optional[str],
+    context: Optional[dict],
+) -> tuple[Dict[str, Any], List[str], bool]:
+    if not isinstance(context, dict):
+        return {}, [], False
+    key = (entry or "unknown").strip().lower()
+    allowed = ALLOWED_CONTEXT_BY_ENTRY.get(key, ALLOWED_CONTEXT_BY_ENTRY["unknown"])
+    warnings: List[str] = []
+    filtered: Dict[str, Any] = {}
+    denied = False
+    for item_key, value in context.items():
+        if item_key in allowed:
+            filtered[item_key] = value
+            continue
+        warnings.append(f"Context field '{item_key}' not allowed for entry '{key}'.")
+        if item_key in ("client_id", "account_id"):
+            denied = True
+    return filtered, warnings, denied
+
+
+def _guard_path_access(question: str, warnings: List[str]) -> bool:
+    if PATH_GUARD_RE.search(question or ""):
+        warnings.append("Blocked filesystem/path access request.")
+        return True
+    return False
 
 
 def _find_account(client: Dict[str, Any], account_id: str) -> Optional[Dict[str, Any]]:
@@ -181,15 +226,36 @@ def summarize(
     question: str,
     context: Optional[dict],
     sources: Optional[Iterable[str]] = None,
+    entry: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Summarizes the data from the different sources based on a set of rules.
     """
     question_lower = question.lower()
     enabled_sources = _as_list(sources)
-    context_data, context_warnings = _normalize_context(context)
+    scoped_context, scope_warnings, denied = _filter_context_by_entry(entry, context)
+    context_data, context_warnings = _normalize_context(scoped_context)
     warnings: List[str] = []
+    warnings.extend(scope_warnings)
     warnings.extend(context_warnings)
+    if _guard_path_access(question, warnings):
+        response = {
+            "answer": "Filesystem or path access requests are not permitted.",
+            "sources": [],
+            "confidence": "Low",
+            "warnings": warnings,
+            "routing": {"rule": "guardrail", "handler": "path_access_blocked"},
+        }
+        return normalize_assistant_response(response)
+    if denied:
+        response = {
+            "answer": "Assistant scope denied for this page context.",
+            "sources": [],
+            "confidence": "Low",
+            "warnings": warnings,
+            "routing": {"rule": "scope", "handler": "scope_denied"},
+        }
+        return normalize_assistant_response(response)
 
     for rule_details in RULES.values():
         for keyword in rule_details["keywords"]:

@@ -1,4 +1,5 @@
 import { ReactNode, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { navItems } from "../../config/navigation";
 import { ErrorBanner } from "../ui/ErrorBanner";
 import { getApiBase, useApi } from "../../lib/api";
@@ -11,6 +12,7 @@ type AppShellProps = {
 };
 
 export function AppShell({ children }: AppShellProps) {
+  const location = useLocation();
   const { error: healthError, warnings: healthWarnings, refresh } = useApi<{
     status: string;
   }>(
@@ -20,6 +22,18 @@ export function AppShell({ children }: AppShellProps) {
   const [contextOpen, setContextOpen] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const apiBase = getApiBase();
+  const entry = (() => {
+    const path = location.pathname;
+    if (path === "/") return "dashboard";
+    if (path.startsWith("/clients")) return "clients";
+    if (path.startsWith("/reports")) return "reports";
+    if (path.startsWith("/system")) return "system";
+    if (path.startsWith("/osint")) return "osint";
+    if (path.startsWith("/trackers")) return "trackers";
+    if (path.startsWith("/intel")) return "intel";
+    if (path.startsWith("/news")) return "news";
+    return "unknown";
+  })();
   const healthMessages: string[] = [];
   if (healthError) {
     healthMessages.push(`API health check failed (${apiBase}): ${healthError}`);
@@ -45,7 +59,7 @@ export function AppShell({ children }: AppShellProps) {
         <ContextDrawer variant="overlay" onClose={() => setContextOpen(false)} />
       ) : null}
       {assistantOpen ? (
-        <ChatDrawer onClose={() => setAssistantOpen(false)} />
+        <ChatDrawer entry={entry} onClose={() => setAssistantOpen(false)} />
       ) : null}
     </div>
   );

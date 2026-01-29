@@ -21,12 +21,15 @@ from utils.launcher import (
     RUNTIME_DIR,
     ensure_runtime_dirs,
     filter_existing,
+    filter_matching_pids,
     find_pids_by_port,
     install_windows_console_handler,
     pid_cmdline,
     port_in_use,
     process_alive,
+    redact_log_line,
     read_pid,
+    rotate_log,
     safe_sleep,
     tail_lines,
     terminate_pid,
@@ -77,8 +80,37 @@ def _python_deps_ready(auto_yes: bool) -> bool:
     if not missing:
         return True
     print(">> Missing Python dependencies:", ", ".join(missing))
+    if not auto_yes:
+        print(">> Aborted. Install dependencies then retry.")
+        return False
+    requirements = Path("requirements.txt")
+    if not requirements.exists():
+        print(">> requirements.txt missing. Refusing unverified install.")
+        return False
+    has_hashes = False
+    for line in requirements.read_text(encoding="utf-8", errors="ignore").splitlines():
+        text = line.strip()
+        if not text or text.startswith("#"):
+            continue
+        if "--hash=" in text:
+            has_hashes = True
+            break
+    if not has_hashes:
+        print(">> requirements.txt missing hashes. Refusing unverified install.")
+        print(">> Provide hashes (pip-compile --generate-hashes) before auto-install.")
+        return False
     try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
+        subprocess.check_call(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--require-hashes",
+                "-r",
+                "requirements.txt",
+            ]
+        )
         return True
     except Exception:
         print(">> Python dependency install failed. Fix pip setup and retry.")
@@ -141,12 +173,16 @@ def _ensure_node_modules(web_dir: Path, npm_path: str, auto_yes: bool) -> bool:
     ready, missing = _node_modules_ready(web_dir)
     if ready:
         return True
+    lockfile = web_dir / "package-lock.json"
+    if not lockfile.exists():
+        print(">> package-lock.json missing. Refusing unverified npm install.")
+        return False
     if missing == ["node_modules"]:
         print(">> Web dependencies not installed (node_modules missing).")
     else:
         print(">> Web dependencies out of date:", ", ".join(missing))
     try:
-        subprocess.check_call([npm_path, "install"], cwd=str(web_dir))
+        subprocess.check_call([npm_path, "ci"], cwd=str(web_dir))
         return True
     except Exception:
         print(">> npm install failed. Fix npm/node setup and retry.")
@@ -166,6 +202,7 @@ def _spawn_process(
     if env:
         kwargs["env"] = env
     if log_path:
+        rotate_log(log_path)
         log_path.parent.mkdir(parents=True, exist_ok=True)
         log_handle = open(log_path, "a", encoding="ascii", errors="ignore")
         kwargs["stdout"] = log_handle
@@ -225,15 +262,21 @@ def _terminate_port_processes(
     label: str,
     attempts: int = 3,
     wait_timeout: float = 6.0,
+    tokens: Optional[Iterable[str]] = None,
 ) -> bool:
     for _ in range(max(1, attempts)):
         pids = find_pids_by_port(port)
         if not pids:
             return True
-        alive = [pid for pid in pids if process_alive(pid)]
-        target = alive or pids
+        safe_pids = filter_matching_pids(pids, tokens or [])
+        if not safe_pids:
+            pid_list = ", ".join(str(pid) for pid in pids)
+            print(f">> {label} port {port} in use by non-Clear process(es) {pid_list}. Refusing to terminate.")
+            return False
+        alive = [pid for pid in safe_pids if process_alive(pid)]
+        target = alive or safe_pids
         pid_list = ", ".join(str(pid) for pid in target)
-        print(f">> {label} port {port} in use by process(es) {pid_list}. Terminating.")
+        print(f">> {label} port {port} in use by Clear process(es) {pid_list}. Terminating.")
         for pid in target:
             terminate_pid(pid, timeout=8.0)
         wait_for_port_release(port, timeout=wait_timeout)
@@ -296,7 +339,10 @@ def _start(args: argparse.Namespace) -> int:
     if not _python_deps_ready(args.yes):
         return 1
     _cleanup_existing_processes(args.api_port, args.ui_port)
-    if not _terminate_port_processes(args.api_port, "API"):
+    api_tokens = ["uvicorn", "web_api.app"]
+    web_dir = Path("web").resolve()
+    ui_tokens = ["vite", str(web_dir).lower()]
+    if not _terminate_port_processes(args.api_port, "API", tokens=api_tokens):
         return 1
 
     api_pid = read_pid(API_PID)
@@ -350,7 +396,7 @@ def _start(args: argparse.Namespace) -> int:
         if not npm_path:
             print(">> npm not found. Install Node.js (includes npm) and retry.")
             return 1
-        if not _terminate_port_processes(args.ui_port, "UI"):
+        if not _terminate_port_processes(args.ui_port, "UI", tokens=ui_tokens):
             return 1
         if not _ensure_node_modules(web_dir, npm_path, args.yes):
             return 1
@@ -397,6 +443,9 @@ def _stop(args: argparse.Namespace) -> int:
     failed = False
     api_port = getattr(args, "api_port", DEFAULT_API_PORT)
     ui_port = getattr(args, "ui_port", DEFAULT_UI_PORT)
+    api_tokens = ["uvicorn", "web_api.app"]
+    web_dir = Path("web").resolve()
+    ui_tokens = ["vite", str(web_dir).lower()]
     for label, pid_path in (("API", API_PID), ("Web", WEB_PID)):
         pid = read_pid(pid_path)
         if pid and process_alive(pid):
@@ -411,10 +460,10 @@ def _stop(args: argparse.Namespace) -> int:
             pid_path.unlink(missing_ok=True)
 
     if port_in_use(api_port):
-        if not _terminate_port_processes(api_port, "API"):
+        if not _terminate_port_processes(api_port, "API", tokens=api_tokens):
             failed = True
     if port_in_use(ui_port):
-        if not _terminate_port_processes(ui_port, "UI"):
+        if not _terminate_port_processes(ui_port, "UI", tokens=ui_tokens):
             failed = True
     wait_for_port_release(api_port, timeout=6.0)
     wait_for_port_release(ui_port, timeout=6.0)
@@ -453,7 +502,7 @@ def _logs(args: argparse.Namespace) -> int:
     for path in filter_existing(targets):
         print(f"\n>> {path}")
         for line in tail_lines(path, limit=args.lines):
-            print(line)
+            print(redact_log_line(line))
     return 0
 
 

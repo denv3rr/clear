@@ -12,6 +12,7 @@ import psutil
 
 RUNTIME_DIR = Path("data/runtime")
 LOG_DIR = Path("data/logs")
+MAX_LOG_BYTES = 2 * 1024 * 1024
 
 
 def ensure_runtime_dirs() -> None:
@@ -202,6 +203,37 @@ def tail_lines(path: Path, limit: int = 200) -> list[str]:
         return lines[-limit:]
     except Exception:
         return []
+
+
+def rotate_log(path: Optional[Path], max_bytes: int = MAX_LOG_BYTES) -> None:
+    if not path or not path.exists():
+        return
+    try:
+        if path.stat().st_size < max_bytes:
+            return
+    except Exception:
+        return
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
+    rotated = path.with_suffix(path.suffix + f".{timestamp}")
+    try:
+        path.rename(rotated)
+    except Exception:
+        return
+
+
+_REDACT_PATTERNS = [
+    re.compile(r"(X-API-Key:\s*)([^\s]+)", re.IGNORECASE),
+    re.compile(r"(api_key=)([^\s&]+)", re.IGNORECASE),
+    re.compile(r"(CLEAR_WEB_API_KEY=)([^\s]+)", re.IGNORECASE),
+    re.compile(r"(VITE_API_KEY=)([^\s]+)", re.IGNORECASE),
+]
+
+
+def redact_log_line(line: str) -> str:
+    redacted = line
+    for pattern in _REDACT_PATTERNS:
+        redacted = pattern.sub(r"\1[REDACTED]", redacted)
+    return redacted
 
 
 def filter_existing(paths: Iterable[Path]) -> list[Path]:

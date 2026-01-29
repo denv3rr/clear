@@ -43,6 +43,7 @@ type Message = {
 };
 
 type ChatDrawerProps = {
+  entry?: string;
   onClose: () => void;
 };
 
@@ -106,7 +107,7 @@ const buildScopeLabel = (context: AssistantContextState) => {
   }
   return `Scope: ${parts.join(" \u2022 ")}`;
 };
-export function ChatDrawer({ onClose }: ChatDrawerProps) {
+export function ChatDrawer({ entry, onClose }: ChatDrawerProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [region, setRegion] = useState(DEFAULT_CONTEXT.region);
@@ -163,7 +164,8 @@ export function ChatDrawer({ onClose }: ChatDrawerProps) {
       const response = await apiPost<AssistantResponse>("/api/assistant/query", {
         question: input,
         context,
-        sources: sourceList.length ? sourceList : undefined
+        sources: sourceList.length ? sourceList : undefined,
+        entry
       });
       setMessages([
         ...newMessages,

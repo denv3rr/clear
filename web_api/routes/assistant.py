@@ -17,6 +17,7 @@ class AssistantQuery(BaseModel):
     context: dict | None = None
     sources: list[str] | None = None
     mode: str = "summary"
+    entry: str | None = None
 
 
 class AssistantHistoryItem(BaseModel):
@@ -41,7 +42,7 @@ def query(
     mode = payload.mode.lower().strip()
 
     if mode == "summary":
-        response = summarize(payload.question, payload.context, payload.sources)
+        response = summarize(payload.question, payload.context, payload.sources, payload.entry)
         warnings = validate_payload(
             response,
             required_keys=("answer", "sources", "confidence", "warnings"),

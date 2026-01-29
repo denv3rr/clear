@@ -3,9 +3,12 @@ import { MeterBar } from "../components/ui/Charts";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { KpiCard } from "../components/ui/KpiCard";
 import { SectionHeader } from "../components/ui/SectionHeader";
+import { Modal } from "../components/ui/Modal";
 import {
   apiPost,
   clearApiKey,
+  getApiKeyScope,
+  getAuthHint,
   getApiKey,
   setApiKey as setApiKeyLocal,
   useApi
@@ -89,6 +92,15 @@ type MaintenanceResponse = {
 
 export default function System() {
   const [cleanupMessage, setCleanupMessage] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{
+    title: string;
+    message: string;
+    onConfirm: () => Promise<void>;
+  } | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [apiKeyOpen, setApiKeyOpen] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [apiKeyPersist, setApiKeyPersist] = useState(false);
   const { data, error, refresh } = useApi<DiagnosticsPayload>("/api/tools/diagnostics", {
     interval: 60000
   });
@@ -98,12 +110,13 @@ export default function System() {
   const memPercent = metrics?.mem_percent ?? null;
   const diskPercent = metrics?.disk_percent ?? null;
   const swapPercent = metrics?.swap_percent ?? null;
-  const authHint = "Check CLEAR_WEB_API_KEY + localStorage clear_api_key.";
+  const authHint = getAuthHint();
   const errorMessages = [
     error
       ? `Diagnostics failed: ${error}${error.includes("401") || error.includes("403") ? ` (${authHint})` : ""}`
       : null
   ].filter(Boolean) as string[];
+  const apiKeyScope = getApiKeyScope();
 
   const duplicateCount = data?.duplicates?.accounts?.count ?? 0;
   const duplicateClients = data?.duplicates?.accounts?.clients ?? 0;
@@ -121,104 +134,136 @@ export default function System() {
     source?.status === "degraded" || source?.status === "backoff"
   );
 
-  const onNormalize = async () => {
-    const confirmed = window.confirm(
-      "Normalize legacy lot timestamps? This will update stored client data."
-    );
-    if (!confirmed) return;
+  const openConfirm = (title: string, message: string, onConfirm: () => Promise<void>) => {
+    setConfirmAction({ title, message, onConfirm });
+  };
+
+  const handleConfirm = async () => {
+    if (!confirmAction) return;
+    setConfirmBusy(true);
     try {
-      const result = await apiPost<MaintenanceResponse>(
-        "/api/maintenance/normalize-lots",
-        { confirm: true }
-      );
-      setCleanupMessage(result.message || "Normalization complete.");
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Normalization failed.";
-      setCleanupMessage(message);
+      await confirmAction.onConfirm();
+    } finally {
+      setConfirmBusy(false);
+      setConfirmAction(null);
     }
   };
 
-  const onClearCache = async () => {
-    const confirmed = window.confirm(
-      "Clear the report cache? This will remove cached report artifacts."
-    );
-    if (!confirmed) return;
-    try {
-      const result = await apiPost<MaintenanceResponse>(
-        "/api/maintenance/clear-report-cache",
-        { confirm: true }
-      );
-      if (result.cleared) {
-        setCleanupMessage("Report cache cleared.");
-      } else {
-        setCleanupMessage("Report cache already empty.");
+  const onNormalize = () => {
+    openConfirm(
+      "Normalize legacy lots",
+      "Normalize legacy lot timestamps? This will update stored client data.",
+      async () => {
+        try {
+          const result = await apiPost<MaintenanceResponse>(
+            "/api/maintenance/normalize-lots",
+            { confirm: true }
+          );
+          setCleanupMessage(result.message || "Normalization complete.");
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Normalization failed.";
+          setCleanupMessage(message);
+        }
       }
-      refresh();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Report cache cleanup failed.";
-      setCleanupMessage(message);
-    }
+    );
   };
 
-  const onCleanupOrphans = async () => {
+  const onClearCache = () => {
+    openConfirm(
+      "Clear report cache",
+      "Clear the report cache? This will remove cached report artifacts.",
+      async () => {
+        try {
+          const result = await apiPost<MaintenanceResponse>(
+            "/api/maintenance/clear-report-cache",
+            { confirm: true }
+          );
+          if (result.cleared) {
+            setCleanupMessage("Report cache cleared.");
+          } else {
+            setCleanupMessage("Report cache already empty.");
+          }
+          refresh();
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Report cache cleanup failed.";
+          setCleanupMessage(message);
+        }
+      }
+    );
+  };
+
+  const onCleanupOrphans = () => {
     const totalOrphans = orphanHoldings + orphanLots;
     if (!totalOrphans) {
       setCleanupMessage("No orphaned holdings or lots detected.");
       return;
     }
-    const confirmed = window.confirm(
-      `Remove ${orphanHoldings} orphaned holding${orphanHoldings === 1 ? "" : "s"} and ${orphanLots} orphaned lot${orphanLots === 1 ? "" : "s"}?`
+    openConfirm(
+      "Cleanup orphaned records",
+      `Remove ${orphanHoldings} orphaned holding${orphanHoldings === 1 ? "" : "s"} and ${orphanLots} orphaned lot${orphanLots === 1 ? "" : "s"}?`,
+      async () => {
+        try {
+          const result = await apiPost<MaintenanceResponse>(
+            "/api/maintenance/cleanup-orphans",
+            { confirm: true }
+          );
+          setCleanupMessage(
+            `Removed ${result.removed_holdings ?? 0} orphaned holdings and ${result.removed_lots ?? 0} orphaned lots.`
+          );
+          refresh();
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Orphan cleanup failed.";
+          setCleanupMessage(message);
+        }
+      }
     );
-    if (!confirmed) return;
-    try {
-      const result = await apiPost<MaintenanceResponse>(
-        "/api/maintenance/cleanup-orphans",
-        { confirm: true }
-      );
-      setCleanupMessage(
-        `Removed ${result.removed_holdings ?? 0} orphaned holdings and ${result.removed_lots ?? 0} orphaned lots.`
-      );
-      refresh();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Orphan cleanup failed.";
-      setCleanupMessage(message);
-    }
   };
 
-  const onCleanupDuplicates = async () => {
+  const onCleanupDuplicates = () => {
     if (!duplicateCount) return;
-    const confirmed = window.confirm(
-      `Remove ${duplicateCount} duplicate account${duplicateCount === 1 ? '' : 's'} across ${duplicateClients} client${duplicateClients === 1 ? '' : 's'}? Originals will be preserved.`
-    );
-    if (!confirmed) return;
-    try {
-      const result = await apiPost<DuplicateCleanupResponse>(
-        "/api/clients/duplicates/cleanup",
-        { confirm: true }
-      );
-      const remaining = result.remaining?.count ?? 0;
-      const removed = result.removed ?? 0;
-      if (remaining > 0) {
-        setCleanupMessage(
-          `Removed ${removed} duplicate account${removed === 1 ? "" : "s"}. ${remaining} still remain.`
-        );
-      } else {
-        setCleanupMessage(
-          `Removed ${removed} duplicate account${removed === 1 ? "" : "s"}.`
-        );
+    openConfirm(
+      "Cleanup duplicate accounts",
+      `Remove ${duplicateCount} duplicate account${duplicateCount === 1 ? "" : "s"} across ${duplicateClients} client${duplicateClients === 1 ? "" : "s"}? Originals will be preserved.`,
+      async () => {
+        try {
+          const result = await apiPost<DuplicateCleanupResponse>(
+            "/api/clients/duplicates/cleanup",
+            { confirm: true }
+          );
+          const remaining = result.remaining?.count ?? 0;
+          const removed = result.removed ?? 0;
+          if (remaining > 0) {
+            setCleanupMessage(
+              `Removed ${removed} duplicate account${removed === 1 ? "" : "s"}. ${remaining} still remain.`
+            );
+          } else {
+            setCleanupMessage(
+              `Removed ${removed} duplicate account${removed === 1 ? "" : "s"}.`
+            );
+          }
+          refresh();
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Duplicate cleanup failed.";
+          setCleanupMessage(message);
+        }
       }
-      refresh();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Duplicate cleanup failed.";
-      setCleanupMessage(message);
-    }
+    );
   };
 
   const onSetApiKey = () => {
-    const key = prompt("Enter API key:");
-    if (key) {
-      setApiKeyLocal(key);
+    setApiKeyInput("");
+    setApiKeyPersist(false);
+    setApiKeyOpen(true);
+  };
+
+  const onSaveApiKey = () => {
+    const trimmed = apiKeyInput.trim();
+    if (!trimmed) {
+      return;
     }
+    setApiKeyLocal(trimmed, { persist: apiKeyPersist });
+    setApiKeyOpen(false);
+    setApiKeyInput("");
   };
 
   return (
@@ -227,7 +272,7 @@ export default function System() {
         label="SYSTEM"
         title="System Settings & Diagnostics"
         right={
-          <div className="flex space-x-2">
+          <div className="flex items-center space-x-2">
             <button
               onClick={onSetApiKey}
               className="rounded-lg border border-slate-700 bg-slate-950/80 px-3 py-1 text-xs text-slate-100 hover:border-green-400/40"
@@ -240,6 +285,9 @@ export default function System() {
             >
               Clear API Key
             </button>
+            <div className="hidden text-[11px] text-slate-400 md:flex">
+              Key: {apiKeyScope === "none" ? "unset" : apiKeyScope}
+            </div>
           </div>
         }
       />
@@ -386,6 +434,84 @@ export default function System() {
           </div>
         </div>
       </div>
+      <Modal
+        open={Boolean(confirmAction)}
+        title={confirmAction?.title ?? ""}
+        description={confirmAction?.message}
+        onClose={() => (confirmBusy ? null : setConfirmAction(null))}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setConfirmAction(null)}
+              disabled={confirmBusy}
+              className="rounded-full border border-slate-700/70 px-3 py-1 text-[11px] text-slate-300 hover:border-slate-500 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirm}
+              disabled={confirmBusy}
+              className="rounded-full border border-amber-400/60 bg-amber-500/10 px-3 py-1 text-[11px] text-amber-200 hover:border-amber-300 disabled:opacity-50"
+            >
+              {confirmBusy ? "Working..." : "Confirm"}
+            </button>
+          </>
+        }
+      >
+        <p className="text-xs text-slate-300">
+          This action cannot be undone. Confirm only if you have recent backups.
+        </p>
+      </Modal>
+      <Modal
+        open={apiKeyOpen}
+        title="Set API Key"
+        description="Keys are stored locally in this browser. Use session mode for temporary access."
+        onClose={() => setApiKeyOpen(false)}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setApiKeyOpen(false)}
+              className="rounded-full border border-slate-700/70 px-3 py-1 text-[11px] text-slate-300 hover:border-slate-500"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onSaveApiKey}
+              className="rounded-full border border-green-400/60 bg-green-500/10 px-3 py-1 text-[11px] text-green-200 hover:border-green-300"
+            >
+              Save Key
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <label className="block text-xs text-slate-300">
+            API Key
+            <input
+              type="password"
+              value={apiKeyInput}
+              onChange={(event) => setApiKeyInput(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 focus:border-green-400/60 focus:outline-none"
+              placeholder="Enter CLEAR_WEB_API_KEY"
+            />
+          </label>
+          <label className="flex items-center gap-2 text-xs text-slate-300">
+            <input
+              type="checkbox"
+              checked={apiKeyPersist}
+              onChange={(event) => setApiKeyPersist(event.target.checked)}
+            />
+            Remember on this device (persists in local storage)
+          </label>
+          <p className="text-[11px] text-slate-400">
+            Rotating keys? Save the new key here and clear old keys on other devices.
+          </p>
+        </div>
+      </Modal>
     </Card>
   );
 }

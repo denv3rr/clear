@@ -39,10 +39,15 @@ WEB_PID = RUNTIME_DIR / "web.pid"
 
 def _health_check() -> bool:
     try:
+        headers = {}
+        api_key = os.getenv("CLEAR_WEB_API_KEY", "")
+        if api_key:
+            headers["X-API-Key"] = api_key
         response = httpx.get(
             "http://127.0.0.1:8000/api/health",
             timeout=2.0,
             trust_env=False,
+            headers=headers,
         )
         return response.status_code == 200
     except Exception:
@@ -71,11 +76,38 @@ def _python_deps_ready(auto_yes: bool) -> bool:
     if not missing:
         return True
     print(">> Missing Python dependencies:", ", ".join(missing))
-    if auto_yes:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
-        return True
-    print(">> Aborted. Install dependencies then retry.")
-    return False
+    if not auto_yes:
+        print(">> Aborted. Install dependencies then retry.")
+        return False
+    requirements = "requirements.txt"
+    if not os.path.isfile(requirements):
+        print(">> requirements.txt missing. Refusing unverified install.")
+        return False
+    has_hashes = False
+    with open(requirements, "r", encoding="utf-8", errors="ignore") as handle:
+        for line in handle:
+            text = line.strip()
+            if not text or text.startswith("#"):
+                continue
+            if "--hash=" in text:
+                has_hashes = True
+                break
+    if not has_hashes:
+        print(">> requirements.txt missing hashes. Refusing unverified install.")
+        print(">> Provide hashes (pip-compile --generate-hashes) before auto-install.")
+        return False
+    subprocess.check_call(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--require-hashes",
+            "-r",
+            requirements,
+        ]
+    )
+    return True
 
 
 def _candidate_paths() -> list[str]:
@@ -118,6 +150,10 @@ def _npm_available() -> str | None:
 
 
 def _ensure_node_modules(web_dir: str, npm_path: str, auto_yes: bool) -> bool:
+    lockfile = os.path.join(web_dir, "package-lock.json")
+    if not os.path.isfile(lockfile):
+        print(">> package-lock.json missing. Refusing unverified npm install.")
+        return False
     if os.path.isdir(os.path.join(web_dir, "node_modules")):
         required = ["react-markdown", "remark-gfm"]
         missing = [
@@ -128,7 +164,7 @@ def _ensure_node_modules(web_dir: str, npm_path: str, auto_yes: bool) -> bool:
         print(">> Web dependencies missing:", ", ".join(missing))
         if auto_yes:
             try:
-                subprocess.check_call([npm_path, "install"], cwd=web_dir)
+                subprocess.check_call([npm_path, "ci"], cwd=web_dir)
                 return True
             except FileNotFoundError:
                 print(">> npm not found. Install Node.js (includes npm) and retry.")
@@ -140,7 +176,7 @@ def _ensure_node_modules(web_dir: str, npm_path: str, auto_yes: bool) -> bool:
     print(">> Web dependencies not installed (node_modules missing).")
     if auto_yes:
         try:
-            subprocess.check_call([npm_path, "install"], cwd=web_dir)
+            subprocess.check_call([npm_path, "ci"], cwd=web_dir)
             return True
         except FileNotFoundError:
             print(">> npm not found. Install Node.js (includes npm) and retry.")
@@ -175,25 +211,27 @@ def _terminate_port_processes(
     if not pids:
         return True
     safe_pids = filter_matching_pids(pids, tokens)
-    remaining = [pid for pid in pids if pid not in safe_pids]
     if safe_pids:
         pid_list = ", ".join(str(pid) for pid in safe_pids)
         print(f">> {label} port {port} in use by Clear process(es) {pid_list}. Terminating.")
         for pid in safe_pids:
             terminate_pid(pid)
+        wait_for_port_release(port, timeout=8.0)
+    remaining = [pid for pid in find_pids_by_port(port) if pid not in safe_pids]
     if remaining:
-        for pid in remaining:
-            terminate_pid(pid)
-        return True
+        pid_list = ", ".join(str(pid) for pid in remaining)
+        print(f">> {label} port {port} in use by non-Clear process(es) {pid_list}. Refusing to terminate.")
+        return False
     return True
 
 
-def _force_release_ports() -> None:
+def _force_release_ports(api_tokens: list[str], ui_tokens: list[str]) -> None:
     for port in (8000, 5173):
         pids = find_pids_by_port(port)
-        for pid in pids:
+        tokens = api_tokens if port == 8000 else ui_tokens
+        safe_pids = filter_matching_pids(pids, tokens)
+        for pid in safe_pids:
             terminate_pid(pid, timeout=8.0)
-        terminate_pids_by_port(port, None, timeout=8.0)
         wait_for_port_release(port, timeout=10.0)
 
 
@@ -219,11 +257,14 @@ def _launch_processes(
     ensure_runtime_dirs()
     _cleanup_existing_processes()
     web_dir = os.path.join(os.getcwd(), "web")
+    web_token = web_dir.lower()
+    api_tokens = ["uvicorn", "web_api.app:app"]
+    ui_tokens = ["vite", web_token]
     if not _terminate_port_processes(
-        8000, "API", ["uvicorn", "web_api.app:app"], auto_yes
+        8000, "API", api_tokens, auto_yes
     ):
         return 1
-    if not _terminate_port_processes(5173, "UI", ["vite"], auto_yes):
+    if not _terminate_port_processes(5173, "UI", ui_tokens, auto_yes):
         return 1
     api_cmd = [sys.executable, "-m", "uvicorn", "web_api.app:app"]
     if reload_api:
@@ -280,11 +321,11 @@ def _launch_processes(
         for pid_path in (API_PID, WEB_PID):
             if pid_path.exists():
                 pid_path.unlink(missing_ok=True)
-        terminate_pids_by_port(api_port, ["uvicorn", "web_api.app:app"], timeout=8.0)
-        terminate_pids_by_port(ui_port, ["vite", "npm", "node"], timeout=8.0)
+        terminate_pids_by_port(api_port, api_tokens, timeout=8.0)
+        terminate_pids_by_port(ui_port, ui_tokens, timeout=8.0)
         wait_for_port_release(api_port, timeout=10.0)
         wait_for_port_release(ui_port, timeout=10.0)
-        _force_release_ports()
+        _force_release_ports(api_tokens, ui_tokens)
 
     def _handle_signal(signum: int, _frame: object) -> None:
         print("\n>> Shutting down web stack...")
