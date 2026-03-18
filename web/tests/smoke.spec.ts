@@ -42,6 +42,8 @@ test("intel and news pages render real-data workspaces", async ({ page }) => {
   await page.goto("/osint?tab=intel");
   await expect(page.getByText("Global Impact Summary")).toBeVisible();
   await expect(page.getByText("Combined Overview")).toBeVisible();
+  await expect(page.getByText("Regional Emotion Matrix")).toBeVisible();
+  await expect(page.getByText("Conflict context")).toBeVisible();
 
   await page.goto("/osint?tab=news");
   await expect(page.getByText("Market Signals")).toBeVisible();
@@ -64,6 +66,14 @@ test("tracker globe overlay opens with live or degraded scene state", async ({ p
   await expect(page.getByText("Scene Status")).toBeVisible();
   await expect(page.getByText("Focus Targets")).toBeVisible();
   await expectAnyVisible([
+    page.getByTestId("globe-preset-free"),
+    page.getByText("Unavailable", { exact: true })
+  ]);
+  await expectAnyVisible([
+    page.getByText("Visible Aggregate"),
+    page.getByText("Unavailable", { exact: true })
+  ]);
+  await expectAnyVisible([
     page.getByRole("button", { name: "Refresh Scene" }),
     page.getByRole("button", { name: "Retry Scene" })
   ]);
@@ -80,7 +90,23 @@ test("intel globe overlay opens with regional scene controls", async ({ page }) 
     page.getByRole("button", { name: "Retry Scene" })
   ]);
   await expectAnyVisible([
-    page.getByTestId("globe-lens-conflict"),
+    page.getByTestId("globe-lens-emotion"),
     page.getByText("Unavailable", { exact: true })
   ]);
+  await expectAnyVisible([
+    page.getByText("Visible Aggregate"),
+    page.getByText("Unavailable", { exact: true })
+  ]);
+  await expectAnyVisible([
+    page.getByText("Visible Conflict Overlays"),
+    page.getByText("Unavailable", { exact: true })
+  ]);
+});
+
+test("globe overlay closes with Escape", async ({ page }) => {
+  await page.goto("/osint?tab=trackers");
+  await page.getByTestId("osint-open-globe").click();
+  await expect(page.getByTestId("globe-overlay")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("globe-overlay")).toHaveCount(0);
 });

@@ -499,12 +499,84 @@ Current measured direction is much healthier than the pre-pass state:
 
 That means the next visual phase should treat bundle budgets as a design constraint, not a later cleanup item.
 
+### Phase 0.9 Intel Contract Correction Note
+
+The next blocker was not rendering polish. It was an upstream intel-contract
+error that made the globe and Intel page undercount real conflict/disruption
+coverage.
+
+Root cause now recorded:
+
+- RSS enrichment was classifying on article titles only, which missed explicit
+  conflict/weather/scarcity context that often appears in feed summaries.
+- Region inference was too sparse for real theaters like Ukraine/Russia ->
+  Europe and Iran/Israel/Yemen -> Middle East.
+- Conflict/news context was overloaded into one mixed category bucket, which
+  made `conflict` counts look empty even when the article set was clearly about
+  war, strikes, shortages, or infrastructure attacks.
+- The earlier GDELT regional query shape relied on `sourcecountry` fragments
+  that were not grounded for multi-word repo regions.
+
+Phase 0.9 corrected that by moving the shared contract to:
+
+- title-plus-summary deterministic classification
+- explicit `event_tags`, `event_counts`, `impact_channels`, and
+  `impact_counts`
+- broader reviewed event coverage for conflict, disruption, scarcity,
+  disaster, sanctions, and infrastructure
+- broader reviewed region aliases for key active theaters
+- a centroid-based hotspot pulse layer for the globe that is clearly presented
+  as a regional highlight, not exact incident geometry
+- region and industry emotion rollups surfaced in the Intel page and selected
+  globe-region detail
+
+What is still intentionally not claimed:
+
+- hotspot pulses are not country polygons or incident footprints
+- weather remains representative-coordinate meteorology, with news-derived
+  weather context kept separate from observed meteorological inputs
+- article geography is still region-scoped text classification, not article
+  geocoding truth
+
+Specialist tracks now required before full area fills:
+
+1. Event-taxonomy specialist: continue widening reviewed term coverage and add
+   provenance-backed captured fixtures so category drift can be caught without
+   fabricated positive-path data.
+2. Geo-intel specialist: evaluate GDELT GEO 2.0 plus other reviewed open
+   geospatial sources for truthful country/region overlays, wildfire feeds, and
+   future non-centroid hotspot geometry.
+3. UX/visual systems specialist: evolve centroid pulses into layered area
+   visuals only after real polygons or reviewed display extents exist.
+4. Browser verification specialist: keep visual baselines on settled states and
+   continue replacing invented positive-path browser assertions with real local
+   or provenance-backed fixtures.
+
+Primary research references used for this correction and the next step:
+
+- GDELT DOC 2.0 API:
+  https://blog.gdeltproject.org/gdelt-doc-2-0-api-debuts/
+- GDELT GEO 2.0 API:
+  https://blog.gdeltproject.org/gdelt-geo-2-0-api-debuts/
+- spaCy rule-based matching:
+  https://spacy.io/usage/rule-based-matching
+- spaCy EntityRuler:
+  https://spacy.io/api/entityruler
+- Open-Meteo API docs:
+  https://open-meteo.com/en/docs
+
 ## Immediate Next Move
 
 With the architecture spike and hardening slice in place, the next move is:
 
-1. Add denser globe-native scene adapters for cargo/logistics plus richer regional weather/conflict/news overlays on top of `GeoScenePayload`.
-2. Reuse the same scene payloads for CLI summaries and exports.
-3. Add saved presentation presets and scene exports for report workflows.
-4. Expand visual regression coverage to filtered overlays, empty scenes, and failure/fallback states.
-5. Keep new animation work inside the bundle guardrails and revisit async chunk composition before layering on denser heatmaps, particle fields, or additional 3D chart packages.
+1. Add provenance-backed captured fixtures for Intel/globe positive-path visual
+   checks so we can validate loaded hotspot/emotion states without fabricated
+   scene data.
+2. Evaluate reviewed open geospatial inputs for exact wildfire/disaster and
+   country/region overlays before any polygon-style fill work lands.
+3. Add cargo/logistics and regional news/conflict/weather adapters on top of
+   the corrected `GeoScenePayload` contract.
+4. Reuse the same scene payloads for CLI summaries and exports.
+5. Keep new animation work inside the bundle guardrails and revisit async chunk
+   composition before layering on denser heatmaps, particle fields, or
+   additional 3D chart packages.

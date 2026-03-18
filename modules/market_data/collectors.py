@@ -1,10 +1,11 @@
+import html
 import json
 import time
 import os
 import re
 from email.utils import parsedate_to_datetime
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 from xml.etree import ElementTree
 
 import requests
@@ -44,10 +45,12 @@ class RSSCollector(Collector):
             title = (item.findtext("title") or "").strip()
             link = (item.findtext("link") or "").strip()
             pub_date = (item.findtext("pubDate") or "").strip()
+            summary = _extract_item_summary(item)
             if not title:
                 continue
             items.append({
                 "title": title,
+                "summary": summary,
                 "url": link,
                 "published": pub_date,
                 "source": self.name,
@@ -58,6 +61,63 @@ class RSSCollector(Collector):
 def _normalize_title(title: str) -> str:
     cleaned = re.sub(r"[^a-z0-9]+", " ", (title or "").lower()).strip()
     return re.sub(r"\s+", " ", cleaned)
+
+
+def _clean_text(value: str) -> str:
+    if not value:
+        return ""
+    text = html.unescape(value)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _extract_item_summary(item: ElementTree.Element) -> str:
+    candidates: List[str] = []
+    for child in list(item):
+        tag = str(child.tag or "").lower()
+        text = _clean_text(child.text or "")
+        if not text:
+            continue
+        if tag.endswith("description") or tag.endswith("summary") or tag.endswith("encoded"):
+            candidates.append(text)
+    if candidates:
+        return max(candidates, key=len)
+    return ""
+
+
+def _normalize_match_text(text: str) -> str:
+    cleaned = re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).strip()
+    if not cleaned:
+        return " "
+    return f" {re.sub(r'\s+', ' ', cleaned)} "
+
+
+def _normalize_match_term(term: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", (term or "").lower()).strip())
+
+
+def _match_terms(text_norm: str, keywords: Sequence[str]) -> List[str]:
+    matches: List[str] = []
+    for keyword in keywords:
+        normalized = _normalize_match_term(keyword)
+        if normalized and f" {normalized} " in text_norm:
+            matches.append(keyword)
+    return matches
+
+
+def _extract_term_matches(
+    text_norm: str,
+    keyword_map: Dict[str, Sequence[str]],
+) -> Tuple[Dict[str, int], Dict[str, List[str]]]:
+    counts: Dict[str, int] = {}
+    matched_terms: Dict[str, List[str]] = {}
+    for key, keywords in keyword_map.items():
+        matches = _match_terms(text_norm, keywords)
+        if matches:
+            counts[key] = len(matches)
+            matched_terms[key] = sorted(dict.fromkeys(matches))
+    return counts, matched_terms
 
 
 def _parse_published_ts(value: str) -> Optional[int]:
@@ -113,7 +173,7 @@ def _load_health() -> Dict[str, Dict[str, object]]:
     if not os.path.exists(HEALTH_FILE):
         return {}
     try:
-        with open(HEALTH_FILE, "r", encoding="ascii") as f:
+        with open(HEALTH_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
         return data if isinstance(data, dict) else {}
     except Exception:
@@ -124,7 +184,7 @@ def _save_health(health: Dict[str, Dict[str, object]]) -> None:
     parent = os.path.dirname(HEALTH_FILE)
     if parent:
         os.makedirs(parent, exist_ok=True)
-    with open(HEALTH_FILE, "w", encoding="ascii") as f:
+    with open(HEALTH_FILE, "w", encoding="utf-8") as f:
         json.dump(health, f, indent=2)
 
 
@@ -163,26 +223,317 @@ INDUSTRY_KEYWORDS: Dict[str, List[str]] = {
     "tech": ["semiconductor", "chip", "ai", "cloud", "telecom", "cyber"],
 }
 
-CONFLICT_CATEGORIES: List[str] = [
+EVENT_TAG_KEYWORDS: Dict[str, List[str]] = {
+    "conflict": [
+        "war",
+        "conflict",
+        "attack",
+        "attacks",
+        "attacked",
+        "missile",
+        "missiles",
+        "drone",
+        "drones",
+        "shelling",
+        "bombing",
+        "bombardment",
+        "raid",
+        "raids",
+        "offensive",
+        "incursion",
+        "invasion",
+        "troops",
+        "military",
+        "airstrike",
+        "rocket",
+        "rockets",
+        "artillery",
+        "hostage",
+        "ceasefire",
+        "blockade",
+        "naval clash",
+    ],
+    "disruption": [
+        "strike",
+        "strikes",
+        "walkout",
+        "walkouts",
+        "lockout",
+        "lockouts",
+        "protest",
+        "protests",
+        "shutdown",
+        "closure",
+        "closures",
+        "closed",
+        "halt",
+        "halts",
+        "stoppage",
+        "disruption",
+        "disrupted",
+        "delay",
+        "delays",
+        "cancelled",
+        "canceled",
+        "reroute",
+        "rerouting",
+        "grounded",
+        "airspace closure",
+        "port closure",
+    ],
+    "scarcity": [
+        "shortage",
+        "shortages",
+        "food shortage",
+        "food shortages",
+        "water shortage",
+        "water shortages",
+        "scarcity",
+        "rationing",
+        "rationed",
+        "famine",
+        "hunger",
+        "food insecurity",
+        "water stress",
+        "drought",
+        "droughts",
+        "crop failure",
+        "crop failures",
+        "blackout",
+        "blackouts",
+        "outage",
+        "outages",
+    ],
+    "disaster": [
+        "wildfire",
+        "wildfires",
+        "fire",
+        "fires",
+        "earthquake",
+        "earthquakes",
+        "quake",
+        "eruption",
+        "eruptions",
+        "landslide",
+        "landslides",
+        "flood",
+        "flooding",
+        "storm surge",
+        "evacuation",
+        "evacuations",
+        "heatwave",
+        "heat wave",
+        "cold snap",
+    ],
+    "weather": [
+        "storm",
+        "storms",
+        "hurricane",
+        "hurricanes",
+        "cyclone",
+        "cyclones",
+        "typhoon",
+        "typhoons",
+        "tornado",
+        "tornadoes",
+        "flood",
+        "flooding",
+        "blizzard",
+        "snowstorm",
+        "heavy rain",
+        "rainfall",
+        "heatwave",
+        "heat wave",
+        "drought",
+        "smoke",
+    ],
+    "sanctions": [
+        "sanction",
+        "sanctions",
+        "tariff",
+        "tariffs",
+        "embargo",
+        "embargoes",
+        "export control",
+        "export controls",
+        "restriction",
+        "restrictions",
+        "blacklist",
+    ],
+    "infrastructure": [
+        "pipeline",
+        "refinery",
+        "grid",
+        "power plant",
+        "substation",
+        "bridge",
+        "port",
+        "ports",
+        "canal",
+        "rail",
+        "railway",
+        "airport",
+        "airspace",
+        "telecom",
+        "communications",
+        "internet outage",
+        "subsea cable",
+        "factory",
+        "terminal",
+    ],
+}
+
+IMPACT_CHANNEL_KEYWORDS: Dict[str, List[str]] = {
+    "energy": ["oil", "crude", "gas", "lng", "refinery", "pipeline", "power", "electricity", "grid", "fuel"],
+    "shipping_logistics": [
+        "shipping",
+        "port",
+        "ports",
+        "freight",
+        "logistics",
+        "container",
+        "supply chain",
+        "maritime",
+        "rail",
+        "railway",
+        "truck",
+        "trucking",
+        "canal",
+        "strait",
+        "route",
+        "routes",
+    ],
+    "aviation": ["airline", "airport", "aviation", "flight", "airspace", "carrier", "runway", "air cargo"],
+    "agriculture_food": [
+        "crop",
+        "grain",
+        "wheat",
+        "corn",
+        "soy",
+        "soybean",
+        "harvest",
+        "agriculture",
+        "fertilizer",
+        "livestock",
+        "food",
+        "farm",
+    ],
+    "water_utilities": ["water", "reservoir", "utility", "utilities", "desalination", "wastewater", "hydro"],
+    "defense_security": ["defense", "military", "weapon", "missile", "security", "troops", "navy", "army", "drone"],
+    "manufacturing_supply_chain": [
+        "factory",
+        "manufacturing",
+        "plant",
+        "assembly",
+        "semiconductor",
+        "chip",
+        "industrial",
+        "mine",
+        "smelter",
+        "supplier",
+    ],
+    "finance_insurance": ["bank", "rates", "inflation", "credit", "bond", "treasury", "insurance", "insurer", "fx", "currency"],
+}
+
+HOTSPOT_EVENT_TAGS: List[str] = [
     "conflict",
-    "world",
-    "energy",
-    "shipping",
-    "defense",
-    "finance",
-    "tech",
-    "agriculture",
-    "general",
+    "disruption",
+    "scarcity",
+    "disaster",
+    "sanctions",
+    "infrastructure",
 ]
+
+CONFLICT_CATEGORIES: List[str] = sorted(HOTSPOT_EVENT_TAGS)
 
 
 REGION_KEYWORDS: Dict[str, List[str]] = {
-    "North America": ["us", "u.s.", "united states", "canada", "mexico"],
-    "Europe": ["europe", "eu", "uk", "germany", "france", "italy"],
-    "Middle East": ["middle east", "gulf", "iran", "iraq", "israel", "saudi", "qatar"],
-    "Asia-Pacific": ["china", "japan", "korea", "australia", "asia", "india"],
-    "Latin America": ["brazil", "argentina", "latin america", "chile", "peru"],
-    "Africa": ["africa", "nigeria", "south africa", "egypt"],
+    "North America": [
+        "north america",
+        "united states",
+        "u.s.",
+        "usa",
+        "canada",
+        "mexico",
+        "panama canal",
+    ],
+    "Europe": [
+        "europe",
+        "european union",
+        "eu",
+        "united kingdom",
+        "uk",
+        "britain",
+        "germany",
+        "france",
+        "italy",
+        "ukraine",
+        "russia",
+        "poland",
+        "baltic",
+        "black sea",
+        "romania",
+        "belarus",
+    ],
+    "Middle East": [
+        "middle east",
+        "gulf",
+        "iran",
+        "iraq",
+        "israel",
+        "gaza",
+        "lebanon",
+        "syria",
+        "yemen",
+        "saudi arabia",
+        "saudi",
+        "qatar",
+        "united arab emirates",
+        "uae",
+        "oman",
+        "jordan",
+        "red sea",
+    ],
+    "Asia-Pacific": [
+        "asia pacific",
+        "asia-pacific",
+        "china",
+        "taiwan",
+        "japan",
+        "korea",
+        "south korea",
+        "north korea",
+        "australia",
+        "india",
+        "philippines",
+        "indonesia",
+        "vietnam",
+        "south china sea",
+    ],
+    "Latin America": [
+        "latin america",
+        "brazil",
+        "argentina",
+        "chile",
+        "peru",
+        "colombia",
+        "venezuela",
+        "ecuador",
+        "panama",
+    ],
+    "Africa": [
+        "africa",
+        "nigeria",
+        "south africa",
+        "egypt",
+        "sudan",
+        "ethiopia",
+        "kenya",
+        "sahel",
+        "libya",
+        "morocco",
+        "algeria",
+    ],
 }
 
 NEWS_CATEGORY_KEYWORDS: Dict[str, List[str]] = {
@@ -190,16 +541,20 @@ NEWS_CATEGORY_KEYWORDS: Dict[str, List[str]] = {
     "rates": ["rates", "yield", "treasury", "bond", "fed", "central bank"],
     "energy": ["oil", "gas", "opec", "energy", "power", "electricity"],
     "shipping": ["shipping", "port", "freight", "logistics", "container", "supply chain"],
-    "conflict": ["war", "strike", "protest", "attack", "conflict", "ceasefire"],
+    "conflict": ["war", "strike", "protest", "attack", "conflict", "ceasefire", "missile", "drone", "shelling"],
+    "weather": ["storm", "flood", "hurricane", "cyclone", "wildfire", "heatwave", "drought"],
     "technology": ["ai", "chip", "semiconductor", "cloud", "cyber", "software"],
     "economy": ["gdp", "inflation", "jobs", "employment", "economy", "growth"],
     "policy": ["regulation", "sanction", "tariff", "policy", "election", "government"],
     "commodities": ["gold", "copper", "wheat", "corn", "soy", "commodity"],
 }
 
-NEWS_CATEGORIES: List[str] = sorted(
-    {*(NEWS_CATEGORY_KEYWORDS.keys()), *CONFLICT_CATEGORIES}
-)
+NEWS_CATEGORIES: List[str] = sorted({
+    *NEWS_CATEGORY_KEYWORDS.keys(),
+    *EVENT_TAG_KEYWORDS.keys(),
+    *IMPACT_CHANNEL_KEYWORDS.keys(),
+    *INDUSTRY_KEYWORDS.keys(),
+})
 
 NEWS_CATEGORY_ALIASES: Dict[str, str] = {
     "technology": "tech",
@@ -209,11 +564,12 @@ NEWS_CATEGORY_ALIASES: Dict[str, str] = {
 }
 
 EMOTION_KEYWORDS: Dict[str, List[str]] = {
-    "fear": ["fear", "panic", "crisis", "turmoil", "shock", "uncertainty", "risk"],
-    "anger": ["anger", "backlash", "protest", "strike", "boycott", "sanction"],
-    "optimism": ["rally", "surge", "boost", "recover", "optimism", "beat"],
-    "sadness": ["slump", "decline", "recession", "layoffs", "loss", "downgrade"],
-    "anticipation": ["forecast", "expect", "outlook", "ahead", "guidance", "plan"],
+    "fear": ["fear", "panic", "crisis", "turmoil", "shock", "uncertainty", "risk", "alarm"],
+    "anger": ["anger", "backlash", "protest", "strike", "boycott", "sanction", "outrage"],
+    "optimism": ["rally", "surge", "boost", "recover", "optimism", "beat", "rebound"],
+    "sadness": ["slump", "decline", "recession", "layoffs", "loss", "downgrade", "damage"],
+    "anticipation": ["forecast", "expect", "outlook", "ahead", "guidance", "plan", "watch", "monitor"],
+    "relief": ["relief", "reopen", "resume", "aid", "stabilize"],
 }
 
 SENTIMENT_LEXICON: Dict[str, int] = {
@@ -242,19 +598,11 @@ SENTIMENT_LEXICON: Dict[str, int] = {
 
 def _extract_news_categories(
     text_l: str,
-    tags: List[str],
-    industries: List[str],
 ) -> List[str]:
     categories = set()
     for key, keywords in NEWS_CATEGORY_KEYWORDS.items():
-        if any(word in text_l for word in keywords):
+        if _match_terms(text_l, keywords):
             categories.add(key)
-    for tag in tags:
-        if tag:
-            categories.add(str(tag).lower())
-    for industry in industries:
-        if industry:
-            categories.add(str(industry).lower())
     if not categories:
         categories.add("general")
     normalized = set()
@@ -282,33 +630,62 @@ def _score_sentiment(text: str) -> float:
 def _extract_emotions(text_l: str) -> Dict[str, int]:
     emotions: Dict[str, int] = {}
     for emotion, keywords in EMOTION_KEYWORDS.items():
-        count = sum(1 for word in keywords if word in text_l)
+        count = len(_match_terms(text_l, keywords))
         if count:
             emotions[emotion] = count
     return emotions
 
 
-def classify_event(text: str) -> Dict[str, List[str]]:
-    text_l = (text or "").lower()
-    industries = [k for k, words in INDUSTRY_KEYWORDS.items() if any(w in text_l for w in words)]
-    regions = [k for k, words in REGION_KEYWORDS.items() if any(w in text_l for w in words)]
-    tags = []
-    if "strike" in text_l or "protest" in text_l:
-        tags.append("disruption")
-    if "attack" in text_l or "war" in text_l or "conflict" in text_l:
-        tags.append("conflict")
-    if "storm" in text_l or "hurricane" in text_l or "flood" in text_l:
-        tags.append("weather")
-    categories = _extract_news_categories(text_l, tags, industries)
-    sentiment = _score_sentiment(text)
-    emotions = _extract_emotions(text_l)
+def classify_event(text: str, summary: str = "") -> Dict[str, object]:
+    combined_text = " ".join(part for part in [text, summary] if part).strip()
+    text_norm = _normalize_match_text(combined_text)
+    industry_counts, industry_terms = _extract_term_matches(text_norm, INDUSTRY_KEYWORDS)
+    region_counts, place_terms = _extract_term_matches(text_norm, REGION_KEYWORDS)
+    event_counts, event_terms = _extract_term_matches(text_norm, EVENT_TAG_KEYWORDS)
+    impact_counts, impact_terms = _extract_term_matches(text_norm, IMPACT_CHANNEL_KEYWORDS)
+    industries = sorted(industry_counts.keys())
+    regions = sorted(region_counts.keys())
+    event_tags = sorted(event_counts.keys())
+    impact_channels = sorted(impact_counts.keys())
+    categories = _extract_news_categories(text_norm)
+    sentiment = _score_sentiment(combined_text)
+    emotions = _extract_emotions(text_norm)
     return {
         "industries": industries,
         "regions": regions,
-        "tags": tags,
+        "tags": event_tags,
+        "event_tags": event_tags,
+        "event_terms": sorted(
+            {
+                term
+                for values in event_terms.values()
+                for term in values
+            }
+        ),
+        "impact_channels": impact_channels,
+        "impact_terms": sorted(
+            {
+                term
+                for values in impact_terms.values()
+                for term in values
+            }
+        ),
+        "place_terms": sorted(
+            {
+                term
+                for values in place_terms.values()
+                for term in values
+            }
+        ),
         "categories": categories,
         "sentiment": sentiment,
         "emotions": emotions,
+        "source_text": combined_text,
+        "industry_terms": {
+            key: values
+            for key, values in industry_terms.items()
+            if values
+        },
     }
 
 
@@ -334,8 +711,9 @@ def fetch_news_items(limit: int = 40, enabled: Optional[List[str]] = None) -> Di
     enriched: List[Dict[str, object]] = []
     for item in items:
         title = str(item.get("title", ""))
+        summary = str(item.get("summary", "") or "")
         published_ts = _parse_published_ts(str(item.get("published", "")))
-        meta = classify_event(title)
+        meta = classify_event(title, summary=summary)
         enriched.append({
             **item,
             **meta,
@@ -357,7 +735,7 @@ def load_cached_news(
     allow_stale: bool = False,
 ) -> Optional[List[Dict[str, object]]]:
     try:
-        with open(path, "r", encoding="ascii") as f:
+        with open(path, "r", encoding="utf-8") as f:
             payload = json.load(f)
         if not isinstance(payload, dict):
             return None
@@ -379,5 +757,5 @@ def store_cached_news(path: str, items: List[Dict[str, object]]) -> None:
             os.makedirs(parent, exist_ok=True)
     except Exception:
         parent = None
-    with open(path, "w", encoding="ascii") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)

@@ -14,6 +14,11 @@ import * as THREE from "three";
 import { X, Orbit, RadioTower, Route, AlertTriangle } from "lucide-react";
 import { apiGet, useApi } from "../../lib/api";
 import {
+  buildGlobeContextCanvas,
+  loadGlobeGeography,
+  type GlobeGeographyData,
+} from "../../lib/globeGeography";
+import {
   type IntelSceneLens,
   type SceneCameraPreset,
   type TrackerSceneMode,
@@ -25,8 +30,8 @@ type SceneFeature = {
   id: string;
   layer: string;
   geometry: {
-    type: "Point" | "LineString";
-    coordinates: number[] | number[][];
+    type: "Point" | "LineString" | "Polygon" | "MultiPolygon";
+    coordinates: number[] | number[][] | number[][][] | number[][][][];
   };
   ts?: number | null;
   properties?: Record<string, unknown>;
@@ -41,9 +46,20 @@ type SceneFeature = {
 
 type SceneLayer = {
   id: string;
-  kind: "point" | "path";
+  kind: "point" | "path" | "pulse" | "area";
   label: string;
   features: SceneFeature[];
+  style_hints?: Record<string, unknown>;
+  time_bounds?: {
+    start_ts?: number | null;
+    end_ts?: number | null;
+  };
+  legend?: Array<{
+    label?: string;
+    value?: string;
+    color?: string;
+  }>;
+  filters?: Record<string, unknown>;
   meta?: {
     count?: number;
     warnings?: string[];
@@ -81,8 +97,16 @@ type ScenePayload = {
   meta?: {
     timestamp?: number;
     available_lenses?: string[];
+    available_overlays?: string[];
     warnings?: string[];
   };
+};
+
+type IntelMeta = {
+  categories: string[];
+  industries: string[];
+  regions: Array<{ industries: string[]; name: string }>;
+  sources: string[];
 };
 
 type TrackerPresentationPresetId =
@@ -95,7 +119,8 @@ type IntelPresentationPresetId =
   | "global-risk"
   | "weather-watch"
   | "conflict-watch"
-  | "news-pressure";
+  | "news-pressure"
+  | "emotion-watch";
 
 type PresentationPresetId = TrackerPresentationPresetId | IntelPresentationPresetId;
 
@@ -109,10 +134,12 @@ const INTEL_LENS_OPTIONS: Array<{ id: IntelSceneLens; label: string }> = [
   { id: "combined", label: "Combined" },
   { id: "weather", label: "Weather" },
   { id: "conflict", label: "Conflict" },
-  { id: "news", label: "News" }
+  { id: "news", label: "News" },
+  { id: "emotion", label: "Emotion" }
 ];
 
 const CAMERA_PRESET_OPTIONS: Array<{ id: SceneCameraPreset; label: string }> = [
+  { id: "free", label: "Free Orbit" },
   { id: "overview", label: "Overview" },
   { id: "focus", label: "Follow Selection" }
 ];
@@ -139,7 +166,8 @@ const INTEL_PRESENTATION_PRESETS: Array<{
   { id: "global-risk", label: "Global Risk" },
   { id: "weather-watch", label: "Weather Watch" },
   { id: "conflict-watch", label: "Conflict Watch" },
-  { id: "news-pressure", label: "News Pressure" }
+  { id: "news-pressure", label: "News Pressure" },
+  { id: "emotion-watch", label: "Emotion Watch" }
 ];
 
 function latLonToVector(
@@ -211,6 +239,125 @@ function getFeatureNewsCount(feature: SceneFeature) {
   return getNumericValue(asRecord(asRecord(feature.properties)?.news)?.count) || 0;
 }
 
+function getFeatureCoordinates(feature: SceneFeature) {
+  const coords = Array.isArray(feature.geometry.coordinates)
+    ? (feature.geometry.coordinates as number[])
+    : [];
+  if (coords.length < 2) return null;
+  return { lon: Number(coords[0]), lat: Number(coords[1]) };
+}
+
+function formatCoordinate(value: number | null | undefined, axis: "lat" | "lon") {
+  if (!Number.isFinite(value)) return "n/a";
+  const absolute = Math.abs(Number(value));
+  const suffix = axis === "lat"
+    ? (Number(value) >= 0 ? "N" : "S")
+    : (Number(value) >= 0 ? "E" : "W");
+  return `${absolute.toFixed(3)}° ${suffix}`;
+}
+
+function formatMetricValue(value: unknown, suffix = "") {
+  const numeric = getNumericValue(value);
+  if (numeric === null) return "n/a";
+  const rounded = Math.abs(numeric) >= 100 ? Math.round(numeric).toString() : numeric.toFixed(1);
+  return `${rounded}${suffix}`;
+}
+
+function formatDisplayLabel(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) return "n/a";
+  return value
+    .trim()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatRatioAsPercent(value: unknown) {
+  const numeric = getNumericValue(value);
+  if (numeric === null) return "n/a";
+  return `${(numeric * 100).toFixed(numeric < 0.1 ? 1 : 0)}%`;
+}
+
+function formatAge(ageSec?: number | null, state?: string | null) {
+  if (!Number.isFinite(ageSec)) {
+    return state ? formatDisplayLabel(state) : "n/a";
+  }
+  const seconds = Math.max(0, Math.round(Number(ageSec)));
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+  return `${(seconds / 3600).toFixed(seconds < 21600 ? 1 : 0)}h`;
+}
+
+function formatDuration(value: unknown) {
+  const numeric = getNumericValue(value);
+  if (numeric === null) return "n/a";
+  const seconds = Math.max(0, Math.round(numeric));
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)} min`;
+  return `${(seconds / 3600).toFixed(seconds < 21600 ? 1 : 0)} hr`;
+}
+
+function sumRecordValues(record: Record<string, unknown> | null) {
+  if (!record) return 0;
+  return Object.values(record).reduce((total, value) => {
+    const numeric = getNumericValue(value);
+    return total + (numeric ?? 0);
+  }, 0);
+}
+
+function formatStringList(values: unknown, limit = 4) {
+  if (!Array.isArray(values)) return "n/a";
+  const entries = values
+    .filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
+    .map((value) => value.trim());
+  if (!entries.length) return "n/a";
+  return entries.slice(0, limit).join(", ");
+}
+
+function formatTopCountList(record: Record<string, unknown> | null, limit = 4) {
+  return getTopEntries(record, limit)
+    .map(([label, count]) => `${formatDisplayLabel(label)} (${Math.round(Number(count))})`)
+    .join(" • ") || "n/a";
+}
+
+function getTopEntries(record: Record<string, unknown> | null, limit = 3) {
+  if (!record) return [];
+  return Object.entries(record)
+    .filter(([, value]) => typeof value === "number" && Number.isFinite(value))
+    .sort((left, right) => Number(right[1]) - Number(left[1]))
+    .slice(0, limit);
+}
+
+function getDominantEmotion(feature: SceneFeature) {
+  const emotion = asRecord(asRecord(feature.properties)?.emotion);
+  if (typeof emotion?.dominant === "string" && emotion.dominant.trim()) {
+    return emotion.dominant.trim();
+  }
+  const news = asRecord(asRecord(feature.properties)?.news);
+  const top = getTopEntries(asRecord(news?.emotion_counts), 1)[0];
+  return top ? top[0] : "neutral";
+}
+
+function getEmotionObservationCount(feature: SceneFeature) {
+  const emotion = asRecord(asRecord(feature.properties)?.emotion);
+  const emotionCount = getNumericValue(emotion?.count);
+  if (emotionCount !== null) {
+    return emotionCount;
+  }
+  const news = asRecord(asRecord(feature.properties)?.news);
+  return sumRecordValues(asRecord(news?.emotion_counts));
+}
+
+function getEmotionAccent(emotion: string) {
+  const normalized = emotion.toLowerCase();
+  if (normalized.includes("anger")) return "#ff7b72";
+  if (normalized.includes("fear")) return "#ffb36b";
+  if (normalized.includes("sad")) return "#83a5ff";
+  if (normalized.includes("joy") || normalized.includes("positive")) return "#7dffd3";
+  if (normalized.includes("trust") || normalized.includes("calm")) return "#75d7ff";
+  return "#d5ddff";
+}
+
 function getLensLabel(lens: IntelSceneLens) {
   return INTEL_LENS_OPTIONS.find((option) => option.id === lens)?.label || "Combined";
 }
@@ -226,6 +373,9 @@ function getFeatureLensScore(feature: SceneFeature, lens: IntelSceneLens): numbe
   if (lens === "combined") {
     return getNumericValue(asRecord(properties.combined_risk)?.score);
   }
+  if (lens === "emotion") {
+    return getEmotionObservationCount(feature);
+  }
   return getNumericValue(asRecord(properties[lens])?.score);
 }
 
@@ -239,6 +389,7 @@ function getFeatureDominantChannel(feature: SceneFeature): IntelSceneLens | "com
     dominant === "weather" ||
     dominant === "conflict" ||
     dominant === "news" ||
+    dominant === "emotion" ||
     dominant === "combined"
   ) {
     return dominant;
@@ -255,6 +406,9 @@ function getFeatureIntensity(
   if (sceneId === "intel") {
     const score = getFeatureLensScore(feature, intelLens);
     const presentationIntensity = getNumericValue(getFeaturePresentation(feature)?.intensity);
+    if (intelLens === "emotion") {
+      return Math.max(0.26, Math.min(1, presentationIntensity ?? 0.58));
+    }
     const rawValue = score !== null ? score / 10 : presentationIntensity;
     return Math.max(0.26, Math.min(1, rawValue ?? 0.58));
   }
@@ -273,10 +427,22 @@ function getFeatureAccent(
     if (channel === "weather") return "#75d7ff";
     if (channel === "conflict") return "#ff8b73";
     if (channel === "news") return "#ffd166";
+    if (channel === "emotion") return getEmotionAccent(getDominantEmotion(feature));
     const riskScore = getFeatureLensScore(feature, "combined") ?? 0;
     return riskScore >= 7 ? "#ff9e73" : "#48f1a6";
   }
-  return properties?.kind === "ship" ? "#7dffd3" : "#d2ffef";
+  if (String(properties?.kind || "") === "ship") {
+    const category = String(properties?.category || "").toLowerCase();
+    if (category === "cargo") return "#ffd166";
+    if (category === "tanker") return "#ff8b73";
+    if (category === "military" || category === "government") return "#ff9ea8";
+    return "#7dffd3";
+  }
+  const category = String(properties?.category || "").toLowerCase();
+  if (category === "cargo") return "#ffd166";
+  if (category === "military" || category === "government") return "#ff9ea8";
+  if (category === "private") return "#75d7ff";
+  return "#d2ffef";
 }
 
 function getFeatureTooltipCopy(
@@ -292,6 +458,10 @@ function getFeatureTooltipCopy(
     const lensScore = getFeatureLensScore(feature, intelLens);
     const dominant = getFeatureDominantChannel(feature);
     const activeLabel = intelLens === "combined" ? dominant : intelLens;
+    const dominantEmotion = getDominantEmotion(feature);
+    if (intelLens === "emotion") {
+      return `Emotion observations ${lensScore !== null ? `${Math.round(lensScore)}` : "n/a"} • ${formatDisplayLabel(dominantEmotion)} • ${level}`;
+    }
     return `${lensLabel} ${lensScore !== null ? `${Math.round(lensScore)}/10` : "n/a"} • ${level} • ${String(activeLabel).toUpperCase()}`;
   }
   return `${String(properties?.kind || "signal").toUpperCase()} • ${String(properties?.category || "unknown")}`;
@@ -307,7 +477,37 @@ function getSelectedIntelCopy(feature: SceneFeature | null, intelLens: IntelScen
   const level = String(combinedRisk?.level || "Unknown");
   const lensLabel = getLensLabel(intelLens);
   const lensScore = getFeatureLensScore(feature, intelLens);
+  const dominantEmotion = getDominantEmotion(feature);
+  if (intelLens === "emotion") {
+    return `Emotion observations ${lensScore !== null ? `${Math.round(lensScore)}` : "n/a"} • ${formatDisplayLabel(dominantEmotion)} • ${newsCount} headlines. ${topSignal}`;
+  }
   return `${lensLabel} ${lensScore !== null ? `${Math.round(lensScore)}/10` : "n/a"} • ${level} • ${newsCount} headlines. ${topSignal}`;
+}
+
+function getTooltipDetailLines(
+  feature: SceneFeature,
+  sceneId: "trackers" | "intel",
+  intelLens: IntelSceneLens
+) {
+  const properties = asRecord(feature.properties);
+  const coordinates = getFeatureCoordinates(feature);
+  const coordinateCopy = coordinates
+    ? `${formatCoordinate(coordinates.lat, "lat")} • ${formatCoordinate(coordinates.lon, "lon")}`
+    : "Coordinates unavailable";
+  if (sceneId === "intel") {
+    const news = asRecord(properties?.news);
+    const dominantEmotion = formatDisplayLabel(getDominantEmotion(feature));
+    const newsCount = Math.round(getNumericValue(news?.count) || 0);
+    return [
+      coordinateCopy,
+      intelLens === "emotion"
+        ? `${dominantEmotion} • ${Math.round(getFeatureLensScore(feature, "emotion") || 0)} observations`
+        : `${newsCount} headlines • ${formatDisplayLabel(getFeatureDominantChannel(feature))}`,
+    ];
+  }
+  const speed = formatMetricValue(properties?.speed_kts, " kts");
+  const operator = formatDisplayLabel(properties?.operator_name || properties?.operator);
+  return [coordinateCopy, `${operator} • ${speed}`];
 }
 
 function rankTrackerFeatures(
@@ -438,6 +638,12 @@ async function buildFallbackTrackerScene(mode: TrackerSceneMode): Promise<SceneP
               operator: point.operator,
               operator_name: point.operator_name,
               country: point.country,
+              latitude: point.lat,
+              longitude: point.lon,
+              popup_coordinates: {
+                lat: point.lat,
+                lon: point.lon
+              },
               speed_kts: point.speed_kts,
               speed_heat: point.speed_heat
             },
@@ -528,6 +734,7 @@ function CameraRig({
     cameraPreset === "focus" &&
     Number.isFinite(focusTarget?.lat) &&
     Number.isFinite(focusTarget?.lon);
+  const isFreePreset = cameraPreset === "free";
 
   const targetVector = useMemo(() => {
     const lat = isFocusPreset
@@ -554,7 +761,16 @@ function CameraRig({
   }, [defaults?.distance, isFocusPreset, targetVector]);
 
   useEffect(() => {
-    if (!reducedMotion) return;
+    if (!isFreePreset) return;
+    const controls = controlsRef.current;
+    if (controls?.target) {
+      controls.target.set(0, 0, 0);
+      controls.update();
+    }
+  }, [controlsRef, isFreePreset]);
+
+  useEffect(() => {
+    if (!reducedMotion || isFreePreset) return;
     camera.position.copy(cameraVector);
     const controls = controlsRef.current;
     if (controls?.target) {
@@ -563,10 +779,10 @@ function CameraRig({
       return;
     }
     camera.lookAt(targetVector);
-  }, [camera, cameraVector, controlsRef, reducedMotion, targetVector]);
+  }, [camera, cameraVector, controlsRef, isFreePreset, reducedMotion, targetVector]);
 
   useFrame(() => {
-    if (reducedMotion) return;
+    if (reducedMotion || isFreePreset) return;
     camera.position.lerp(cameraVector, 0.075);
     const controls = controlsRef.current;
     if (controls?.target) {
@@ -582,9 +798,11 @@ function CameraRig({
 }
 
 function GlobeShell({
+  contextTexture,
   qualityFactor,
   reducedMotion
 }: {
+  contextTexture: THREE.Texture | null;
   qualityFactor: number;
   reducedMotion: boolean;
 }) {
@@ -616,6 +834,16 @@ function GlobeShell({
           opacity={0.9}
         />
       </mesh>
+      {contextTexture ? (
+        <mesh scale={1.002}>
+          <sphereGeometry args={[GLOBE_RADIUS, shellSegments, shellSegments]} />
+          <meshBasicMaterial
+            map={contextTexture}
+            transparent
+            opacity={0.92}
+          />
+        </mesh>
+      ) : null}
       <mesh ref={atmosphereRef} scale={1.07}>
         <sphereGeometry args={[GLOBE_RADIUS, shellSegments, shellSegments]} />
         <meshBasicMaterial
@@ -664,6 +892,79 @@ function TrackerTrail({
   );
 }
 
+function HotspotPulse({
+  feature,
+  onSelect,
+  reducedMotion,
+  selected
+}: {
+  feature: SceneFeature;
+  onSelect: (id: string) => void;
+  reducedMotion: boolean;
+  selected: boolean;
+}) {
+  const outerRef = useRef<Mesh | null>(null);
+  const innerRef = useRef<Mesh | null>(null);
+  const coords = Array.isArray(feature.geometry.coordinates)
+    ? (feature.geometry.coordinates as number[])
+    : [];
+  const properties = asRecord(feature.properties);
+  const presentation = asRecord(properties?.presentation);
+  const intensity = Math.max(
+    0.3,
+    Math.min(1, getNumericValue(presentation?.pulse_intensity) ?? 0.55)
+  );
+  const targetId = String(properties?.target_id || feature.id.replace(/^pulse:/, ""));
+  const position = useMemo(() => {
+    if (coords.length < 2) {
+      return new THREE.Vector3(0, 0, 0);
+    }
+    return latLonToVector(coords[1], coords[0], GLOBE_RADIUS, 0.018);
+  }, [coords]);
+  const pulseOffset = useMemo(() => feature.id.length * 0.11, [feature.id]);
+
+  useEffect(() => {
+    if (!reducedMotion) return;
+    outerRef.current?.scale.set(1.55 + intensity * 0.35, 0.8, 1.55 + intensity * 0.35);
+    innerRef.current?.scale.set(1.15 + intensity * 0.28, 0.72, 1.15 + intensity * 0.28);
+  }, [intensity, reducedMotion]);
+
+  useFrame((state) => {
+    if (reducedMotion) return;
+    const pulse = 1 + Math.sin(state.clock.elapsedTime * 1.45 + pulseOffset) * 0.12;
+    const selectedBoost = selected ? 0.18 : 0;
+    outerRef.current?.scale.set(
+      (1.45 + intensity * 0.34 + selectedBoost) * pulse,
+      0.78,
+      (1.45 + intensity * 0.34 + selectedBoost) * pulse
+    );
+    innerRef.current?.scale.set(
+      (1.08 + intensity * 0.24 + selectedBoost) * pulse,
+      0.72,
+      (1.08 + intensity * 0.24 + selectedBoost) * pulse
+    );
+  });
+
+  return (
+    <group
+      position={position}
+      onClick={(event) => {
+        event.stopPropagation();
+        onSelect(targetId);
+      }}
+    >
+      <mesh ref={outerRef}>
+        <sphereGeometry args={[0.1 + intensity * 0.04, 18, 18]} />
+        <meshBasicMaterial color="#ff5c6a" transparent opacity={selected ? 0.2 : 0.12} depthWrite={false} />
+      </mesh>
+      <mesh ref={innerRef}>
+        <sphereGeometry args={[0.065 + intensity * 0.03, 18, 18]} />
+        <meshBasicMaterial color="#ff8b73" transparent opacity={selected ? 0.18 : 0.1} depthWrite={false} />
+      </mesh>
+    </group>
+  );
+}
+
 function LivePoint({
   accentColor,
   feature,
@@ -685,10 +986,13 @@ function LivePoint({
 }) {
   const markerRef = useRef<Mesh | null>(null);
   const haloRef = useRef<Mesh | null>(null);
-  const properties = asRecord(feature.properties) || {};
   const coords = Array.isArray(feature.geometry.coordinates)
     ? (feature.geometry.coordinates as number[])
     : [];
+  const tooltipDetails = useMemo(
+    () => getTooltipDetailLines(feature, sceneId, intelLens),
+    [feature, intelLens, sceneId]
+  );
   const position = useMemo(() => {
     if (coords.length < 2) {
       return new THREE.Vector3(0, 0, 0);
@@ -748,6 +1052,11 @@ function LivePoint({
                 intelLens
               )}
             </p>
+            {tooltipDetails.map((detail) => (
+              <p key={detail} className="globe-tooltip-copy globe-tooltip-copy--detail">
+                {detail}
+              </p>
+            ))}
           </div>
         </Html>
       ) : null}
@@ -757,6 +1066,7 @@ function LivePoint({
 
 function GlobeScene({
   cameraPreset,
+  contextTexture,
   intelLens,
   onQualityChange,
   onSelect,
@@ -768,6 +1078,7 @@ function GlobeScene({
   selectedId
 }: {
   cameraPreset: SceneCameraPreset;
+  contextTexture: THREE.Texture | null;
   intelLens: IntelSceneLens;
   onQualityChange: (factor: number) => void;
   onSelect: (id: string) => void;
@@ -779,13 +1090,16 @@ function GlobeScene({
   selectedId: string | null;
 }) {
   const controlsRef = useRef<any>(null);
-  const pointLayer = scene.layers.find((layer) => layer.kind === "point");
-  const pathLayer = scene.layers.find((layer) => layer.kind === "path");
-  const liveFeatures = pointLayer?.features || [];
-  const pathFeatures = pathLayer?.features || [];
+  const pointLayers = scene.layers.filter((layer) => layer.kind === "point");
+  const pathLayers = scene.layers.filter((layer) => layer.kind === "path");
+  const pulseLayers = scene.layers.filter((layer) => layer.kind === "pulse");
+  const liveFeatures = pointLayers.flatMap((layer) => layer.features || []);
+  const pathFeatures = pathLayers.flatMap((layer) => layer.features || []);
+  const pulseFeatures = pulseLayers.flatMap((layer) => layer.features || []);
   const activeQuality = reducedMotion ? 0.5 : qualityFactor;
   const starsCount = reducedMotion ? 450 : Math.round(1200 + activeQuality * 2200);
   const bloomIntensity = reducedMotion ? 0.25 : 0.35 + activeQuality * 0.55;
+  const showHotspotOverlays = sceneId === "intel" && (intelLens === "combined" || intelLens === "conflict");
 
   return (
     <Canvas
@@ -831,7 +1145,11 @@ function GlobeScene({
         reducedMotion={reducedMotion}
       />
       <group rotation={SCENE_ROTATION_VALUES}>
-        <GlobeShell qualityFactor={activeQuality} reducedMotion={reducedMotion} />
+        <GlobeShell
+          contextTexture={contextTexture}
+          qualityFactor={activeQuality}
+          reducedMotion={reducedMotion}
+        />
         <group>
           {pathFeatures.map((feature) => {
             const trackerId = String(feature.properties?.tracker_id || "");
@@ -843,6 +1161,19 @@ function GlobeScene({
               />
             );
           })}
+        </group>
+        <group>
+          {showHotspotOverlays
+            ? pulseFeatures.map((feature) => (
+                <HotspotPulse
+                  key={feature.id}
+                  feature={feature}
+                  onSelect={onSelect}
+                  reducedMotion={reducedMotion}
+                  selected={selectedId === String(asRecord(feature.properties)?.target_id || feature.id.replace(/^pulse:/, ""))}
+                />
+              ))
+            : null}
         </group>
         <group>
           {liveFeatures.map((feature) => (
@@ -867,6 +1198,8 @@ function GlobeScene({
         dampingFactor={0.08}
         autoRotate={!reducedMotion && cameraPreset === "overview"}
         autoRotateSpeed={0.35}
+        rotateSpeed={0.85}
+        zoomSpeed={0.9}
         minDistance={2.35}
         maxDistance={6.5}
       />
@@ -881,18 +1214,29 @@ export function GlobeOverlay() {
   const {
     activeScene,
     activeScenePath,
+    clearIntelFilters,
+    clearTrackerFilters,
     closeScene,
     isOpen,
     sceneState,
     setCameraPreset,
+    setIntelIndustry,
     setIntelLens,
-    setTrackerMode
+    setTrackerCategory,
+    setTrackerCountry,
+    setTrackerMode,
+    setTrackerOperator,
+    toggleIntelCategory,
+    toggleIntelSource
   } = useSceneController();
   const reducedMotion = useReducedMotionPreference();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [fallbackScene, setFallbackScene] = useState<ScenePayload | null>(null);
   const [fallbackError, setFallbackError] = useState<string | null>(null);
+  const [geography, setGeography] = useState<GlobeGeographyData | null>(null);
+  const [geographyError, setGeographyError] = useState<string | null>(null);
   const [qualityFactor, setQualityFactor] = useState(reducedMotion ? 0.5 : 0.82);
+  const [trackerOperatorDraft, setTrackerOperatorDraft] = useState(sceneState.trackerOperator);
   const sceneId = activeScene?.id || "trackers";
   const hasTrackerFallback = activeScene?.fallbackStrategy === "trackerSnapshot";
   const { data, error, loading, refresh } = useApi<ScenePayload>(
@@ -902,15 +1246,37 @@ export function GlobeOverlay() {
       interval: isOpen ? (sceneId === "intel" ? 120000 : 30000) : 0
     }
   );
+  const { data: intelMeta, error: intelMetaError } = useApi<IntelMeta>("/api/intel/meta", {
+    enabled: isOpen && sceneId === "intel",
+    interval: isOpen && sceneId === "intel" ? 600000 : 0
+  });
 
   useEffect(() => {
     setQualityFactor(reducedMotion ? 0.5 : 0.82);
   }, [reducedMotion]);
 
   useEffect(() => {
+    setTrackerOperatorDraft(sceneState.trackerOperator);
+  }, [sceneState.trackerOperator]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeScene();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [closeScene, isOpen]);
+
+  useEffect(() => {
     if (!isOpen) {
       setFallbackScene(null);
       setFallbackError(null);
+      setGeographyError(null);
       setSelectedId(null);
       return;
     }
@@ -926,6 +1292,26 @@ export function GlobeOverlay() {
     setFallbackError(null);
     setSelectedId(null);
   }, [activeScene?.id]);
+
+  useEffect(() => {
+    if (!isOpen || geography || geographyError) return;
+    let mounted = true;
+    loadGlobeGeography()
+      .then((payload) => {
+        if (!mounted) return;
+        setGeography(payload);
+        setGeographyError(null);
+      })
+      .catch((geographyErr) => {
+        if (!mounted) return;
+        setGeographyError(
+          geographyErr instanceof Error ? geographyErr.message : "Globe geography unavailable."
+        );
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [geography, geographyError, isOpen]);
 
   useEffect(() => {
     if (!isOpen || !error || !activeScene || data || !hasTrackerFallback) return;
@@ -957,11 +1343,18 @@ export function GlobeOverlay() {
   }, [data]);
 
   const scene = data || fallbackScene;
-  const pointLayer = scene?.layers.find((layer) => layer.kind === "point");
-  const pathLayer = scene?.layers.find((layer) => layer.kind === "path");
-  const pointFeatures = pointLayer?.features || [];
+  const pointLayers = scene?.layers.filter((layer) => layer.kind === "point") || [];
+  const pathLayers = scene?.layers.filter((layer) => layer.kind === "path") || [];
+  const pulseLayers = scene?.layers.filter((layer) => layer.kind === "pulse") || [];
+  const pointLayer = pointLayers[0];
+  const pathLayer = pathLayers[0];
+  const pointFeatures = pointLayers.flatMap((layer) => layer.features || []);
+  const pathFeatures = pathLayers.flatMap((layer) => layer.features || []);
+  const pulseFeatures = pulseLayers.flatMap((layer) => layer.features || []);
   const warnings = Array.from(
     new Set([
+      ...(geographyError ? [`Geography overlay unavailable: ${geographyError}`] : []),
+      ...(intelMetaError && sceneId === "intel" ? [`Intel metadata unavailable: ${intelMetaError}`] : []),
       ...(error ? [error] : []),
       ...(fallbackError ? [fallbackError] : []),
       ...((scene?.meta?.warnings || []) as string[])
@@ -980,6 +1373,21 @@ export function GlobeOverlay() {
     setSelectedId(scene.focus_targets[0]?.id || null);
   }, [scene, selectedId]);
 
+  const geographyTexture = useMemo(() => {
+    if (!geography) return null;
+    const canvas = buildGlobeContextCanvas(geography, reducedMotion ? 1024 : 2048);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.needsUpdate = true;
+    return texture;
+  }, [geography, reducedMotion]);
+
+  useEffect(() => {
+    return () => {
+      geographyTexture?.dispose();
+    };
+  }, [geographyTexture]);
+
   const selectedFocus = useMemo(
     () =>
       scene?.focus_targets.find((target) => target.id === selectedId) ||
@@ -994,6 +1402,13 @@ export function GlobeOverlay() {
       null,
     [pointFeatures, selectedId]
   );
+  const selectedTrail = useMemo(
+    () =>
+      pathFeatures.find(
+        (feature) => String(asRecord(feature.properties)?.tracker_id || "") === String(selectedId || "")
+      ) || null,
+    [pathFeatures, selectedId]
+  );
   const intelHighRiskCount = useMemo(
     () =>
       pointFeatures.filter((feature) => {
@@ -1002,14 +1417,338 @@ export function GlobeOverlay() {
       }).length,
     [pointFeatures]
   );
-  const selectedIntelBreakdown = useMemo(() => {
-    if (sceneId !== "intel" || !selectedFeature) return null;
+
+  const trackerCategoryEntries = useMemo(() => {
+    const counts = new Map<string, number>();
+    pointFeatures.forEach((feature) => {
+      const category = String(asRecord(feature.properties)?.category || "").trim();
+      if (!category) return;
+      counts.set(category, (counts.get(category) || 0) + 1);
+    });
+    if (sceneState.trackerCategory !== "all" && !counts.has(sceneState.trackerCategory)) {
+      counts.set(sceneState.trackerCategory, 0);
+    }
+    return Array.from(counts.entries()).sort(
+      (left, right) => right[1] - left[1] || left[0].localeCompare(right[0])
+    );
+  }, [pointFeatures, sceneState.trackerCategory]);
+
+  const trackerCountryOptions = useMemo(() => {
+    const countries = new Set<string>();
+    pointFeatures.forEach((feature) => {
+      const country = String(asRecord(feature.properties)?.country || "").trim();
+      if (country) countries.add(country);
+    });
+    if (sceneState.trackerCountry.trim()) {
+      countries.add(sceneState.trackerCountry.trim());
+    }
+    return Array.from(countries).sort((left, right) => left.localeCompare(right));
+  }, [pointFeatures, sceneState.trackerCountry]);
+
+  const topTrackerOperators = useMemo(() => {
+    const counts = new Map<string, number>();
+    pointFeatures.forEach((feature) => {
+      const properties = asRecord(feature.properties);
+      const operator = String(properties?.operator_name || properties?.operator || "").trim();
+      if (!operator) return;
+      counts.set(operator, (counts.get(operator) || 0) + 1);
+    });
+    return Array.from(counts.entries())
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+      .slice(0, 4);
+  }, [pointFeatures]);
+
+  const selectedDetailRows = useMemo(() => {
+    const rows: Array<{ label: string; value: string }> = [];
+    if (!selectedFeature) return rows;
+
     const properties = asRecord(selectedFeature.properties);
-    const weatherScore = getNumericValue(asRecord(properties?.weather)?.score);
-    const conflictScore = getNumericValue(asRecord(properties?.conflict)?.score);
-    const newsCount = getNumericValue(asRecord(properties?.news)?.count) || 0;
-    return `Weather ${weatherScore !== null ? `${Math.round(weatherScore)}/10` : "n/a"} • Conflict ${conflictScore !== null ? `${Math.round(conflictScore)}/10` : "n/a"} • ${Math.round(newsCount)} headlines`;
+    const coordinates = getFeatureCoordinates(selectedFeature);
+    const addRow = (label: string, value: string) => {
+      if (!value || value === "n/a") return;
+      rows.push({ label, value });
+    };
+
+    addRow(
+      "Coordinates",
+      coordinates
+        ? `${formatCoordinate(coordinates.lat, "lat")} • ${formatCoordinate(coordinates.lon, "lon")}`
+        : "n/a"
+    );
+    addRow("Updated", formatTimestamp(selectedFeature.ts));
+    addRow(
+      "Freshness",
+      formatAge(selectedFeature.freshness?.age_sec, selectedFeature.freshness?.state)
+    );
+
+    if (sceneId === "intel") {
+      const combined = asRecord(properties?.combined_risk);
+      const weather = asRecord(properties?.weather);
+      const conflict = asRecord(properties?.conflict);
+      const news = asRecord(properties?.news);
+      const emotion = asRecord(properties?.emotion);
+      const combinedScore = getNumericValue(combined?.score);
+      const weatherScore = getNumericValue(weather?.score);
+      const conflictScore = getNumericValue(conflict?.score);
+
+      addRow(
+        "Combined Risk",
+        combinedScore !== null
+          ? `${Math.round(combinedScore)}/10 • ${formatDisplayLabel(combined?.level)}`
+          : formatDisplayLabel(combined?.level)
+      );
+      addRow(
+        "Weather",
+        weatherScore !== null
+          ? `${Math.round(weatherScore)}/10 • ${formatDisplayLabel(weather?.status || weather?.level)}`
+          : formatDisplayLabel(weather?.status || weather?.level)
+      );
+      addRow(
+        "Conflict",
+        conflictScore !== null
+          ? `${Math.round(conflictScore)}/10 • ${formatDisplayLabel(conflict?.status || conflict?.level)}`
+          : formatDisplayLabel(conflict?.status || conflict?.level)
+      );
+      addRow("Headlines", `${Math.round(getNumericValue(news?.count) || 0)}`);
+      addRow("Conflict Articles", `${Math.round(getNumericValue(conflict?.count) || 0)}`);
+      addRow(
+        "Dominant Emotion",
+        formatDisplayLabel(emotion?.dominant || getDominantEmotion(selectedFeature))
+      );
+      addRow("Emotion Observations", `${Math.round(getNumericValue(emotion?.count) || 0)}`);
+      addRow("Sentiment Avg", formatMetricValue(news?.sentiment_avg));
+      addRow("Negative Share", formatRatioAsPercent(news?.negative_ratio));
+      addRow("Context Tags", formatTopCountList(asRecord(news?.event_counts)));
+      addRow("Impacted Markets", formatTopCountList(asRecord(news?.impact_counts)));
+      addRow("Industries", formatStringList(properties?.industries));
+      addRow("Top Sources", formatStringList(news?.top_sources));
+      addRow("Scope", formatDisplayLabel(properties?.display_scope));
+    } else {
+      addRow(
+        "Type",
+        `${String(properties?.kind || "signal").toUpperCase()} • ${formatDisplayLabel(properties?.category)}`
+      );
+      addRow("ICAO24", formatDisplayLabel(properties?.icao24));
+      addRow("Callsign", formatDisplayLabel(properties?.callsign));
+      addRow("Flight", formatDisplayLabel(properties?.flight_number));
+      addRow("Tail", formatDisplayLabel(properties?.tail_number));
+      addRow("Operator", formatDisplayLabel(properties?.operator_name || properties?.operator));
+      addRow("Operator Country", formatDisplayLabel(properties?.operator_country));
+      addRow("Country", formatDisplayLabel(properties?.country));
+      addRow("Speed", formatMetricValue(properties?.speed_kts, " kts"));
+      addRow("Speed Volatility", formatMetricValue(properties?.speed_vol_kts, " kts"));
+      addRow("Altitude", formatMetricValue(properties?.altitude_ft, " ft"));
+      addRow("Heading", formatMetricValue(properties?.heading_deg, "°"));
+      if (selectedTrail) {
+        const trailProperties = asRecord(selectedTrail.properties);
+        addRow("Trail Distance", formatMetricValue(trailProperties?.distance_km, " km"));
+        addRow("Trail Duration", formatDuration(trailProperties?.duration_sec));
+        if (typeof trailProperties?.route_hint === "string" && trailProperties.route_hint.trim()) {
+          addRow("Route Hint", trailProperties.route_hint.trim());
+        }
+      }
+    }
+
+    return rows;
+  }, [sceneId, selectedFeature, selectedTrail]);
+
+  const selectedEmotionMix = useMemo(() => {
+    if (sceneId !== "intel" || !selectedFeature) return [];
+    return getTopEntries(asRecord(asRecord(selectedFeature.properties)?.emotion)?.counts || null, 5).map(
+      ([emotion, count]) => ({
+        emotion,
+        count: Math.round(Number(count) || 0)
+      })
+    );
   }, [sceneId, selectedFeature]);
+
+  const selectedContextMix = useMemo(() => {
+    if (sceneId !== "intel" || !selectedFeature) return [];
+    return getTopEntries(asRecord(asRecord(asRecord(selectedFeature.properties)?.news)?.event_counts), 5).map(
+      ([name, count]) => ({
+        name,
+        count: Math.round(Number(count) || 0)
+      })
+    );
+  }, [sceneId, selectedFeature]);
+
+  const selectedImpactMix = useMemo(() => {
+    if (sceneId !== "intel" || !selectedFeature) return [];
+    return getTopEntries(asRecord(asRecord(asRecord(selectedFeature.properties)?.news)?.impact_counts), 5).map(
+      ([name, count]) => ({
+        name,
+        count: Math.round(Number(count) || 0)
+      })
+    );
+  }, [sceneId, selectedFeature]);
+
+  const aggregateRows = useMemo(() => {
+    if (sceneId === "trackers") {
+      const kindCounts = new Map<string, number>();
+      const categoryCounts = new Map<string, number>();
+      const countryCounts = new Map<string, number>();
+      const operatorCounts = new Map<string, number>();
+      const speedSamples: number[] = [];
+
+      pointFeatures.forEach((feature) => {
+        const properties = asRecord(feature.properties);
+        const kind = String(properties?.kind || "").trim();
+        const category = String(properties?.category || "").trim();
+        const country = String(properties?.country || "").trim();
+        const operator = String(properties?.operator_name || properties?.operator || "").trim();
+        const speed = getNumericValue(properties?.speed_kts);
+        if (kind) kindCounts.set(kind, (kindCounts.get(kind) || 0) + 1);
+        if (category) categoryCounts.set(category, (categoryCounts.get(category) || 0) + 1);
+        if (country) countryCounts.set(country, (countryCounts.get(country) || 0) + 1);
+        if (operator) operatorCounts.set(operator, (operatorCounts.get(operator) || 0) + 1);
+        if (speed !== null) speedSamples.push(speed);
+      });
+
+      const topValues = (entries: Map<string, number>) =>
+        Array.from(entries.entries())
+          .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+          .slice(0, 3)
+          .map(([label, count]) => `${formatDisplayLabel(label)} (${count})`)
+          .join(" • ") || "n/a";
+
+      return [
+        { label: "Visible Flights", value: `${kindCounts.get("flight") || 0}` },
+        { label: "Visible Vessels", value: `${kindCounts.get("ship") || 0}` },
+        { label: "Replay Trails", value: `${pathFeatures.length}` },
+        { label: "Top Categories", value: topValues(categoryCounts) },
+        { label: "Top Countries", value: topValues(countryCounts) },
+        { label: "Top Operators", value: topValues(operatorCounts) },
+        {
+          label: "Mean Visible Speed",
+          value: speedSamples.length
+            ? `${Math.round(speedSamples.reduce((total, value) => total + value, 0) / speedSamples.length)} kts`
+            : "n/a"
+        }
+      ];
+    }
+
+    const channelCounts = new Map<string, number>();
+    const eventCounts = new Map<string, number>();
+    const impactCounts = new Map<string, number>();
+    const emotionCounts = new Map<string, number>();
+    const sourceCounts = new Map<string, number>();
+    let headlineCount = 0;
+
+    pointFeatures.forEach((feature) => {
+      const properties = asRecord(feature.properties);
+      const news = asRecord(properties?.news);
+      const dominantChannel = String(
+        asRecord(properties?.presentation)?.dominant_channel || ""
+      ).trim();
+      headlineCount += Math.round(getNumericValue(news?.count) || 0);
+      if (dominantChannel) {
+        channelCounts.set(dominantChannel, (channelCounts.get(dominantChannel) || 0) + 1);
+      }
+      Object.entries(asRecord(news?.event_counts) || {}).forEach(([eventName, count]) => {
+        eventCounts.set(
+          eventName,
+          (eventCounts.get(eventName) || 0) + Math.round(getNumericValue(count) || 0)
+        );
+      });
+      Object.entries(asRecord(news?.impact_counts) || {}).forEach(([impactName, count]) => {
+        impactCounts.set(
+          impactName,
+          (impactCounts.get(impactName) || 0) + Math.round(getNumericValue(count) || 0)
+        );
+      });
+      Object.entries(asRecord(news?.emotion_counts) || {}).forEach(([emotion, count]) => {
+        emotionCounts.set(
+          emotion,
+          (emotionCounts.get(emotion) || 0) + Math.round(getNumericValue(count) || 0)
+        );
+      });
+      (Array.isArray(news?.top_sources) ? news.top_sources : []).forEach((source) => {
+        if (typeof source !== "string" || !source.trim()) return;
+        const key = source.trim();
+        sourceCounts.set(key, (sourceCounts.get(key) || 0) + 1);
+      });
+    });
+
+    const topValues = (entries: Map<string, number>) =>
+      Array.from(entries.entries())
+        .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+        .slice(0, 3)
+        .map(([label, count]) => `${formatDisplayLabel(label)} (${count})`)
+        .join(" • ") || "n/a";
+
+    return [
+      { label: "Visible Regions", value: `${pointFeatures.length}` },
+      { label: "Visible Conflict Overlays", value: `${pulseFeatures.length}` },
+      { label: "Elevated Regions", value: `${intelHighRiskCount}` },
+      { label: "Headlines Across Nodes", value: `${headlineCount}` },
+      { label: "Dominant Channels", value: topValues(channelCounts) },
+      { label: "Top Context Tags", value: topValues(eventCounts) },
+      { label: "Impacted Markets", value: topValues(impactCounts) },
+      { label: "Top Emotions", value: topValues(emotionCounts) },
+      { label: "Most Referenced Sources", value: topValues(sourceCounts) },
+      { label: "Industry Filter", value: formatDisplayLabel(sceneState.intelIndustry) }
+    ];
+  }, [intelHighRiskCount, pathFeatures.length, pointFeatures, pulseFeatures.length, sceneId, sceneState.intelIndustry]);
+
+  const sceneLegendEntries = useMemo(() => {
+    if (sceneId === "trackers") {
+      const byCategory = new Map<string, { color: string; count: number; label: string }>();
+      pointFeatures.forEach((feature) => {
+        const properties = asRecord(feature.properties);
+        const rawCategory = String(properties?.category || properties?.kind || "signal").trim();
+        const label = formatDisplayLabel(rawCategory);
+        const existing = byCategory.get(label);
+        byCategory.set(label, {
+          label,
+          color: getFeatureAccent(feature, "trackers", sceneState.intelLens),
+          count: (existing?.count || 0) + 1
+        });
+      });
+      return Array.from(byCategory.values())
+        .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label))
+        .slice(0, 6);
+    }
+
+    if (sceneState.intelLens === "emotion") {
+      const emotionCounts = new Map<string, number>();
+      pointFeatures.forEach((feature) => {
+        Object.entries(asRecord(asRecord(feature.properties)?.news)?.emotion_counts || {}).forEach(
+          ([emotion, count]) => {
+            emotionCounts.set(
+              emotion,
+              (emotionCounts.get(emotion) || 0) + Math.round(getNumericValue(count) || 0)
+            );
+          }
+        );
+      });
+      return Array.from(emotionCounts.entries())
+        .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+        .slice(0, 6)
+        .map(([emotion, count]) => ({
+          label: `${formatDisplayLabel(emotion)} (${count})`,
+          color: getEmotionAccent(emotion),
+          count
+        }));
+    }
+
+    const baseEntries = (pointLayer?.legend || []).map((entry) => ({
+      label: String(entry.label || entry.value || "Signal"),
+      color: String(entry.color || "#48f1a6"),
+      count: null
+    }));
+    if (sceneId === "intel" && (sceneState.intelLens === "combined" || sceneState.intelLens === "conflict") && pulseFeatures.length) {
+      return [
+        ...baseEntries,
+        {
+          label: `Conflict Pulse (${pulseFeatures.length})`,
+          color: "#ff5c6a",
+          count: pulseFeatures.length
+        }
+      ];
+    }
+    return baseEntries;
+  }, [pointFeatures, pointLayer?.legend, pulseFeatures.length, sceneId, sceneState.intelLens]);
+
   const availableLenses = useMemo(() => {
     const raw = scene?.meta?.available_lenses || [];
     const wanted = new Set(
@@ -1021,15 +1760,27 @@ export function GlobeOverlay() {
     return INTEL_LENS_OPTIONS.filter((option) => wanted.has(option.id));
   }, [scene?.meta?.available_lenses]);
 
+  const geographySourceCopy = useMemo(() => {
+    if (!geography) return "Loading Natural Earth land and coastline context...";
+    return `${geography.source.name} ${geography.source.dataset} • ${geography.source.land_polygon_count} land polygons • ${geography.source.coastline_count} coast lines`;
+  }, [geography]);
+
   if (!isOpen || !activeScene) return null;
 
   return (
-    <div className="globe-overlay" data-testid="globe-overlay">
+    <div
+      className="globe-overlay"
+      data-testid="globe-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label={scene?.title || activeScene.label}
+    >
       <div className="globe-overlay__backdrop" />
       <div className="globe-overlay__stage">
         {scene ? (
           <GlobeScene
             cameraPreset={sceneState.cameraPreset}
+            contextTexture={geographyTexture}
             intelLens={sceneState.intelLens}
             scene={scene}
             sceneId={sceneId}
@@ -1040,7 +1791,6 @@ export function GlobeOverlay() {
             onQualityChange={setQualityFactor}
             onSelect={(id) => {
               setSelectedId(id);
-              setCameraPreset("focus");
             }}
           />
         ) : sceneUnavailable ? (
@@ -1124,7 +1874,10 @@ export function GlobeOverlay() {
                   key={option.id}
                   type="button"
                   data-testid={`globe-lens-${option.id}`}
-                  onClick={() => setIntelLens(option.id)}
+                  onClick={() => {
+                    setIntelLens(option.id);
+                    setCameraPreset("free");
+                  }}
                   className={
                     option.id === sceneState.intelLens
                       ? "globe-toggle globe-toggle--active"
@@ -1144,7 +1897,7 @@ export function GlobeOverlay() {
                   data-testid={`globe-mode-${option.id}`}
                   onClick={() => {
                     setTrackerMode(option.id);
-                    setCameraPreset("overview");
+                    setCameraPreset("free");
                     setSelectedId(null);
                   }}
                   className={
@@ -1176,6 +1929,195 @@ export function GlobeOverlay() {
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="globe-panel globe-panel--compact">
+          <div className="globe-panel__header">
+            <div>
+              <p className="globe-panel__label">Filters</p>
+              <p className="globe-panel__copy">
+                {sceneId === "intel"
+                  ? "Refine regional emotion, news, conflict, and weather coverage with real upstream filters."
+                  : "Narrow the live globe with real tracker metadata before selecting a focus target."}
+              </p>
+            </div>
+          </div>
+          {sceneId === "intel" ? (
+            <>
+              <label className="globe-field">
+                <span className="globe-panel__label">Industry</span>
+                <select
+                  value={sceneState.intelIndustry}
+                  onChange={(event) => {
+                    setIntelIndustry(event.target.value);
+                    setCameraPreset("free");
+                  }}
+                  className="globe-field__control"
+                >
+                  {["all", ...(intelMeta?.industries || [])]
+                    .filter((value, index, array) => array.indexOf(value) === index)
+                    .map((option) => (
+                      <option key={option} value={option}>
+                        {formatDisplayLabel(option)}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <p className="globe-panel__label">Contexts / Channels</p>
+              <div className="globe-toggle-group">
+                {(intelMeta?.categories || []).map((category) => (
+                  <button
+                    key={category}
+                    type="button"
+                    onClick={() => {
+                      toggleIntelCategory(category);
+                      setCameraPreset("free");
+                    }}
+                    className={
+                      sceneState.intelCategories.includes(category)
+                        ? "globe-toggle globe-toggle--active"
+                        : "globe-toggle"
+                    }
+                  >
+                    {formatDisplayLabel(category)}
+                  </button>
+                ))}
+              </div>
+              <p className="globe-panel__label">Sources</p>
+              <div className="globe-toggle-group">
+                {(intelMeta?.sources || []).map((source) => (
+                  <button
+                    key={source}
+                    type="button"
+                    onClick={() => {
+                      toggleIntelSource(source);
+                      setCameraPreset("free");
+                    }}
+                    className={
+                      sceneState.intelSources.includes(source)
+                        ? "globe-toggle globe-toggle--active"
+                        : "globe-toggle"
+                    }
+                  >
+                    {source}
+                  </button>
+                ))}
+              </div>
+              <div className="globe-overlay__actions">
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearIntelFilters();
+                    setCameraPreset("free");
+                  }}
+                  className="globe-action-button"
+                >
+                  Clear Filters
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="globe-panel__label">Category</p>
+              <div className="globe-toggle-group">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTrackerCategory("all");
+                    setCameraPreset("free");
+                  }}
+                  className={
+                    sceneState.trackerCategory === "all"
+                      ? "globe-toggle globe-toggle--active"
+                      : "globe-toggle"
+                  }
+                >
+                  All Categories
+                </button>
+                {trackerCategoryEntries.map(([category, count]) => (
+                  <button
+                    key={category}
+                    type="button"
+                    onClick={() => {
+                      setTrackerCategory(category);
+                      setCameraPreset("free");
+                    }}
+                    className={
+                      sceneState.trackerCategory === category
+                        ? "globe-toggle globe-toggle--active"
+                        : "globe-toggle"
+                    }
+                  >
+                    {formatDisplayLabel(category)} ({count})
+                  </button>
+                ))}
+              </div>
+              <div className="globe-form-grid">
+                <label className="globe-field">
+                  <span className="globe-panel__label">Country</span>
+                  <select
+                    value={sceneState.trackerCountry || "__all__"}
+                    onChange={(event) => {
+                      setTrackerCountry(event.target.value === "__all__" ? "" : event.target.value);
+                      setCameraPreset("free");
+                    }}
+                    className="globe-field__control"
+                  >
+                    <option value="__all__">All Countries</option>
+                    {trackerCountryOptions.map((country) => (
+                      <option key={country} value={country}>
+                        {country}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <form
+                  className="globe-field globe-field--wide"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    setTrackerOperator(trackerOperatorDraft.trim());
+                    setCameraPreset("free");
+                  }}
+                >
+                  <span className="globe-panel__label">Operator</span>
+                  <div className="globe-field__row">
+                    <input
+                      value={trackerOperatorDraft}
+                      onChange={(event) => setTrackerOperatorDraft(event.target.value)}
+                      placeholder="AAL, Maersk, Evergreen..."
+                      className="globe-field__control"
+                    />
+                    <button
+                      type="submit"
+                      className="globe-action-button globe-action-button--inline"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </form>
+              </div>
+              {topTrackerOperators.length ? (
+                <p className="globe-panel__copy globe-panel__copy--subtle">
+                  Top operators:{" "}
+                  {topTrackerOperators.map(([label, count]) => `${label} (${count})`).join(" • ")}
+                </p>
+              ) : null}
+              <div className="globe-overlay__actions">
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearTrackerFilters();
+                    setTrackerOperatorDraft("");
+                    setCameraPreset("free");
+                  }}
+                  className="globe-action-button"
+                >
+                  Clear Filters
+                </button>
+              </div>
+            </>
+          )}
+          <p className="globe-panel__copy globe-panel__copy--subtle">{geographySourceCopy}</p>
         </div>
 
         <div className="globe-panel globe-panel--compact">
@@ -1232,7 +2174,6 @@ export function GlobeOverlay() {
                 type="button"
                 onClick={() => {
                   setSelectedId(target.id);
-                  setCameraPreset("focus");
                 }}
                 className={
                   target.id === selectedId
@@ -1263,12 +2204,116 @@ export function GlobeOverlay() {
                 ? `${String(selectedFocus.kind || "signal").toUpperCase()} • ${selectedFocus.category || "unknown"}`
                 : "Choose a focus target to inspect the live layer."}
           </p>
-          {selectedIntelBreakdown ? (
-            <p className="globe-panel__copy">{selectedIntelBreakdown}</p>
+          {selectedDetailRows.length ? (
+            <div className="globe-detail-grid">
+              {selectedDetailRows.map((row) => (
+                <div key={`${row.label}-${row.value}`} className="globe-detail-row">
+                  <span className="globe-detail-row__label">{row.label}</span>
+                  <span className="globe-detail-row__value">{row.value}</span>
+                </div>
+              ))}
+            </div>
           ) : null}
-          <button type="button" onClick={refresh} className="globe-action-button">
-            Refresh Scene
-          </button>
+          {sceneId === "intel" && selectedEmotionMix.length ? (
+            <div className="mt-4 space-y-3">
+              <div>
+                <p className="globe-panel__label">Regional Emotion Mix</p>
+                <div className="mt-2 space-y-2">
+                  {selectedEmotionMix.map((entry) => {
+                    const maxCount = Math.max(...selectedEmotionMix.map((item) => item.count), 1);
+                    return (
+                      <div key={entry.emotion} className="space-y-1">
+                        <div className="flex items-center justify-between text-[11px] text-slate-300">
+                          <span>{formatDisplayLabel(entry.emotion)}</span>
+                          <span>{entry.count}</span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-slate-900/80">
+                          <div
+                            className="h-1.5 rounded-full"
+                            style={{
+                              width: `${Math.max(10, (entry.count / maxCount) * 100)}%`,
+                              backgroundColor: getEmotionAccent(entry.emotion)
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              {selectedContextMix.length ? (
+                <div>
+                  <p className="globe-panel__label">Conflict Triggers</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {selectedContextMix.map((entry) => (
+                      <span key={entry.name} className="globe-badge">
+                        {formatDisplayLabel(entry.name)} {entry.count}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {selectedImpactMix.length ? (
+                <div>
+                  <p className="globe-panel__label">Impacted Markets</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {selectedImpactMix.map((entry) => (
+                      <span key={entry.name} className="globe-badge">
+                        {formatDisplayLabel(entry.name)} {entry.count}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          <div className="globe-overlay__actions">
+            {selectedFocus ? (
+              <button
+                type="button"
+                onClick={() => setCameraPreset(sceneState.cameraPreset === "focus" ? "free" : "focus")}
+                className="globe-action-button"
+              >
+                {sceneState.cameraPreset === "focus" ? "Return To Free Orbit" : "Follow Selection"}
+              </button>
+            ) : null}
+            <button type="button" onClick={refresh} className="globe-action-button">
+              Refresh Scene
+            </button>
+          </div>
+        </div>
+
+        <div className="globe-panel globe-panel--compact">
+          <p className="globe-panel__label">Visible Aggregate</p>
+          <p className="globe-panel__copy">
+            {sceneId === "intel"
+              ? "Roll-ups reflect only the currently visible regional nodes under the active lens and filters."
+              : "Roll-ups reflect only the currently visible live tracker points and replay trails."}
+          </p>
+          <div className="globe-detail-grid">
+            {aggregateRows.map((row) => (
+              <div key={`${row.label}-${row.value}`} className="globe-detail-row">
+                <span className="globe-detail-row__label">{row.label}</span>
+                <span className="globe-detail-row__value">{row.value}</span>
+              </div>
+            ))}
+          </div>
+          {sceneLegendEntries.length ? (
+            <>
+              <p className="globe-panel__label">Color Key</p>
+              <div className="globe-legend">
+                {sceneLegendEntries.map((entry, index) => (
+                  <span key={`${entry.label}-${index}`} className="globe-legend__item">
+                    <span
+                      className="globe-legend__swatch"
+                      style={{ backgroundColor: entry.color }}
+                    />
+                    <span>{entry.label}</span>
+                  </span>
+                ))}
+              </div>
+            </>
+          ) : null}
         </div>
       </div>
     </div>

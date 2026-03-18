@@ -37,6 +37,9 @@ Still open:
   provenance.
 - Positive-path browser mutation tests still need an isolated real-data harness
   so we can verify destructive flows without touching local operator data.
+- New immersive Intel/globe positive-path visuals now need provenance-backed
+  captured fixtures so hotspot/emotion loaded states can be verified without
+  fabricating scene payloads.
 - Widespread `except Exception` and bare `pass` usage still needs a structured
   fail-safe audit across `modules/`, `web_api/`, and startup code.
 - Some report/export tests still use invented `confidence` strings in fixture

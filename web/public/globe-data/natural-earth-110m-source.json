@@ -1,0 +1,10 @@
+{
+  "name": "Natural Earth",
+  "dataset": "1:110m Physical Vectors",
+  "source_page": "https://www.naturalearthdata.com/downloads/110m-physical-vectors/",
+  "downloads": {
+    "land": "https://naciscdn.org/naturalearth/110m/physical/ne_110m_land.zip",
+    "coastline": "https://naciscdn.org/naturalearth/110m/physical/ne_110m_coastline.zip"
+  },
+  "note": "Local globe context asset generated from official Natural Earth land and coastline shapefiles. Rounded to 3 decimal places for compact client delivery."
+}

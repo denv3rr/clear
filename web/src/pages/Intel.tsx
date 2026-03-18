@@ -17,6 +17,23 @@ import { KpiCard } from "../components/ui/KpiCard";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { useApi } from "../lib/api";
 
+type EmotionSeriesPoint = {
+  label: string;
+  emotions: Record<string, number>;
+};
+
+type Hotspot = {
+  region?: string;
+  score?: number;
+  article_count?: number;
+  event_counts?: Record<string, number>;
+  impact_channels?: Record<string, number>;
+  affected_industries?: string[];
+  provenance?: {
+    source_mode?: string;
+  };
+};
+
 type IntelReport = {
   title?: string;
   summary?: string[];
@@ -28,17 +45,25 @@ type IntelReport = {
     summary?: string;
   };
   risk_series?: { label: string; value: number }[];
+  hotspots?: Hotspot[];
+  event_counts?: Record<string, number>;
+  impact_counts?: Record<string, number>;
   news?: {
     count?: number;
     risk_score?: number | null;
     sentiment_avg?: number;
     negative_ratio?: number;
     category_counts?: Record<string, number>;
+    event_counts?: Record<string, number>;
+    impact_counts?: Record<string, number>;
     emotion_counts?: Record<string, number>;
     region_counts?: Record<string, number>;
     subregion_counts?: Record<string, Record<string, number>>;
+    region_emotion_counts?: Record<string, Record<string, number>>;
+    industry_emotion_counts?: Record<string, Record<string, number>>;
+    region_industry_emotion_counts?: Record<string, Record<string, Record<string, number>>>;
     timestamp_ratio?: number;
-    emotion_series?: { label: string; emotions: Record<string, number> }[];
+    emotion_series?: EmotionSeriesPoint[];
   };
 };
 
@@ -48,6 +73,25 @@ type IntelMeta = {
   categories: string[];
   sources: string[];
 };
+
+function formatLabel(value: string) {
+  return value
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function rankedEntries(record?: Record<string, number>) {
+  return Object.entries(record || {}).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+}
+
+function topCountsLabel(record?: Record<string, number>, limit = 4) {
+  return rankedEntries(record)
+    .slice(0, limit)
+    .map(([key, count]) => `${formatLabel(key)} ${count}`)
+    .join(" • ");
+}
 
 export default function Intel() {
   const { data: meta, error: metaError } = useApi<IntelMeta>("/api/intel/meta", {
@@ -87,6 +131,7 @@ export default function Intel() {
   const { data: conflict, error: conflictError } = useApi<IntelReport>(conflictQuery, {
     interval: 120000
   });
+
   const authHint = "Check CLEAR_WEB_API_KEY + localStorage clear_api_key.";
   const errorMessages = [
     metaError ? `Intel metadata failed: ${metaError}` : null,
@@ -107,31 +152,52 @@ export default function Intel() {
     setSources((prev) => (prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value]));
   };
 
-  const categoryMix = useMemo(() => {
-    const entries = Object.entries(data?.news?.category_counts || {});
-    return entries.sort((a, b) => b[1] - a[1]);
-  }, [data?.news?.category_counts]);
-
-  const emotionMix = useMemo(() => {
-    const entries = Object.entries(data?.news?.emotion_counts || {});
-    return entries.sort((a, b) => b[1] - a[1]);
-  }, [data?.news?.emotion_counts]);
-
-  const regionMix = useMemo(() => {
-    const entries = Object.entries(data?.news?.region_counts || {});
-    return entries.sort((a, b) => b[1] - a[1]);
-  }, [data?.news?.region_counts]);
+  const categoryMix = useMemo(() => rankedEntries(data?.news?.category_counts), [data?.news?.category_counts]);
+  const contextMix = useMemo(() => rankedEntries(data?.news?.event_counts), [data?.news?.event_counts]);
+  const impactMix = useMemo(() => rankedEntries(data?.news?.impact_counts), [data?.news?.impact_counts]);
+  const emotionMix = useMemo(() => rankedEntries(data?.news?.emotion_counts), [data?.news?.emotion_counts]);
+  const regionMix = useMemo(() => rankedEntries(data?.news?.region_counts), [data?.news?.region_counts]);
 
   const subregionMix = useMemo(() => {
     const entries = Object.entries(data?.news?.subregion_counts || {});
     const flat: Array<[string, number]> = [];
     entries.forEach(([regionName, industries]) => {
       Object.entries(industries || {}).forEach(([industryName, count]) => {
-        flat.push([`${regionName} ? ${industryName}`, count]);
+        flat.push([`${regionName} / ${formatLabel(industryName)}`, count]);
       });
     });
-    return flat.sort((a, b) => b[1] - a[1]);
+    return flat.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   }, [data?.news?.subregion_counts]);
+
+  const regionEmotionMatrix = useMemo(() => {
+    return Object.entries(data?.news?.region_emotion_counts || {})
+      .map(([regionName, counts]) => {
+        const ranked = rankedEntries(counts);
+        const total = ranked.reduce((sum, [, count]) => sum + count, 0);
+        return {
+          name: regionName,
+          dominant: ranked[0]?.[0] || "none",
+          dominantCount: ranked[0]?.[1] || 0,
+          total,
+        };
+      })
+      .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+  }, [data?.news?.region_emotion_counts]);
+
+  const industryEmotionMatrix = useMemo(() => {
+    return Object.entries(data?.news?.industry_emotion_counts || {})
+      .map(([industryName, counts]) => {
+        const ranked = rankedEntries(counts);
+        const total = ranked.reduce((sum, [, count]) => sum + count, 0);
+        return {
+          name: industryName,
+          dominant: ranked[0]?.[0] || "none",
+          dominantCount: ranked[0]?.[1] || 0,
+          total,
+        };
+      })
+      .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+  }, [data?.news?.industry_emotion_counts]);
 
   const topEmotions = useMemo(() => emotionMix.slice(0, 3).map(([name]) => name), [emotionMix]);
 
@@ -148,6 +214,9 @@ export default function Intel() {
       return row;
     });
   }, [data?.news?.emotion_series, topEmotions]);
+
+  const conflictContextMix = useMemo(() => rankedEntries(conflict?.event_counts), [conflict?.event_counts]);
+  const conflictImpactMix = useMemo(() => rankedEntries(conflict?.impact_counts), [conflict?.impact_counts]);
 
   const timestampCoverage = data?.news?.timestamp_ratio ?? 0;
   const showTrendData = timestampCoverage >= 0.2 && (data?.risk_series || []).length > 0;
@@ -187,11 +256,20 @@ export default function Intel() {
       <div className="mt-6 space-y-4 text-sm text-slate-300">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <KpiCard label="Risk Level" value={data?.risk_level || "Loading"} tone="text-green-300" />
-          <KpiCard label="Risk Score" value={data?.risk_score !== undefined ? `${data.risk_score}/10` : "?"} tone="text-slate-100" />
+          <KpiCard
+            label="Risk Score"
+            value={data?.risk_score !== undefined ? `${data.risk_score}/10` : "?"}
+            tone="text-slate-100"
+          />
           <KpiCard label="Data Support" value={data?.support?.summary || "?"} tone="text-slate-100" />
         </div>
 
-        <Collapsible title="Filters" meta={`${region} ? ${industry}`} open={filtersOpen} onToggle={() => setFiltersOpen((prev) => !prev)}>
+        <Collapsible
+          title="Filters"
+          meta={`${region} / ${industry}`}
+          open={filtersOpen}
+          onToggle={() => setFiltersOpen((prev) => !prev)}
+        >
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div>
               <label htmlFor="intel-region" className="text-xs text-slate-300">
@@ -231,7 +309,7 @@ export default function Intel() {
               </select>
             </div>
             <div>
-              <p className="text-xs font-semibold text-slate-200">Categories</p>
+              <p className="text-xs font-semibold text-slate-200">Contexts / Channels</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {(meta?.categories || []).map((category) => (
                   <button
@@ -244,7 +322,7 @@ export default function Intel() {
                         : "border-slate-700 text-slate-300"
                     }`}
                   >
-                    {category}
+                    {formatLabel(category)}
                   </button>
                 ))}
               </div>
@@ -286,13 +364,14 @@ export default function Intel() {
                 ))}
               </div>
             </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div className="rounded-xl border border-slate-700 p-4">
                 <p className="text-xs font-semibold text-slate-200 mb-2">Global Risk Trend</p>
                 {showTrendData ? (
                   <div className="h-40 w-full">
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={data.risk_series}>
+                      <AreaChart data={data?.risk_series}>
                         <defs>
                           <linearGradient id="riskFill" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="5%" stopColor="var(--green-500)" stopOpacity={0.6} />
@@ -302,17 +381,28 @@ export default function Intel() {
                         <CartesianGrid stroke="var(--slate-700)" strokeDasharray="3 3" />
                         <XAxis dataKey="label" tick={{ fill: "var(--slate-100)", fontSize: 10 }} />
                         <YAxis tick={{ fill: "var(--slate-100)", fontSize: 10 }} domain={[0, 10]} />
-                        <Tooltip contentStyle={{ background: "var(--slate-900)", borderRadius: 8, borderColor: "var(--slate-700)" }} />
-                        <Area type="monotone" dataKey="value" stroke="var(--green-500)" fill="url(#riskFill)" strokeWidth={2} />
+                        <Tooltip
+                          contentStyle={{
+                            background: "var(--slate-900)",
+                            borderRadius: 8,
+                            borderColor: "var(--slate-700)"
+                          }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="value"
+                          stroke="var(--green-500)"
+                          fill="url(#riskFill)"
+                          strokeWidth={2}
+                        />
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-400">
-                    Time trend unavailable (missing timestamps).
-                  </p>
+                  <p className="text-xs text-slate-400">Time trend unavailable (missing timestamps).</p>
                 )}
               </div>
+
               <div className="rounded-xl border border-slate-700 p-4">
                 <p className="text-xs font-semibold text-slate-200 mb-2">Emotion Trend</p>
                 {showTrendData && emotionSeries.length > 0 ? (
@@ -322,44 +412,77 @@ export default function Intel() {
                         <CartesianGrid stroke="var(--slate-700)" strokeDasharray="3 3" />
                         <XAxis dataKey="label" tick={{ fill: "var(--slate-100)", fontSize: 10 }} />
                         <YAxis tick={{ fill: "var(--slate-100)", fontSize: 10 }} />
-                        <Tooltip contentStyle={{ background: "var(--slate-900)", borderRadius: 8, borderColor: "var(--slate-700)" }} />
+                        <Tooltip
+                          contentStyle={{
+                            background: "var(--slate-900)",
+                            borderRadius: 8,
+                            borderColor: "var(--slate-700)"
+                          }}
+                        />
                         {topEmotions.map((emotion, index) => (
                           <Bar
                             key={emotion}
                             dataKey={emotion}
                             stackId="emotion"
-                            fill={index === 0 ? "var(--green-400)" : index === 1 ? "var(--green-300)" : "var(--green-200)"}
+                            fill={
+                              index === 0
+                                ? "var(--green-400)"
+                                : index === 1
+                                  ? "var(--green-300)"
+                                  : "var(--green-200)"
+                            }
                           />
                         ))}
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-400">
-                    Time trend unavailable (missing timestamps).
-                  </p>
+                  <p className="text-xs text-slate-400">Time trend unavailable (missing timestamps).</p>
                 )}
               </div>
+
               <div className="rounded-xl border border-slate-700 p-4">
-                <p className="text-xs font-semibold text-slate-200 mb-2">Category Mix</p>
-                {categoryMix.length > 0 ? (
+                <p className="text-xs font-semibold text-slate-200 mb-2">Context Mix</p>
+                {contextMix.length > 0 ? (
                   <div className="space-y-2 text-xs text-slate-100">
-                    {categoryMix.slice(0, 6).map(([category, count]) => (
-                      <div key={category} className="flex items-center justify-between">
-                        <span className="text-slate-300">{category}</span>
+                    {contextMix.slice(0, 6).map(([context, count]) => (
+                      <div key={context} className="flex items-center justify-between">
+                        <span className="text-slate-300">{formatLabel(context)}</span>
                         <span className="text-slate-100">{count}</span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-400">No category mix available yet.</p>
+                  <p className="text-xs text-slate-400">No context mix available yet.</p>
                 )}
+                {impactMix.length > 0 ? (
+                  <div className="mt-4 space-y-2 text-xs text-slate-100">
+                    <p className="text-xs font-semibold text-slate-200">Impacted Channels</p>
+                    {impactMix.slice(0, 6).map(([channel, count]) => (
+                      <div key={channel} className="flex items-center justify-between">
+                        <span className="text-slate-300">{formatLabel(channel)}</span>
+                        <span className="text-slate-100">{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 {emotionMix.length > 0 ? (
                   <div className="mt-4 space-y-2 text-xs text-slate-100">
                     <p className="text-xs font-semibold text-slate-200">Emotion Mix</p>
                     {emotionMix.slice(0, 6).map(([emotion, count]) => (
                       <div key={emotion} className="flex items-center justify-between">
-                        <span className="text-slate-300">{emotion}</span>
+                        <span className="text-slate-300">{formatLabel(emotion)}</span>
+                        <span className="text-slate-100">{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {categoryMix.length > 0 ? (
+                  <div className="mt-4 space-y-2 text-xs text-slate-100">
+                    <p className="text-xs font-semibold text-slate-200">Topic Mix</p>
+                    {categoryMix.slice(0, 5).map(([topic, count]) => (
+                      <div key={topic} className="flex items-center justify-between">
+                        <span className="text-slate-300">{formatLabel(topic)}</span>
                         <span className="text-slate-100">{count}</span>
                       </div>
                     ))}
@@ -367,7 +490,8 @@ export default function Intel() {
                 ) : null}
               </div>
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div className="rounded-xl border border-slate-700 p-4">
                 <p className="text-xs font-semibold text-slate-200 mb-2">Regional Coverage</p>
                 {regionMix.length > 0 ? (
@@ -383,22 +507,60 @@ export default function Intel() {
                   <p className="text-xs text-slate-400">No regional coverage data yet.</p>
                 )}
               </div>
+
               <div className="rounded-xl border border-slate-700 p-4">
-                <p className="text-xs font-semibold text-slate-200 mb-2">Subregional Coverage</p>
-                {subregionMix.length > 0 ? (
+                <p className="text-xs font-semibold text-slate-200 mb-2">Regional Emotion Matrix</p>
+                {regionEmotionMatrix.length > 0 ? (
                   <div className="space-y-2 text-xs text-slate-100">
-                    {subregionMix.slice(0, 6).map(([label, count]) => (
-                      <div key={label} className="flex items-center justify-between">
-                        <span className="text-slate-300">{label}</span>
-                        <span className="text-slate-100">{count}</span>
+                    {regionEmotionMatrix.slice(0, 6).map((entry) => (
+                      <div key={entry.name} className="flex items-center justify-between gap-4">
+                        <span className="text-slate-300">{entry.name}</span>
+                        <span className="text-right text-slate-100">
+                          {formatLabel(entry.dominant)} ({entry.dominantCount}/{entry.total})
+                        </span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-400">No subregional coverage data yet.</p>
+                  <p className="text-xs text-slate-400">No regional emotion data yet.</p>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-slate-700 p-4">
+                <p className="text-xs font-semibold text-slate-200 mb-2">Industry Emotion Matrix</p>
+                {industryEmotionMatrix.length > 0 ? (
+                  <div className="space-y-2 text-xs text-slate-100">
+                    {industryEmotionMatrix.slice(0, 6).map((entry) => (
+                      <div key={entry.name} className="flex items-center justify-between gap-4">
+                        <span className="text-slate-300">{formatLabel(entry.name)}</span>
+                        <span className="text-right text-slate-100">
+                          {formatLabel(entry.dominant)} ({entry.dominantCount}/{entry.total})
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400">No industry emotion data yet.</p>
                 )}
               </div>
             </div>
+
+            <div className="rounded-xl border border-slate-700 p-4">
+              <p className="text-xs font-semibold text-slate-200 mb-2">Subregional Coverage</p>
+              {subregionMix.length > 0 ? (
+                <div className="space-y-2 text-xs text-slate-100">
+                  {subregionMix.slice(0, 8).map(([label, count]) => (
+                    <div key={label} className="flex items-center justify-between">
+                      <span className="text-slate-300">{label}</span>
+                      <span className="text-slate-100">{count}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400">No subregional coverage data yet.</p>
+              )}
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {(data?.sections || []).slice(0, 4).map((section) => (
                 <div key={section.title} className="rounded-xl border border-slate-700 p-4">
@@ -407,18 +569,20 @@ export default function Intel() {
                 </div>
               ))}
             </div>
+
             <div className="rounded-xl border border-slate-700 p-4">
               <p className="text-xs font-semibold text-slate-200 mb-2">News Metrics</p>
               {renderRows([
                 ["Articles", String(data?.news?.count ?? 0)],
                 ["Sentiment avg", String(data?.news?.sentiment_avg ?? 0)],
                 ["Negative ratio", String(data?.news?.negative_ratio ?? 0)],
+                ["Conflict context", String(data?.news?.event_counts?.conflict ?? 0)],
                 [
                   "News risk score",
                   data?.news?.risk_score !== undefined && data?.news?.risk_score !== null
                     ? `${data?.news?.risk_score}/10`
                     : "Unavailable"
-                ]
+                ],
               ])}
             </div>
           </div>
@@ -459,6 +623,64 @@ export default function Intel() {
                 <p key={line}>{line}</p>
               ))}
             </div>
+
+            <div className="rounded-xl border border-slate-700 p-4">
+              <p className="text-xs font-semibold text-slate-200 mb-2">Conflict Hotspots</p>
+              {conflict?.hotspots && conflict.hotspots.length > 0 ? (
+                <div className="space-y-3 text-xs text-slate-100">
+                  {conflict.hotspots.slice(0, 4).map((hotspot, index) => (
+                    <div
+                      key={`${hotspot.region || "hotspot"}-${index}`}
+                      className="rounded-lg border border-slate-800 p-3"
+                    >
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="text-slate-200">{hotspot.region || "Region"}</span>
+                        <span className="text-slate-100">
+                          {hotspot.score !== undefined ? `${hotspot.score}/10` : "n/a"} • {hotspot.article_count || 0} articles
+                        </span>
+                      </div>
+                      <p className="mt-2 text-slate-400">
+                        {topCountsLabel(hotspot.event_counts, 3) || "No event tags"}
+                      </p>
+                      <p className="mt-1 text-slate-500">
+                        {topCountsLabel(hotspot.impact_channels, 3) || "No impacted channels"}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400">No conflict hotspots available yet.</p>
+              )}
+            </div>
+
+            {conflictContextMix.length > 0 ? (
+              <div className="rounded-xl border border-slate-700 p-4">
+                <p className="text-xs font-semibold text-slate-200 mb-2">Conflict Context Mix</p>
+                <div className="space-y-2 text-xs text-slate-100">
+                  {conflictContextMix.slice(0, 6).map(([context, count]) => (
+                    <div key={context} className="flex items-center justify-between">
+                      <span className="text-slate-300">{formatLabel(context)}</span>
+                      <span className="text-slate-100">{count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {conflictImpactMix.length > 0 ? (
+              <div className="rounded-xl border border-slate-700 p-4">
+                <p className="text-xs font-semibold text-slate-200 mb-2">Impacted Markets</p>
+                <div className="space-y-2 text-xs text-slate-100">
+                  {conflictImpactMix.slice(0, 6).map(([channel, count]) => (
+                    <div key={channel} className="flex items-center justify-between">
+                      <span className="text-slate-300">{formatLabel(channel)}</span>
+                      <span className="text-slate-100">{count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
             {(conflict?.sections || []).map((section) => (
               <div key={section.title} className="rounded-xl border border-slate-700 p-4">
                 <p className="text-xs font-semibold text-slate-200 mb-2">{section.title}</p>

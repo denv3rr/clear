@@ -5,6 +5,7 @@ import time
 import unittest
 from unittest.mock import patch
 
+from modules.market_data.collectors import classify_event
 from modules.market_data.intel import (
     MarketIntel,
     _filter_conflict_news,
@@ -34,8 +35,19 @@ class TestIntelNewsFilters(unittest.TestCase):
 
     def test_filter_conflict_news_categories(self):
         items = [
-            {"title": "Shipping lanes disrupted after strike", "tags": ["conflict"], "regions": ["Europe"]},
-            {"title": "Oil infrastructure attacked amid tensions", "industries": ["energy"], "regions": ["Europe"]},
+            {
+                "title": "Shipping lanes disrupted after strike",
+                "event_tags": ["conflict", "disruption"],
+                "impact_channels": ["shipping_logistics"],
+                "regions": ["Europe"],
+            },
+            {
+                "title": "Oil infrastructure attacked amid tensions",
+                "event_tags": ["conflict", "infrastructure"],
+                "impact_channels": ["energy"],
+                "industries": ["energy"],
+                "regions": ["Europe"],
+            },
             {"title": "Tech earnings beat estimates", "tags": ["finance"], "regions": ["Europe"]},
         ]
         filtered = _filter_conflict_news(items, "Europe", categories=["conflict", "energy"])
@@ -43,6 +55,20 @@ class TestIntelNewsFilters(unittest.TestCase):
         self.assertIn("Shipping lanes disrupted after strike", titles)
         self.assertIn("Oil infrastructure attacked amid tensions", titles)
         self.assertNotIn("Tech earnings beat estimates", titles)
+
+    def test_classify_event_uses_summary_and_maps_region(self):
+        meta = classify_event(
+            "Market update follows overnight developments",
+            summary=(
+                "Ukraine missile strikes disrupted Black Sea grain routes and raised water "
+                "shortage concerns across Europe."
+            ),
+        )
+        self.assertIn("conflict", meta["event_tags"])
+        self.assertIn("scarcity", meta["event_tags"])
+        self.assertIn("Europe", meta["regions"])
+        self.assertIn("shipping_logistics", meta["impact_channels"])
+        self.assertIn("agriculture_food", meta["impact_channels"])
 
     def test_score_news_item_relevance(self):
         now = int(time.time())

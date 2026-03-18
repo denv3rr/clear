@@ -5,7 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useState
+  useState,
 } from "react";
 import type { ReactNode } from "react";
 
@@ -13,13 +13,19 @@ const SCENE_STATE_KEY = "clear_scene_state";
 
 export type SceneId = "trackers" | "intel";
 export type TrackerSceneMode = "combined" | "flights" | "ships";
-export type IntelSceneLens = "combined" | "weather" | "conflict" | "news";
-export type SceneCameraPreset = "overview" | "focus";
+export type IntelSceneLens = "combined" | "weather" | "conflict" | "news" | "emotion";
+export type SceneCameraPreset = "overview" | "focus" | "free";
 
 export type SceneRuntimeState = {
   cameraPreset: SceneCameraPreset;
+  intelCategories: string[];
+  intelIndustry: string;
   intelLens: IntelSceneLens;
+  intelSources: string[];
+  trackerCategory: string;
+  trackerCountry: string;
   trackerMode: TrackerSceneMode;
+  trackerOperator: string;
 };
 
 export type SceneDefinition = {
@@ -33,38 +39,84 @@ export type SceneDefinition = {
 type SceneContextValue = {
   activeScene: SceneDefinition | null;
   activeScenePath: string | null;
+  clearIntelFilters: () => void;
+  clearTrackerFilters: () => void;
   closeScene: () => void;
   isOpen: boolean;
   openScene: (sceneId?: SceneId) => void;
   sceneState: SceneRuntimeState;
   setCameraPreset: (preset: SceneCameraPreset) => void;
+  setIntelIndustry: (industry: string) => void;
   setIntelLens: (lens: IntelSceneLens) => void;
+  setTrackerCategory: (category: string) => void;
+  setTrackerCountry: (country: string) => void;
   setTrackerMode: (mode: TrackerSceneMode) => void;
+  setTrackerOperator: (operator: string) => void;
+  toggleIntelCategory: (category: string) => void;
+  toggleIntelSource: (source: string) => void;
   toggleScene: (sceneId?: SceneId) => void;
 };
 
 const DEFAULT_SCENE_STATE: SceneRuntimeState = {
+  cameraPreset: "free",
+  intelCategories: [],
+  intelIndustry: "all",
   intelLens: "combined",
+  intelSources: [],
+  trackerCategory: "all",
+  trackerCountry: "",
   trackerMode: "combined",
-  cameraPreset: "overview"
+  trackerOperator: "",
 };
+
+function appendQueryParam(params: URLSearchParams, key: string, value: string) {
+  if (!value.trim()) return;
+  params.set(key, value.trim());
+}
 
 const SCENES: Record<SceneId, SceneDefinition> = {
   trackers: {
     id: "trackers",
     label: "Tracker Globe",
-    description: "Live trackers and replay trails rendered on the globe.",
-    buildPath: (state) => `/api/osint/scene/trackers?mode=${state.trackerMode}`,
-    fallbackStrategy: "trackerSnapshot"
+    description: "Live trackers, cargo lanes, and replay trails rendered on the globe.",
+    buildPath: (state) => {
+      const params = new URLSearchParams();
+      params.set("mode", state.trackerMode);
+      if (state.trackerCategory !== "all") {
+        params.set("category", state.trackerCategory);
+      }
+      appendQueryParam(params, "country", state.trackerCountry);
+      appendQueryParam(params, "operator", state.trackerOperator);
+      return `/api/osint/scene/trackers?${params.toString()}`;
+    },
+    fallbackStrategy: "trackerSnapshot",
   },
   intel: {
     id: "intel",
     label: "Regional Intel Globe",
-    description: "Regional weather, conflict, and news pressure fused into a globe-first OSINT view.",
-    buildPath: () => "/api/osint/scene/intel",
-    fallbackStrategy: "none"
-  }
+    description: "Regional weather, conflict, news, and emotion pressure fused into a globe-first OSINT view.",
+    buildPath: (state) => {
+      const params = new URLSearchParams();
+      params.set("industry", state.intelIndustry);
+      if (state.intelCategories.length) {
+        params.set("categories", state.intelCategories.join(","));
+      }
+      if (state.intelSources.length) {
+        params.set("sources", state.intelSources.join(","));
+      }
+      return `/api/osint/scene/intel?${params.toString()}`;
+    },
+    fallbackStrategy: "none",
+  },
 };
+
+function normalizeStringArray(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((entry): entry is string => typeof entry === "string")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
 
 function readStoredSceneState(): SceneRuntimeState {
   if (typeof window === "undefined") return DEFAULT_SCENE_STATE;
@@ -72,25 +124,45 @@ function readStoredSceneState(): SceneRuntimeState {
     const raw = window.localStorage.getItem(SCENE_STATE_KEY);
     if (!raw) return DEFAULT_SCENE_STATE;
     const parsed = JSON.parse(raw) as Partial<SceneRuntimeState>;
-    const trackerMode = parsed.trackerMode;
-    const intelLens = parsed.intelLens;
-    const cameraPreset = parsed.cameraPreset;
     return {
       trackerMode:
-        trackerMode === "flights" || trackerMode === "ships" || trackerMode === "combined"
-          ? trackerMode
+        parsed.trackerMode === "flights" ||
+        parsed.trackerMode === "ships" ||
+        parsed.trackerMode === "combined"
+          ? parsed.trackerMode
           : DEFAULT_SCENE_STATE.trackerMode,
       intelLens:
-        intelLens === "weather" ||
-        intelLens === "conflict" ||
-        intelLens === "news" ||
-        intelLens === "combined"
-          ? intelLens
+        parsed.intelLens === "weather" ||
+        parsed.intelLens === "conflict" ||
+        parsed.intelLens === "news" ||
+        parsed.intelLens === "emotion" ||
+        parsed.intelLens === "combined"
+          ? parsed.intelLens
           : DEFAULT_SCENE_STATE.intelLens,
       cameraPreset:
-        cameraPreset === "focus" || cameraPreset === "overview"
-          ? cameraPreset
-          : DEFAULT_SCENE_STATE.cameraPreset
+        parsed.cameraPreset === "overview" ||
+        parsed.cameraPreset === "focus" ||
+        parsed.cameraPreset === "free"
+          ? parsed.cameraPreset
+          : DEFAULT_SCENE_STATE.cameraPreset,
+      trackerCategory:
+        typeof parsed.trackerCategory === "string" && parsed.trackerCategory.trim()
+          ? parsed.trackerCategory.trim()
+          : DEFAULT_SCENE_STATE.trackerCategory,
+      trackerCountry:
+        typeof parsed.trackerCountry === "string"
+          ? parsed.trackerCountry.trim()
+          : DEFAULT_SCENE_STATE.trackerCountry,
+      trackerOperator:
+        typeof parsed.trackerOperator === "string"
+          ? parsed.trackerOperator.trim()
+          : DEFAULT_SCENE_STATE.trackerOperator,
+      intelIndustry:
+        typeof parsed.intelIndustry === "string" && parsed.intelIndustry.trim()
+          ? parsed.intelIndustry.trim()
+          : DEFAULT_SCENE_STATE.intelIndustry,
+      intelCategories: normalizeStringArray(parsed.intelCategories),
+      intelSources: normalizeStringArray(parsed.intelSources),
     };
   } catch {
     return DEFAULT_SCENE_STATE;
@@ -136,33 +208,98 @@ export function SceneProvider({ children }: { children: ReactNode }) {
       }
       openScene(nextSceneId);
     },
-    [activeScene?.id, closeScene, isOpen, openScene]
+    [activeScene?.id, closeScene, isOpen, openScene],
   );
 
   const setTrackerMode = useCallback((mode: TrackerSceneMode) => {
     startTransition(() => {
+      setSceneState((current) => ({ ...current, trackerMode: mode }));
+    });
+  }, []);
+
+  const setTrackerCategory = useCallback((category: string) => {
+    startTransition(() => {
+      setSceneState((current) => ({ ...current, trackerCategory: category || "all" }));
+    });
+  }, []);
+
+  const setTrackerCountry = useCallback((country: string) => {
+    startTransition(() => {
+      setSceneState((current) => ({ ...current, trackerCountry: country }));
+    });
+  }, []);
+
+  const setTrackerOperator = useCallback((operator: string) => {
+    startTransition(() => {
+      setSceneState((current) => ({ ...current, trackerOperator: operator }));
+    });
+  }, []);
+
+  const clearTrackerFilters = useCallback(() => {
+    startTransition(() => {
       setSceneState((current) => ({
         ...current,
-        trackerMode: mode
+        trackerCategory: DEFAULT_SCENE_STATE.trackerCategory,
+        trackerCountry: DEFAULT_SCENE_STATE.trackerCountry,
+        trackerOperator: DEFAULT_SCENE_STATE.trackerOperator,
       }));
     });
   }, []);
 
   const setIntelLens = useCallback((lens: IntelSceneLens) => {
     startTransition(() => {
+      setSceneState((current) => ({ ...current, intelLens: lens }));
+    });
+  }, []);
+
+  const setIntelIndustry = useCallback((industry: string) => {
+    startTransition(() => {
+      setSceneState((current) => ({ ...current, intelIndustry: industry || "all" }));
+    });
+  }, []);
+
+  const toggleIntelCategory = useCallback((category: string) => {
+    startTransition(() => {
+      setSceneState((current) => {
+        const next = new Set(current.intelCategories);
+        if (next.has(category)) {
+          next.delete(category);
+        } else {
+          next.add(category);
+        }
+        return { ...current, intelCategories: Array.from(next) };
+      });
+    });
+  }, []);
+
+  const toggleIntelSource = useCallback((source: string) => {
+    startTransition(() => {
+      setSceneState((current) => {
+        const next = new Set(current.intelSources);
+        if (next.has(source)) {
+          next.delete(source);
+        } else {
+          next.add(source);
+        }
+        return { ...current, intelSources: Array.from(next) };
+      });
+    });
+  }, []);
+
+  const clearIntelFilters = useCallback(() => {
+    startTransition(() => {
       setSceneState((current) => ({
         ...current,
-        intelLens: lens
+        intelCategories: DEFAULT_SCENE_STATE.intelCategories,
+        intelIndustry: DEFAULT_SCENE_STATE.intelIndustry,
+        intelSources: DEFAULT_SCENE_STATE.intelSources,
       }));
     });
   }, []);
 
   const setCameraPreset = useCallback((preset: SceneCameraPreset) => {
     startTransition(() => {
-      setSceneState((current) => ({
-        ...current,
-        cameraPreset: preset
-      }));
+      setSceneState((current) => ({ ...current, cameraPreset: preset }));
     });
   }, []);
 
@@ -175,27 +312,43 @@ export function SceneProvider({ children }: { children: ReactNode }) {
     () => ({
       activeScene,
       activeScenePath,
+      clearIntelFilters,
+      clearTrackerFilters,
       closeScene,
       isOpen,
       openScene,
       sceneState,
       setCameraPreset,
+      setIntelIndustry,
       setIntelLens,
+      setTrackerCategory,
+      setTrackerCountry,
       setTrackerMode,
-      toggleScene
+      setTrackerOperator,
+      toggleIntelCategory,
+      toggleIntelSource,
+      toggleScene,
     }),
     [
       activeScene,
       activeScenePath,
+      clearIntelFilters,
+      clearTrackerFilters,
       closeScene,
       isOpen,
       openScene,
       sceneState,
       setCameraPreset,
+      setIntelIndustry,
       setIntelLens,
+      setTrackerCategory,
+      setTrackerCountry,
       setTrackerMode,
-      toggleScene
-    ]
+      setTrackerOperator,
+      toggleIntelCategory,
+      toggleIntelSource,
+      toggleScene,
+    ],
   );
 
   return <SceneContext.Provider value={value}>{children}</SceneContext.Provider>;
