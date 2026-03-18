@@ -4,16 +4,28 @@ type GlobeGeographySource = {
   source_page: string;
   land_url: string;
   coastline_url: string;
+  country_url?: string;
+  country_source_page?: string;
   coordinate_system: string;
   generated_utc: string;
   land_polygon_count: number;
   coastline_count: number;
+  country_feature_count?: number;
+  worldview_note?: string;
+};
+
+type GlobeCountryFeature = {
+  id: string;
+  iso_a3: string;
+  name: string;
+  rings: number[][][];
 };
 
 export type GlobeGeographyData = {
   source: GlobeGeographySource;
   land_polygons: number[][][][];
   coast_lines: number[][][];
+  country_features?: GlobeCountryFeature[];
 };
 
 let geographyPromise: Promise<GlobeGeographyData> | null = null;
@@ -155,6 +167,18 @@ export function buildGlobeContextCanvas(
   ctx.fillStyle = "rgba(55, 172, 132, 0.14)";
   ctx.fill("evenodd");
   ctx.restore();
+
+  if (geography.country_features?.length) {
+    ctx.save();
+    ctx.strokeStyle = "rgba(126, 194, 227, 0.18)";
+    ctx.lineWidth = 0.8;
+    for (const country of geography.country_features) {
+      ctx.beginPath();
+      drawPolygonPath(ctx, country.rings, width, height);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
 
   ctx.save();
   ctx.strokeStyle = "rgba(72, 241, 166, 0.78)";

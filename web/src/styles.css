@@ -332,10 +332,14 @@ body {
   width: min(360px, 100%);
 }
 
+.globe-hud--right-collapsed {
+  width: min(220px, 100%);
+}
+
 .globe-panel {
   pointer-events: auto;
   border: 1px solid rgba(72, 241, 166, 0.18);
-  background: linear-gradient(180deg, rgba(9, 14, 20, 0.82), rgba(4, 8, 12, 0.74));
+  background: linear-gradient(180deg, rgba(9, 14, 20, 0.64), rgba(4, 8, 12, 0.54));
   box-shadow:
     0 24px 70px rgba(0, 0, 0, 0.46),
     inset 0 1px 0 rgba(72, 241, 166, 0.08);
@@ -606,7 +610,7 @@ body {
   min-width: 180px;
   border-radius: 16px;
   border: 1px solid rgba(156, 255, 219, 0.35);
-  background: rgba(6, 10, 14, 0.88);
+  background: rgba(6, 10, 14, 0.6);
   padding: 10px 12px;
   box-shadow: 0 14px 32px rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(12px);

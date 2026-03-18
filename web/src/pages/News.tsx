@@ -15,6 +15,7 @@ type IntelMeta = {
 type NewsItem = {
   title: string;
   source?: string;
+  sources?: string[];
   url?: string;
   published_ts?: number;
   regions?: string[];
@@ -84,6 +85,16 @@ export default function News() {
     if (delta < 3600) return `${Math.max(1, Math.floor(delta / 60))}m ago`;
     if (delta < 86400) return `${Math.floor(delta / 3600)}h ago`;
     return `${Math.floor(delta / 86400)}d ago`;
+  };
+  const formatSources = (item: NewsItem) => {
+    const merged = (item.sources || []).filter((value) => typeof value === "string" && Boolean(value.trim()));
+    if (!merged.length) {
+      return item.source || "Unknown source";
+    }
+    if (merged.length <= 2) {
+      return merged.join(" • ");
+    }
+    return `${merged.slice(0, 2).join(" • ")} +${merged.length - 2} more`;
   };
   const errorMessages = [
     metaError ? `Intel metadata failed: ${metaError}` : null,
@@ -252,11 +263,16 @@ export default function News() {
                 ) : null}
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-slate-300">
-                <span>{item.source || "Unknown source"}</span>
+                <span>{formatSources(item)}</span>
                 {item.published_ts ? (
                   <span>{formatTimestamp(item.published_ts)}</span>
                 ) : null}
               </div>
+              {item.sources && item.sources.length > 1 ? (
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Deduped across feeds: {item.sources.join(" • ")}
+                </p>
+              ) : null}
               {(item.regions?.length || item.industries?.length || item.tags?.length) ? (
                 <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-300">
                   {(item.regions || []).slice(0, 2).map((region) => (

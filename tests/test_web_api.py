@@ -196,6 +196,8 @@ def test_diagnostics_endpoint():
     assert "health_counts" in payload["feeds"]["summary"]
     assert "duplicates" in payload
     assert "accounts" in payload["duplicates"]
+    assert "client_names" in payload["duplicates"]
+    assert "news" in payload["duplicates"]
     assert "orphans" in payload
     assert "holdings" in payload["orphans"]
     assert "lots" in payload["orphans"]
@@ -526,6 +528,79 @@ def test_osint_intel_scene_requires_key(monkeypatch):
             headers={"X-API-Key": "secret"},
         )
     assert resp.status_code == 200
+
+
+def test_osint_overview_scene_endpoint_stubbed():
+    client = TestClient(web_app.app)
+    sentinel_intel = object()
+    snapshot = {"mode": "combined", "points": [], "warnings": []}
+    scene_payload = {
+        "scene_id": "osint-overview",
+        "title": "OSINT Globe Overview",
+        "kind": "osint",
+        "camera_defaults": {"target_lat": 25.0, "target_lon": 15.0, "distance": 3.5},
+        "timeline": {"mode": "overview", "point_count": 3, "trail_count": 1},
+        "layers": [
+            {"id": "live-trackers", "kind": "point", "features": []},
+            {"id": "tracker-trails", "kind": "path", "features": []},
+            {"id": "regional-intel", "kind": "point", "features": []},
+            {"id": "regional-conflict-overlays", "kind": "pulse", "features": []},
+        ],
+        "focus_targets": [
+            {"id": "region:europe", "label": "Europe", "domain": "intel"},
+            {"id": "flt-1", "label": "AAL120", "domain": "trackers"},
+        ],
+        "meta": {
+            "warnings": ["Overview warning"],
+            "available_lenses": ["combined", "weather", "conflict", "news", "emotion"],
+            "available_overlays": ["regional-conflict-overlays"],
+            "tracker_point_count": 1,
+            "regional_point_count": 2,
+        },
+    }
+    with mock.patch.object(scene_routes.GlobalTrackers, "get_snapshot") as mocked_snapshot, mock.patch.object(
+        scene_routes.GlobalTrackers, "apply_filters"
+    ) as mocked_filters, mock.patch.object(
+        scene_routes, "MarketIntel"
+    ) as mocked_intel_cls, mock.patch.object(
+        scene_routes, "build_overview_scene"
+    ) as mocked_builder:
+        mocked_snapshot.return_value = snapshot
+        mocked_filters.return_value = snapshot
+        mocked_intel_cls.return_value = sentinel_intel
+        mocked_builder.return_value = scene_payload
+        resp = client.get(
+            "/api/osint/scene/overview?mode=combined&category=commercial&country=United%20States&operator=AAL&industry=energy&categories=conflict&sources=Reuters",
+            headers=_api_headers(),
+        )
+    assert resp.status_code == 200
+    payload = resp.json()
+    mocked_builder.assert_called_once_with(
+        snapshot,
+        sentinel_intel,
+        history_fetcher=mock.ANY,
+        mode="combined",
+        point_limit=24,
+        trail_limit=8,
+        tracker_filters={
+            "category": "commercial",
+            "country": "United States",
+            "operator": "AAL",
+        },
+        industry_filter="energy",
+        categories=["conflict"],
+        enabled_sources=["Reuters"],
+    )
+    assert payload["scene_id"] == "osint-overview"
+    assert payload["meta"]["route"] == "/api/osint/scene/overview"
+    assert payload["focus_targets"][0]["domain"] == "intel"
+
+
+def test_osint_overview_scene_requires_key(monkeypatch):
+    monkeypatch.setenv("CLEAR_WEB_API_KEY", "secret")
+    client = TestClient(web_app.app)
+    resp = client.get("/api/osint/scene/overview")
+    assert resp.status_code == 401
 
 
 def test_tracker_analysis_endpoint_stubbed():

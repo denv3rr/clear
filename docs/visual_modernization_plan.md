@@ -565,6 +565,100 @@ Primary research references used for this correction and the next step:
 - Open-Meteo API docs:
   https://open-meteo.com/en/docs
 
+### Phase 0.95 Verified Globe Fixture Note
+
+The next standards-gated step after the intel contract fix is now partially
+closed.
+
+What landed:
+
+- a reviewed capture script at `scripts/capture_globe_fixture.py`
+- a committed positive-path intel globe fixture at
+  `web/tests/fixtures/intel-globe.fixture.json`
+- paired captured `scene` and `intel/meta` payloads so the overlay controls and
+  loaded scene remain in the same evidence-backed state
+- Playwright visual coverage for a loaded intel globe state in addition to the
+  existing fail-safe unavailable checks
+
+Why this matters:
+
+- it removes the pressure to invent "good looking" globe scene JSON for visual
+  tests
+- it proves we can snapshot the immersive overlay in a loaded state while
+  preserving real warnings, stale/freshness markers, and actual source
+  degradation
+- it creates a repeatable review path before additional immersive layers land
+
+What remains open:
+
+- tracker loaded-state globe visuals still need a reviewed capture path
+- geospatial source review still has to happen before country fills, wildfire
+  extents, or polygon-style conflict/disaster overlays can be presented as
+  truthful geometry
+- current loaded-state fixture captures real local news-cache-driven nodes, but
+  weather and GDELT details remain capture-time dependent and may show degraded
+  availability when upstream access is unavailable
+
+Update:
+
+- the tracker capture workflow now exists, but it fails closed unless the
+  environment returns a real non-empty tracker scene
+- the reviewed source track for future geometry is now documented in
+  `docs/geospatial_source_audit.md`
+
+### Phase 0.97 Reviewed Country Context Note
+
+The first reviewed country/admin-boundary step is now in the product rather
+than just in planning.
+
+What landed:
+
+- the base globe context asset at `web/public/globe-data/natural-earth-110m.json`
+  now includes reviewed Natural Earth admin-0 country geometry in addition to
+  land and coastline geometry
+- a repeatable generator at `scripts/build_natural_earth_globe_context.py`
+  rebuilds that asset from the official Natural Earth admin-0 countries zip
+  without hand-editing geometry
+- `web/src/lib/globeGeography.ts` now renders subtle country-border context
+  over the existing land/coast texture path
+- the overlay source copy now explicitly describes the asset as de facto admin
+  boundaries rather than legal border truth
+
+What this does not claim:
+
+- no worldview variants are being selected yet
+- no client-facing legal or sovereignty assertions are implied
+- this is still base geographic context, not a thematic polygon layer for
+  conflict, shortage, or disaster truth
+
+### Phase 1.0 Fused Overview And Integrity Note
+
+The next meaningful step is no longer hypothetical. The product now has:
+
+- a fused `/api/osint/scene/overview` route that combines live tracker layers,
+  tracker trails, regional intel nodes, and hotspot pulse overlays on one
+  globe contract
+- the OSINT workspace launching into that fused `Overview` globe by default,
+  with tracker-only and intel-only scenes still available as explicit pivots
+- an in-globe scene switcher so operators can move between `Overview`,
+  `Trackers`, and `Intel` without leaving the immersive surface
+- first-class layer visibility controls for tracker points, trails, regional
+  nodes, and conflict pulses so presentation state is explicit and reversible
+- a toggleable detail stack and lighter transparency so the globe can stay
+  readable in client demos and on laptop screens
+- collector-boundary news dedupe with preserved multi-source provenance so
+  globe and report counts are not inflated by cross-feed duplicates
+- report-cache dedupe reuse plus diagnostics for duplicate client names and raw
+  news cache duplicates so integrity drift is visible before it leaks into
+  workflow counts
+- write-path duplicate rejection for normalized client/account identities so
+  saved workspaces and future exposure mapping do not drift on duplicated
+  entities
+
+This is the base for the next operational phase. The detailed execution plan
+for workflow, lineage, and client/report linkage now lives in
+`docs/osint_operational_workflow_plan.md`.
+
 ## Immediate Next Move
 
 With the architecture spike and hardening slice in place, the next move is:
@@ -572,8 +666,11 @@ With the architecture spike and hardening slice in place, the next move is:
 1. Add provenance-backed captured fixtures for Intel/globe positive-path visual
    checks so we can validate loaded hotspot/emotion states without fabricated
    scene data.
+   Status: closed for the intel globe loaded state; still open for trackers.
 2. Evaluate reviewed open geospatial inputs for exact wildfire/disaster and
    country/region overlays before any polygon-style fill work lands.
+   Status: closed as a source audit and decision document; integration work
+   remains open.
 3. Add cargo/logistics and regional news/conflict/weather adapters on top of
    the corrected `GeoScenePayload` contract.
 4. Reuse the same scene payloads for CLI summaries and exports.

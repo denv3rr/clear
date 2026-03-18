@@ -16,6 +16,7 @@ from modules.reporting.engine import (
     validate_report_schema,
     report_health_check,
     select_model_runner,
+    _load_cached_news,
     _load_reporting_ai_settings,
 )
 
@@ -33,6 +34,16 @@ class FakeModelRunner:
 
 
 class TestReportEngine(unittest.TestCase):
+    def test_load_cached_news_uses_deduped_collector_loader(self):
+        with mock.patch("modules.reporting.engine.load_cached_news") as load_news, \
+            mock.patch("os.path.exists") as exists:
+            exists.return_value = True
+            load_news.return_value = [{"title": "Deduped headline", "sources": ["CNBC Top", "CNBC World"]}]
+            items = _load_cached_news()
+            self.assertEqual(len(items), 1)
+            self.assertEqual(items[0]["title"], "Deduped headline")
+            load_news.assert_called_once()
+
     def test_generate_weekly_brief_template(self):
         client = Client(client_id="client-1", name="Test Client")
         acct = Account(account_name="Primary")

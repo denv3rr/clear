@@ -141,6 +141,8 @@ web/.tsbuildinfo
 # Playwright (root runs)
 test-results/
 playwright-report/
+.tmp_ne_admin0/
+clear_ne_admin0_*/
 
 # Node package managers
 node_modules/

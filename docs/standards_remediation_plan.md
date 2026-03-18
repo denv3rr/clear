@@ -15,6 +15,22 @@ Closed in the current pass:
   API/UI stack.
 - Rebased globe visual regression on fail-safe unavailable states instead of
   fabricated scene content.
+- Added a captured-fixture format and capture workflow for positive-path intel
+  globe visuals, with provenance recorded from the real FastAPI route contract
+  and local news cache.
+- Added a loaded-state Playwright globe visual baseline driven by the reviewed
+  captured intel fixture instead of invented route bodies.
+- Added a reviewed geospatial source audit for country boundaries, wildfire
+  perimeters, fire detections, and U.S. alert polygons, with explicit limits on
+  what can and cannot be shown as precise geometry.
+- Added collector-boundary news dedupe that collapses cross-feed duplicate
+  articles while preserving contributing source provenance.
+- Routed reporting-engine cached news reads through the same deduping loader so
+  report packs do not bypass collector/cache duplicate controls.
+- Added normalized client/account duplicate guards on the write path so
+  semantic duplicates fail closed instead of inflating downstream counts.
+- Expanded diagnostics visibility for duplicate client names and duplicate raw
+  news cache entries so existing drift is detectable before it biases counts.
 - Removed heuristic assistant confidence values from runtime assistant output
   and exports.
 - Removed heuristic confidence labels from weather/conflict/combined intel
@@ -37,9 +53,12 @@ Still open:
   provenance.
 - Positive-path browser mutation tests still need an isolated real-data harness
   so we can verify destructive flows without touching local operator data.
-- New immersive Intel/globe positive-path visuals now need provenance-backed
-  captured fixtures so hotspot/emotion loaded states can be verified without
-  fabricating scene payloads.
+- Tracker globe positive-path visuals still need a reviewed capture path before
+  fail-safe-only browser baselines should be replaced there.
+- The tracker capture path now exists but correctly fails closed in environments
+  that only return empty/degraded tracker scenes; a reviewed non-empty tracker
+  source is still required before a loaded-state tracker fixture can be
+  committed.
 - Widespread `except Exception` and bare `pass` usage still needs a structured
   fail-safe audit across `modules/`, `web_api/`, and startup code.
 - Some report/export tests still use invented `confidence` strings in fixture
@@ -102,6 +121,8 @@ Exit criteria:
 - System/browser mutation tests no longer need fabricated success bodies.
 - New fixtures carry provenance metadata and are reviewable artifacts.
 - Test docs explain when live local data vs captured fixtures are allowed.
+- Globe/browser fixture coverage is expanded beyond intel as reviewed capture
+  paths become available.
 
 ## Phase 2: Fail-Safe And Silent-Failure Audit
 

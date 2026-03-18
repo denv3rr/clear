@@ -212,6 +212,24 @@ def _camera_defaults(bounds: Mapping[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _interleave_focus_targets(
+    primary: Sequence[Mapping[str, Any]],
+    secondary: Sequence[Mapping[str, Any]],
+    *,
+    limit: int = 8,
+) -> List[Dict[str, Any]]:
+    merged: List[Dict[str, Any]] = []
+    max_len = max(len(primary), len(secondary))
+    for index in range(max_len):
+        if index < len(primary):
+            merged.append(dict(primary[index]))
+        if index < len(secondary):
+            merged.append(dict(secondary[index]))
+        if len(merged) >= limit:
+            break
+    return merged[:limit]
+
+
 def _history_summary(history: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
     if len(history) < 2:
         return {"points": len(history)}
@@ -710,6 +728,7 @@ def build_intel_scene(
                 "id": feature_id,
                 "layer": "regional-intel",
                 "label": region.name,
+                "domain": "intel",
                 "kind": dominant_channel,
                 "category": combined_level,
                 "lat": region.lat,
@@ -1014,6 +1033,7 @@ def build_tracker_scene(
                 "id": feature["id"],
                 "layer": feature["layer"],
                 "label": feature.get("properties", {}).get("label"),
+                "domain": "trackers",
                 "kind": feature.get("properties", {}).get("kind"),
                 "category": feature.get("properties", {}).get("category"),
                 "lat": coords[1],
@@ -1102,6 +1122,120 @@ def build_tracker_scene(
                 "mode": snapshot.get("mode", mode or "combined"),
                 **applied_filters,
             },
+            "warnings": warnings,
+        },
+    )
+
+
+def build_overview_scene(
+    snapshot: Mapping[str, Any],
+    intel: MarketIntel,
+    *,
+    history_fetcher: Optional[Callable[[str], Mapping[str, Any]]] = None,
+    scene_id: str = "osint-overview",
+    title: str = "OSINT Globe Overview",
+    mode: Optional[str] = None,
+    point_limit: int = 24,
+    trail_limit: int = 8,
+    tracker_filters: Optional[Mapping[str, Any]] = None,
+    industry_filter: str = "all",
+    enabled_sources: Optional[Sequence[str]] = None,
+    categories: Optional[Sequence[str]] = None,
+    now: Optional[int] = None,
+) -> Dict[str, Any]:
+    tracker_scene = build_tracker_scene(
+        snapshot,
+        history_fetcher=history_fetcher,
+        scene_id="osint-overview-trackers",
+        title="OSINT Overview Trackers",
+        source="trackers",
+        mode=mode,
+        point_limit=point_limit,
+        trail_limit=trail_limit,
+        filters=tracker_filters,
+        now=now,
+    )
+    intel_scene = build_intel_scene(
+        intel,
+        scene_id="osint-overview-intel",
+        title="OSINT Overview Regional Signals",
+        source="intel",
+        industry_filter=industry_filter,
+        enabled_sources=enabled_sources,
+        categories=categories,
+        now=now,
+    )
+    layers = [*tracker_scene.get("layers", []), *intel_scene.get("layers", [])]
+    all_features = [
+        feature
+        for layer in layers
+        for feature in (layer.get("features", []) or [])
+        if isinstance(feature, Mapping)
+    ]
+    bounds = _bounds_from_features(all_features)
+    timeline_ts = [
+        int(feature.get("ts"))
+        for feature in all_features
+        if feature.get("ts") is not None
+    ]
+    focus_targets = _interleave_focus_targets(
+        intel_scene.get("focus_targets", []),
+        tracker_scene.get("focus_targets", []),
+        limit=10,
+    )
+    warnings = list(
+        dict.fromkeys(
+            [
+                *list(tracker_scene.get("meta", {}).get("warnings", []) or []),
+                *list(intel_scene.get("meta", {}).get("warnings", []) or []),
+            ]
+        )
+    )
+    tracker_point_count = int(tracker_scene.get("meta", {}).get("selected_point_count", 0) or 0)
+    regional_point_count = int(intel_scene.get("meta", {}).get("region_count", 0) or 0)
+    trail_count = int(tracker_scene.get("meta", {}).get("selected_trail_count", 0) or 0)
+    hotspot_count = len(
+        next(
+            (
+                layer.get("features", [])
+                for layer in intel_scene.get("layers", [])
+                if str(layer.get("id") or "") == "regional-conflict-overlays"
+            ),
+            [],
+        )
+    )
+    return geo_scene_payload(
+        scene_id,
+        title=title,
+        kind="osint",
+        camera_defaults=_camera_defaults(bounds),
+        timeline={
+            "mode": "overview",
+            "start_ts": min(timeline_ts) if timeline_ts else None,
+            "end_ts": max(timeline_ts) if timeline_ts else None,
+            "point_count": tracker_point_count + regional_point_count,
+            "trail_count": trail_count,
+            "selected_ids": [target.get("id") for target in focus_targets[:6]],
+        },
+        layers=layers,
+        focus_targets=focus_targets,
+        bounds=bounds,
+        meta={
+            "source": "trackers+intel",
+            "timestamp": int(now if now is not None else time.time()),
+            "mode": mode or snapshot.get("mode") or "combined",
+            "point_limit": point_limit,
+            "trail_limit": trail_limit,
+            "tracker_filters": dict(tracker_filters or {}),
+            "industry_filter": industry_filter,
+            "categories": [str(category) for category in (categories or []) if str(category).strip()],
+            "sources": [str(source) for source in (enabled_sources or []) if str(source).strip()],
+            "tracker_point_count": tracker_point_count,
+            "regional_point_count": regional_point_count,
+            "trail_count": trail_count,
+            "hotspot_count": hotspot_count,
+            "available_lenses": ["combined", "weather", "conflict", "news", "emotion"],
+            "available_overlays": ["regional-conflict-overlays"],
             "warnings": warnings,
         },
     )

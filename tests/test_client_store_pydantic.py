@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 from core import models
 from modules.client_mgr.schema import Client
-from modules.client_store import DbClientStore
+from modules.client_store import DbClientStore, DuplicateAccountError, DuplicateClientError
 
 # Use an in-memory SQLite database for testing
 engine = create_engine("sqlite:///:memory:")
@@ -130,6 +130,48 @@ class TestDbClientStorePydantic(unittest.TestCase):
         self.assertTrue(clients[0]["client_id"])
         self.assertEqual(len(clients[0]["accounts"]), 1)
         self.assertTrue(clients[0]["accounts"][0]["account_id"])
+
+    def test_sync_clients_rejects_duplicate_client_name_without_ids(self):
+        self.store.sync_clients([{"name": "Atlas Capital", "accounts": []}])
+        with self.assertRaises(DuplicateClientError):
+            self.store.sync_clients([{"name": " atlas   capital ", "accounts": []}])
+
+    def test_sync_clients_rejects_duplicate_account_identity_without_ids(self):
+        self.store.sync_clients(
+            [
+                {
+                    "client_id": "client-a",
+                    "name": "Client A",
+                    "accounts": [
+                        {
+                            "account_id": "acct-1",
+                            "account_name": "Primary",
+                            "account_type": "Taxable",
+                            "ownership_type": "Individual",
+                            "custodian": "Fidelity",
+                        }
+                    ],
+                }
+            ]
+        )
+        with self.assertRaises(DuplicateAccountError):
+            self.store.sync_clients(
+                [
+                    {
+                        "client_id": "client-a",
+                        "name": "Client A",
+                        "accounts": [
+                            {
+                                "account_name": " primary ",
+                                "account_type": "Taxable",
+                                "ownership_type": "Individual",
+                                "custodian": " fidelity ",
+                            }
+                        ],
+                    },
+                ],
+                overwrite=True,
+            )
 
 
 if __name__ == "__main__":

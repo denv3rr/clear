@@ -11,17 +11,28 @@ import type { ReactNode } from "react";
 
 const SCENE_STATE_KEY = "clear_scene_state";
 
-export type SceneId = "trackers" | "intel";
+export type SceneId = "trackers" | "intel" | "overview";
 export type TrackerSceneMode = "combined" | "flights" | "ships";
 export type IntelSceneLens = "combined" | "weather" | "conflict" | "news" | "emotion";
 export type SceneCameraPreset = "overview" | "focus" | "free";
+export type SceneOverlayKey =
+  | "detailsVisible"
+  | "showIntelHotspots"
+  | "showIntelRegions"
+  | "showTrackerPoints"
+  | "showTrackerTrails";
 
 export type SceneRuntimeState = {
   cameraPreset: SceneCameraPreset;
+  detailsVisible: boolean;
   intelCategories: string[];
   intelIndustry: string;
   intelLens: IntelSceneLens;
   intelSources: string[];
+  showIntelHotspots: boolean;
+  showIntelRegions: boolean;
+  showTrackerPoints: boolean;
+  showTrackerTrails: boolean;
   trackerCategory: string;
   trackerCountry: string;
   trackerMode: TrackerSceneMode;
@@ -48,6 +59,8 @@ type SceneContextValue = {
   setCameraPreset: (preset: SceneCameraPreset) => void;
   setIntelIndustry: (industry: string) => void;
   setIntelLens: (lens: IntelSceneLens) => void;
+  setOverlayVisibility: (key: SceneOverlayKey, visible: boolean) => void;
+  resetOverlayVisibility: () => void;
   setTrackerCategory: (category: string) => void;
   setTrackerCountry: (country: string) => void;
   setTrackerMode: (mode: TrackerSceneMode) => void;
@@ -59,10 +72,15 @@ type SceneContextValue = {
 
 const DEFAULT_SCENE_STATE: SceneRuntimeState = {
   cameraPreset: "free",
+  detailsVisible: true,
   intelCategories: [],
   intelIndustry: "all",
   intelLens: "combined",
   intelSources: [],
+  showIntelHotspots: true,
+  showIntelRegions: true,
+  showTrackerPoints: true,
+  showTrackerTrails: true,
   trackerCategory: "all",
   trackerCountry: "",
   trackerMode: "combined",
@@ -75,6 +93,29 @@ function appendQueryParam(params: URLSearchParams, key: string, value: string) {
 }
 
 const SCENES: Record<SceneId, SceneDefinition> = {
+  overview: {
+    id: "overview",
+    label: "OSINT Globe Overview",
+    description: "Trackers, regional weather, conflict, news, and emotion fused into one operational globe.",
+    buildPath: (state) => {
+      const params = new URLSearchParams();
+      params.set("mode", state.trackerMode);
+      if (state.trackerCategory !== "all") {
+        params.set("category", state.trackerCategory);
+      }
+      appendQueryParam(params, "country", state.trackerCountry);
+      appendQueryParam(params, "operator", state.trackerOperator);
+      params.set("industry", state.intelIndustry);
+      if (state.intelCategories.length) {
+        params.set("categories", state.intelCategories.join(","));
+      }
+      if (state.intelSources.length) {
+        params.set("sources", state.intelSources.join(","));
+      }
+      return `/api/osint/scene/overview?${params.toString()}`;
+    },
+    fallbackStrategy: "none",
+  },
   trackers: {
     id: "trackers",
     label: "Tracker Globe",
@@ -118,6 +159,11 @@ function normalizeStringArray(value: unknown) {
     .filter(Boolean);
 }
 
+function normalizeBoolean(value: unknown, fallback: boolean) {
+  if (typeof value === "boolean") return value;
+  return fallback;
+}
+
 function readStoredSceneState(): SceneRuntimeState {
   if (typeof window === "undefined") return DEFAULT_SCENE_STATE;
   try {
@@ -145,6 +191,10 @@ function readStoredSceneState(): SceneRuntimeState {
         parsed.cameraPreset === "free"
           ? parsed.cameraPreset
           : DEFAULT_SCENE_STATE.cameraPreset,
+      detailsVisible: normalizeBoolean(
+        parsed.detailsVisible,
+        DEFAULT_SCENE_STATE.detailsVisible,
+      ),
       trackerCategory:
         typeof parsed.trackerCategory === "string" && parsed.trackerCategory.trim()
           ? parsed.trackerCategory.trim()
@@ -163,6 +213,22 @@ function readStoredSceneState(): SceneRuntimeState {
           : DEFAULT_SCENE_STATE.intelIndustry,
       intelCategories: normalizeStringArray(parsed.intelCategories),
       intelSources: normalizeStringArray(parsed.intelSources),
+      showIntelHotspots: normalizeBoolean(
+        parsed.showIntelHotspots,
+        DEFAULT_SCENE_STATE.showIntelHotspots,
+      ),
+      showIntelRegions: normalizeBoolean(
+        parsed.showIntelRegions,
+        DEFAULT_SCENE_STATE.showIntelRegions,
+      ),
+      showTrackerPoints: normalizeBoolean(
+        parsed.showTrackerPoints,
+        DEFAULT_SCENE_STATE.showTrackerPoints,
+      ),
+      showTrackerTrails: normalizeBoolean(
+        parsed.showTrackerTrails,
+        DEFAULT_SCENE_STATE.showTrackerTrails,
+      ),
     };
   } catch {
     return DEFAULT_SCENE_STATE;
@@ -186,7 +252,7 @@ export function SceneProvider({ children }: { children: ReactNode }) {
   }, [sceneState]);
 
   const openScene = useCallback((sceneId?: SceneId) => {
-    const nextSceneId = sceneId || activeScene?.id || "trackers";
+    const nextSceneId = sceneId || activeScene?.id || "overview";
     startTransition(() => {
       setActiveScene(SCENES[nextSceneId]);
       setIsOpen(true);
@@ -201,7 +267,7 @@ export function SceneProvider({ children }: { children: ReactNode }) {
 
   const toggleScene = useCallback(
     (sceneId?: SceneId) => {
-      const nextSceneId = sceneId || activeScene?.id || "trackers";
+      const nextSceneId = sceneId || activeScene?.id || "overview";
       if (isOpen && activeScene?.id === nextSceneId) {
         closeScene();
         return;
@@ -255,6 +321,25 @@ export function SceneProvider({ children }: { children: ReactNode }) {
   const setIntelIndustry = useCallback((industry: string) => {
     startTransition(() => {
       setSceneState((current) => ({ ...current, intelIndustry: industry || "all" }));
+    });
+  }, []);
+
+  const setOverlayVisibility = useCallback((key: SceneOverlayKey, visible: boolean) => {
+    startTransition(() => {
+      setSceneState((current) => ({ ...current, [key]: visible }));
+    });
+  }, []);
+
+  const resetOverlayVisibility = useCallback(() => {
+    startTransition(() => {
+      setSceneState((current) => ({
+        ...current,
+        detailsVisible: DEFAULT_SCENE_STATE.detailsVisible,
+        showIntelHotspots: DEFAULT_SCENE_STATE.showIntelHotspots,
+        showIntelRegions: DEFAULT_SCENE_STATE.showIntelRegions,
+        showTrackerPoints: DEFAULT_SCENE_STATE.showTrackerPoints,
+        showTrackerTrails: DEFAULT_SCENE_STATE.showTrackerTrails,
+      }));
     });
   }, []);
 
@@ -321,6 +406,8 @@ export function SceneProvider({ children }: { children: ReactNode }) {
       setCameraPreset,
       setIntelIndustry,
       setIntelLens,
+      setOverlayVisibility,
+      resetOverlayVisibility,
       setTrackerCategory,
       setTrackerCountry,
       setTrackerMode,
@@ -341,6 +428,8 @@ export function SceneProvider({ children }: { children: ReactNode }) {
       setCameraPreset,
       setIntelIndustry,
       setIntelLens,
+      setOverlayVisibility,
+      resetOverlayVisibility,
       setTrackerCategory,
       setTrackerCountry,
       setTrackerMode,

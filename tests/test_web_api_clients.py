@@ -59,6 +59,21 @@ def test_create_client_without_id(client):
     assert data["name"] == "Auto ID Client"
     assert data["client_id"]
 
+
+def test_create_client_rejects_duplicate_normalized_name(client):
+    response = client.post(
+        "/api/clients",
+        json={"client_id": "atlas-1", "name": "Atlas Capital", "accounts": []},
+    )
+    assert response.status_code == 200
+    response = client.post(
+        "/api/clients",
+        json={"client_id": "atlas-2", "name": " atlas   capital ", "accounts": []},
+    )
+    assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert detail["existing_client_id"] == "atlas-1"
+
 def test_get_clients(client):
     response = client.get("/api/clients")
     assert response.status_code == 200
@@ -107,6 +122,38 @@ def test_create_account_without_id(client):
     assert response.status_code == 200
     payload = response.json()
     assert payload["account"]["account_id"]
+
+
+def test_create_account_rejects_duplicate_identity(client):
+    client_id = "dup_account_client"
+    client.post(
+        "/api/clients",
+        json={"client_id": client_id, "name": "Duplicate Account Client", "risk_profile": "Low", "accounts": []},
+    )
+    response = client.post(
+        f"/api/clients/{client_id}/accounts",
+        json={
+            "account_id": "acct-1",
+            "account_name": "Primary",
+            "account_type": "Taxable",
+            "ownership_type": "Individual",
+            "custodian": "Fidelity",
+        },
+    )
+    assert response.status_code == 200
+    response = client.post(
+        f"/api/clients/{client_id}/accounts",
+        json={
+            "account_id": "acct-2",
+            "account_name": " primary ",
+            "account_type": "Taxable",
+            "ownership_type": "Individual",
+            "custodian": " fidelity ",
+        },
+    )
+    assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert detail["existing_account_id"] == "acct-1"
 
 
 def test_account_metadata_persists(client):
@@ -165,6 +212,7 @@ def test_duplicate_account_cleanup(client, session):
     assert response.status_code == 200
     payload = response.json()
     assert payload["count"] == 1
+    assert payload["client_name_duplicates"]["count"] == 0
 
     response = client.post(
         "/api/clients/duplicates/cleanup",
@@ -178,3 +226,49 @@ def test_duplicate_account_cleanup(client, session):
     response = client.get("/api/clients/duplicates")
     assert response.status_code == 200
     assert response.json()["count"] == 0
+
+
+def test_duplicate_client_names_are_reported(client, session):
+    session.add(models.Client(client_uid="dup-client-a", name="Atlas Capital", name_key="atlas capital"))
+    session.add(models.Client(client_uid="dup-client-b", name=" atlas   capital ", name_key="atlas capital"))
+    session.commit()
+
+    response = client.get("/api/clients/duplicates")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["client_name_duplicates"]["count"] == 1
+    assert payload["client_name_duplicates"]["groups"] == 1
+
+
+def test_update_account_rejects_duplicate_identity(client):
+    client_id = "dup_patch_client"
+    client.post(
+        "/api/clients",
+        json={"client_id": client_id, "name": "Duplicate Patch Client", "risk_profile": "Low", "accounts": []},
+    )
+    for payload in [
+        {
+            "account_id": "acct-1",
+            "account_name": "Primary",
+            "account_type": "Taxable",
+            "ownership_type": "Individual",
+            "custodian": "Fidelity",
+        },
+        {
+            "account_id": "acct-2",
+            "account_name": "Reserve",
+            "account_type": "Taxable",
+            "ownership_type": "Individual",
+            "custodian": "Fidelity",
+        },
+    ]:
+        response = client.post(f"/api/clients/{client_id}/accounts", json=payload)
+        assert response.status_code == 200
+
+    response = client.patch(
+        f"/api/clients/{client_id}/accounts/acct-2",
+        json={"account_name": " primary ", "custodian": " fidelity "},
+    )
+    assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert detail["existing_account_id"] == "acct-1"

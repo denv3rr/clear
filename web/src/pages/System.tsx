@@ -65,9 +65,21 @@ type DiagnosticsPayload = {
     };
   };
   trackers?: { warning_count?: number; count?: number };
-  intel?: { news_cache?: { status?: string; items?: number; age_hours?: number | null } };
+  intel?: {
+    news_cache?: {
+      status?: string;
+      items?: number;
+      raw_items?: number;
+      duplicate_items?: number;
+      age_hours?: number | null;
+    };
+  };
   clients?: { clients?: number; accounts?: number; holdings?: number; lots?: number };
-  duplicates?: { accounts?: { count?: number; clients?: number } };
+  duplicates?: {
+    accounts?: { count?: number; clients?: number };
+    client_names?: { count?: number; groups?: number };
+    news?: { count?: number };
+  };
   orphans?: { holdings?: number; lots?: number };
   reports?: { items?: number; status?: string };
 };
@@ -120,6 +132,9 @@ export default function System() {
 
   const duplicateCount = data?.duplicates?.accounts?.count ?? 0;
   const duplicateClients = data?.duplicates?.accounts?.clients ?? 0;
+  const duplicateClientNames = data?.duplicates?.client_names?.count ?? 0;
+  const duplicateClientGroups = data?.duplicates?.client_names?.groups ?? 0;
+  const duplicateNewsItems = data?.duplicates?.news?.count ?? 0;
   const orphanHoldings = data?.orphans?.holdings ?? 0;
   const orphanLots = data?.orphans?.lots ?? 0;
   const feedTotal = data?.feeds?.summary?.total ?? 0;
@@ -294,19 +309,37 @@ export default function System() {
       <div className="mt-4">
         <ErrorBanner messages={errorMessages} onRetry={refresh} />
       </div>
-      {duplicateCount > 0 ? (
+      {duplicateCount > 0 || duplicateClientNames > 0 || duplicateNewsItems > 0 ? (
         <div className="mt-4 rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-200">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <p>
-              Duplicate accounts detected: {duplicateCount} across{' '}
-              {duplicateClients} client{duplicateClients === 1 ? '' : 's'}.
-            </p>
-            <button
-              onClick={onCleanupDuplicates}
-              className="rounded-lg border border-amber-400/50 px-3 py-1 text-xs text-amber-100 hover:border-amber-300"
-            >
-              Remove duplicates
-            </button>
+            <div className="space-y-1">
+              {duplicateCount > 0 ? (
+                <p>
+                  Duplicate accounts detected: {duplicateCount} across{" "}
+                  {duplicateClients} client{duplicateClients === 1 ? "" : "s"}.
+                </p>
+              ) : null}
+              {duplicateClientNames > 0 ? (
+                <p>
+                  Duplicate client names detected: {duplicateClientNames} duplicate record
+                  {duplicateClientNames === 1 ? "" : "s"} across {duplicateClientGroups} name group
+                  {duplicateClientGroups === 1 ? "" : "s"}.
+                </p>
+              ) : null}
+              {duplicateNewsItems > 0 ? (
+                <p>
+                  Duplicate raw news entries detected: {duplicateNewsItems}. Counts now dedupe at load time, but the cache should still be reviewed.
+                </p>
+              ) : null}
+            </div>
+            {duplicateCount > 0 ? (
+              <button
+                onClick={onCleanupDuplicates}
+                className="rounded-lg border border-amber-400/50 px-3 py-1 text-xs text-amber-100 hover:border-amber-300"
+              >
+                Remove account duplicates
+              </button>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -413,6 +446,16 @@ export default function System() {
             {data?.intel?.news_cache?.age_hours !== undefined && data?.intel?.news_cache?.age_hours !== null
               ? ` • ${data?.intel?.news_cache?.age_hours}h`
               : ""}
+          </p>
+          <p>
+            News Duplicates: {duplicateNewsItems}
+            {data?.intel?.news_cache?.raw_items !== undefined
+              ? ` • raw ${data?.intel?.news_cache?.raw_items ?? 0} / unique ${data?.intel?.news_cache?.items ?? 0}`
+              : ""}
+          </p>
+          <p>
+            Client Name Duplicates: {duplicateClientNames}
+            {duplicateClientGroups ? ` • ${duplicateClientGroups} groups` : ""}
           </p>
           <p>Lots: {data?.clients?.lots ?? "—"}</p>
           <p>Report Cache: {data?.reports?.status || "—"} ({data?.reports?.items ?? 0})</p>

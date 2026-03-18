@@ -43,7 +43,7 @@ test("intel and news pages render real-data workspaces", async ({ page }) => {
   await expect(page.getByText("Global Impact Summary")).toBeVisible();
   await expect(page.getByText("Combined Overview")).toBeVisible();
   await expect(page.getByText("Regional Emotion Matrix")).toBeVisible();
-  await expect(page.getByText("Conflict context")).toBeVisible();
+  await expect(page.getByText("Conflict context", { exact: true })).toBeVisible();
 
   await page.goto("/osint?tab=news");
   await expect(page.getByText("Market Signals")).toBeVisible();
@@ -59,12 +59,18 @@ test("osint tabs switch", async ({ page }) => {
   await expect(page.getByText("Market Signals")).toBeVisible();
 });
 
-test("tracker globe overlay opens with live or degraded scene state", async ({ page }) => {
+test("tracker globe entry opens the overview globe with layer controls", async ({ page }) => {
   await page.goto("/osint?tab=trackers");
   await page.getByTestId("osint-open-globe").click();
-  await expect(page.getByText("OSINT Tracker Scene")).toBeVisible();
+  await expect(page.getByTestId("globe-overlay")).toBeVisible();
+  await expect(page.getByText("OSINT Globe Overview")).toBeVisible();
   await expect(page.getByText("Scene Status")).toBeVisible();
-  await expect(page.getByText("Focus Targets")).toBeVisible();
+  await expect(page.getByTestId("globe-layer-trackers")).toBeVisible();
+  await expect(page.getByTestId("globe-layer-regions")).toBeVisible();
+  await page.getByTestId("globe-layer-regions").click();
+  await expect(page.getByTestId("globe-layer-regions")).toBeVisible();
+  await page.getByTestId("globe-layer-regions").click();
+  await expect(page.getByText("Operational Focus")).toBeVisible();
   await expectAnyVisible([
     page.getByTestId("globe-preset-free"),
     page.getByText("Unavailable", { exact: true })
@@ -77,8 +83,13 @@ test("tracker globe overlay opens with live or degraded scene state", async ({ p
     page.getByRole("button", { name: "Refresh Scene" }),
     page.getByRole("button", { name: "Retry Scene" })
   ]);
+  await expect(page.getByLabel("Hide details")).toBeVisible();
+  await page.getByLabel("Hide details").click();
+  await expect(page.getByLabel("Show details")).toBeVisible();
+  await page.getByLabel("Show details").click();
+  await expect(page.getByLabel("Hide details")).toBeVisible();
   await page.getByLabel("Close globe").click();
-  await expect(page.getByText("OSINT Tracker Scene")).toHaveCount(0);
+  await expect(page.getByText("OSINT Globe Overview")).toHaveCount(0);
 });
 
 test("intel globe overlay opens with regional scene controls", async ({ page }) => {
@@ -86,13 +97,14 @@ test("intel globe overlay opens with regional scene controls", async ({ page }) 
   await page.getByTestId("osint-open-globe").click();
   await expect(page.getByTestId("globe-overlay")).toBeVisible();
   await expectAnyVisible([
-    page.getByText("Regional Nodes", { exact: true }),
+    page.getByText("Operational Focus", { exact: true }),
     page.getByRole("button", { name: "Retry Scene" })
   ]);
   await expectAnyVisible([
     page.getByTestId("globe-lens-emotion"),
     page.getByText("Unavailable", { exact: true })
   ]);
+  await expect(page.getByTestId("globe-layer-hotspots")).toBeVisible();
   await expectAnyVisible([
     page.getByText("Visible Aggregate"),
     page.getByText("Unavailable", { exact: true })

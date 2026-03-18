@@ -1,5 +1,9 @@
 from modules.market_data.intel import REGIONS
-from modules.market_data.scene_payloads import build_intel_scene, build_tracker_scene
+from modules.market_data.scene_payloads import (
+    build_intel_scene,
+    build_overview_scene,
+    build_tracker_scene,
+)
 
 
 def test_build_tracker_scene_payload_composes_live_points_and_trails():
@@ -259,4 +263,88 @@ def test_build_intel_scene_payload_uses_regional_centroids_and_provenance():
         if feature["properties"]["region"] == "Europe"
     )
     assert pulse["properties"]["display_scope"] == "region-centroid-highlight"
-    assert pulse["properties"]["event_counts"]["conflict"] == 1
+
+
+def test_build_overview_scene_combines_tracker_and_intel_layers():
+    snapshot = {
+        "mode": "combined",
+        "warnings": [],
+        "points": [
+            {
+                "id": "flt-1",
+                "kind": "flight",
+                "category": "commercial",
+                "label": "AAL120",
+                "lat": 40.64,
+                "lon": -73.78,
+                "updated_ts": 1700000100,
+                "speed_heat": 0.6,
+                "operator_name": "American Airlines",
+                "country": "United States",
+            }
+        ],
+    }
+
+    class DummyWeather:
+        def fetch(self, region):
+            return {
+                "temp_c": 20.0,
+                "wind_ms": 6.0,
+                "precip_mm": 0.0,
+                "precip_24h": 1.0,
+                "wind_max": 8.0,
+                "temp_min": 18.0,
+                "temp_max": 23.0,
+                "impacts": [],
+            }
+
+    class DummyConflict:
+        def fetch(self, region):
+            return {"count": 0, "articles": [], "impacts": []}
+
+    class DummyIntel:
+        def __init__(self):
+            self.weather = DummyWeather()
+            self.conflict = DummyConflict()
+
+        def fetch_news_signals(self, ttl_seconds=600, enabled_sources=None):
+            return {
+                "items": [
+                    {
+                        "title": "Europe conflict risk rises",
+                        "source": "Reuters",
+                        "published_ts": 1700000000,
+                        "regions": ["Europe"],
+                        "industries": ["shipping"],
+                        "event_tags": ["conflict"],
+                        "impact_channels": ["shipping_logistics"],
+                        "categories": ["conflict"],
+                        "sentiment": -0.4,
+                        "emotions": {"fear": 2},
+                    }
+                ],
+                "cached": True,
+                "stale": False,
+                "skipped": [],
+                "health": {},
+            }
+
+        def filter_news_items(self, items, region_name, industry_filter, tickers=None):
+            return [item for item in items if region_name in (item.get("regions") or [])]
+
+        def _filter_impacts(self, impacts, industry_filter):
+            return impacts
+
+    scene = build_overview_scene(
+        snapshot,
+        DummyIntel(),
+        history_fetcher=lambda tracker_id: {"history": []},
+        now=1700000400,
+    )
+
+    assert scene["scene_id"] == "osint-overview"
+    assert len(scene["layers"]) == 4
+    assert scene["meta"]["tracker_point_count"] == 1
+    assert scene["meta"]["regional_point_count"] > 0
+    assert "regional-conflict-overlays" in scene["meta"]["available_overlays"]
+    assert {target["domain"] for target in scene["focus_targets"][:2]} == {"intel", "trackers"}

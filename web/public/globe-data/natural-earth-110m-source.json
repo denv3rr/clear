@@ -1,10 +1,13 @@
 {
   "name": "Natural Earth",
-  "dataset": "1:110m Physical Vectors",
-  "source_page": "https://www.naturalearthdata.com/downloads/110m-physical-vectors/",
+  "dataset": "1:110m Physical + Cultural Vectors",
+  "source_page": "https://www.naturalearthdata.com/downloads/110m-cultural-vectors/110m-admin-0-countries/",
   "downloads": {
     "land": "https://naciscdn.org/naturalearth/110m/physical/ne_110m_land.zip",
-    "coastline": "https://naciscdn.org/naturalearth/110m/physical/ne_110m_coastline.zip"
+    "coastline": "https://naciscdn.org/naturalearth/110m/physical/ne_110m_coastline.zip",
+    "countries": "https://naciscdn.org/naturalearth/110m/cultural/ne_110m_admin_0_countries.zip"
   },
-  "note": "Local globe context asset generated from official Natural Earth land and coastline shapefiles. Rounded to 3 decimal places for compact client delivery."
+  "note": "Local globe context asset generated from official Natural Earth land, coastline, and admin-0 country shapefiles. Rounded to 3 decimal places for compact client delivery.",
+  "worldview_note": "Natural Earth admin boundaries are de facto reference geometry and must not be presented as de jure sovereignty claims.",
+  "generated_utc": "2026-03-18T03:44:43Z"
 }
