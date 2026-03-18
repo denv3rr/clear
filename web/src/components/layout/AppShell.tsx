@@ -90,7 +90,7 @@ function ShellFrame({ children }: AppShellProps) {
         items={navItems}
         onToggleContext={() => setContextOpen((prev) => !prev)}
         onToggleAssistant={() => setAssistantOpen((prev) => !prev)}
-        onToggleScene={() => toggleScene()}
+        onToggleScene={() => toggleScene(entry === "osint" ? "overview" : undefined)}
         sceneAvailable={entry === "osint"}
         sceneOpen={isOpen}
       />

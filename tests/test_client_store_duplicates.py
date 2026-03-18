@@ -7,10 +7,9 @@ from core import models
 import modules.client_store as client_store
 
 
-def _setup_temp_db(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def _setup_temp_db(monkeypatch):
     engine = create_engine(
-        f"sqlite:///{db_path}", connect_args={"check_same_thread": False}
+        "sqlite:///:memory:", connect_args={"check_same_thread": False}
     )
     session_local = sessionmaker(
         autocommit=False, autoflush=False, bind=engine
@@ -59,8 +58,8 @@ def _seed_duplicates(session):
     session.commit()
 
 
-def test_detect_duplicate_accounts(tmp_path, monkeypatch):
-    session_local = _setup_temp_db(tmp_path, monkeypatch)
+def test_detect_duplicate_accounts(monkeypatch):
+    session_local = _setup_temp_db(monkeypatch)
     db_management.create_db_and_tables()
     session = session_local()
     try:
@@ -74,8 +73,26 @@ def test_detect_duplicate_accounts(tmp_path, monkeypatch):
         session.close()
 
 
-def test_cleanup_duplicate_accounts(tmp_path, monkeypatch):
-    session_local = _setup_temp_db(tmp_path, monkeypatch)
+def test_detect_duplicate_clients(monkeypatch):
+    session_local = _setup_temp_db(monkeypatch)
+    db_management.create_db_and_tables()
+    session = session_local()
+    try:
+        session.add(models.Client(client_uid="c-1", name="Atlas Capital", name_key="atlas capital"))
+        session.add(models.Client(client_uid="c-2", name=" atlas   capital ", name_key="atlas capital"))
+        session.commit()
+        store = client_store.DbClientStore(session)
+        result = store.find_duplicate_clients()
+        assert result["count"] == 1
+        assert result["groups"] == 1
+        assert result["details"][0]["keep_client_id"] == "c-1"
+        assert result["details"][0]["duplicate_ids"] == ["c-2"]
+    finally:
+        session.close()
+
+
+def test_cleanup_duplicate_accounts(monkeypatch):
+    session_local = _setup_temp_db(monkeypatch)
     db_management.create_db_and_tables()
     session = session_local()
     try:
@@ -89,8 +106,8 @@ def test_cleanup_duplicate_accounts(tmp_path, monkeypatch):
         session.close()
 
 
-def test_detect_duplicates_with_legacy_holdings(tmp_path, monkeypatch):
-    session_local = _setup_temp_db(tmp_path, monkeypatch)
+def test_detect_duplicates_with_legacy_holdings(monkeypatch):
+    session_local = _setup_temp_db(monkeypatch)
     db_management.create_db_and_tables()
     session = session_local()
     try:
@@ -112,8 +129,8 @@ def test_detect_duplicates_with_legacy_holdings(tmp_path, monkeypatch):
         session.close()
 
 
-def test_detect_duplicates_with_lot_variants(tmp_path, monkeypatch):
-    session_local = _setup_temp_db(tmp_path, monkeypatch)
+def test_detect_duplicates_with_lot_variants(monkeypatch):
+    session_local = _setup_temp_db(monkeypatch)
     db_management.create_db_and_tables()
     session = session_local()
     try:
@@ -163,5 +180,92 @@ def test_detect_duplicates_with_lot_variants(tmp_path, monkeypatch):
         store = client_store.DbClientStore(session)
         result = store.find_duplicate_accounts()
         assert result["count"] == 1
+    finally:
+        session.close()
+
+
+def test_create_account_rejects_semantic_duplicate(monkeypatch):
+    session_local = _setup_temp_db(monkeypatch)
+    db_management.create_db_and_tables()
+    session = session_local()
+    try:
+        client = models.Client(client_uid="c4", name="Write Guard Client", name_key="write guard client")
+        session.add(client)
+        session.flush()
+        store = client_store.DbClientStore(session)
+        store.create_account(
+            "c4",
+            {
+                "account_id": "acct-1",
+                "account_name": " Primary ",
+                "account_type": "Taxable",
+                "ownership_type": "Individual",
+                "custodian": "Fidelity",
+            },
+        )
+        try:
+            store.create_account(
+                "c4",
+                {
+                    "account_id": "acct-2",
+                    "account_name": "primary",
+                    "account_type": "Taxable",
+                    "ownership_type": "Individual",
+                    "custodian": " fidelity ",
+                },
+            )
+        except client_store.DuplicateAccountError as exc:
+            assert exc.existing_account_id == "acct-1"
+        else:
+            raise AssertionError("Duplicate account create should be rejected.")
+    finally:
+        session.close()
+
+
+def test_update_account_rejects_semantic_duplicate(monkeypatch):
+    session_local = _setup_temp_db(monkeypatch)
+    db_management.create_db_and_tables()
+    session = session_local()
+    try:
+        client = models.Client(client_uid="c5", name="Patch Guard Client", name_key="patch guard client")
+        session.add(client)
+        session.flush()
+        session.add(
+            models.Account(
+                account_uid="acct-1",
+                name="Primary",
+                identity_key="primary|taxable|individual|fidelity",
+                account_type="Taxable",
+                ownership_type="Individual",
+                custodian="Fidelity",
+                client_id=client.id,
+            )
+        )
+        session.add(
+            models.Account(
+                account_uid="acct-2",
+                name="Reserve",
+                identity_key="reserve|taxable|individual|fidelity",
+                account_type="Taxable",
+                ownership_type="Individual",
+                custodian="Fidelity",
+                client_id=client.id,
+            )
+        )
+        session.commit()
+        store = client_store.DbClientStore(session)
+        try:
+            store.update_account(
+                "c5",
+                "acct-2",
+                {
+                    "account_name": " primary ",
+                    "custodian": " fidelity ",
+                },
+            )
+        except client_store.DuplicateAccountError as exc:
+            assert exc.existing_account_id == "acct-1"
+        else:
+            raise AssertionError("Duplicate account update should be rejected.")
     finally:
         session.close()

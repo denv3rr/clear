@@ -11,6 +11,7 @@ from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple
 from modules.client_mgr.client_model import Client
 from modules.client_mgr.holdings import compute_weighted_avg_cost, normalize_ticker
 from modules.client_mgr.valuation import ValuationEngine
+from modules.market_data.collectors import load_cached_news
 from modules.market_data.trackers import GlobalTrackers, TrackerRelevance
 from modules.view_models import (
     account_dashboard,
@@ -919,9 +920,7 @@ def _load_cached_news() -> List[Dict[str, Any]]:
     if not os.path.exists(path):
         return []
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            payload = json.load(f)
-        return payload.get("items", []) if isinstance(payload, dict) else []
+        return load_cached_news(path, ttl_seconds=10**9, allow_stale=True)
     except Exception:
         return []
 

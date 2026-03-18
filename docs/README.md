@@ -8,8 +8,10 @@
 - `docs/data_integrity.md` — data integrity expectations and safety rules.
 - `docs/diagnostics.md` — diagnostics sources, registry health, and consistency checks.
 - `docs/feed_registry.md` — feed registry sources and health semantics.
+- `docs/geospatial_source_audit.md` — reviewed geospatial source decisions and limits for globe polygons, wildfire overlays, and alert geometry.
 - `docs/launchers.md` — launcher behavior and startup/shutdown guarantees.
 - `docs/osint.md` — OSINT workspace, tracker configuration, and relevance tags.
+- `docs/osint_operational_workflow_plan.md` — phased operational-workflow plan for the fused globe, ontology-style object model, workflow actions, and client/report linkage.
 - `docs/platform_services.md` — service templates for running the API in the background.
 - `docs/standards_remediation_plan.md` — active standards-enforcement plan that gates future visual and UI phases.
 - `docs/us_gov_standards.md` — mandatory U.S. government standards baseline for data, safety, security, accessibility, and performance.

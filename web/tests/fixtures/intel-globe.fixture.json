@@ -1,0 +1,2090 @@
+{
+  "fixture_version": 1,
+  "fixture_id": "intel-globe-loaded",
+  "captured_at_utc": "2026-03-18T02:38:26Z",
+  "capture_method": {
+    "type": "fastapi-testclient",
+    "app_module": "web_api.app:app",
+    "scene_route": "/api/osint/scene/intel?industry=all",
+    "meta_route": "/api/intel/meta",
+    "api_key_required": true
+  },
+  "provenance": {
+    "news_cache": {
+      "path": "data\\intel_news.json",
+      "exists": true,
+      "cache_ts": 1773800036,
+      "cache_ts_utc": "2026-03-18T02:13:56Z",
+      "file_mtime_utc": "2026-03-18T02:13:56Z",
+      "item_count": 60,
+      "latest_published_ts": 1773797987,
+      "latest_published_utc": "2026-03-18T01:39:47Z",
+      "sources": [
+        "BBC Business",
+        "CNBC Top",
+        "CNBC World",
+        "MarketWatch"
+      ]
+    },
+    "scene_response_meta": {
+      "source": "intel",
+      "timestamp": 1773801528,
+      "industry_filter": "all",
+      "categories": [],
+      "sources": [],
+      "region_count": 6,
+      "cached_news": true,
+      "stale_news": true,
+      "skipped_sources": [],
+      "available_lenses": [
+        "combined",
+        "weather",
+        "conflict",
+        "news",
+        "emotion"
+      ],
+      "available_overlays": [
+        "regional-conflict-overlays"
+      ],
+      "emotion": {
+        "supported": true,
+        "fields": [
+          "count",
+          "dominant",
+          "sentiment_avg",
+          "negative_ratio",
+          "emotion_counts",
+          "event_counts",
+          "impact_counts",
+          "region_counts",
+          "subregion_counts",
+          "emotion_series"
+        ]
+      },
+      "warnings": [
+        "News cache is stale; regional signals may lag live conditions.",
+        "Weather risk is sampled from a representative regional coordinate.",
+        "Conflict risk reflects regional signal density, not precise event locations.",
+        "News and emotion metrics reflect title-and-summary classification, not article geolocation.",
+        "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=39.8&longitude=-98.6&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F90050>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+        "GDELT fetch failed: HTTPSConnectionPool(host='api.gdeltproject.org', port=443): Max retries exceeded with url: /api/v2/doc/doc?query=%28conflict+OR+war+OR+attack+OR+missile+OR+drone+OR+strike+OR+protest+OR+blockade+OR+sanctions%29+AND+%28%22North+America%22+OR+%22United+States%22+OR+Canada+OR+Mexico+OR+%22Panama+Canal%22%29&mode=ArtList&format=json&maxrecords=25&sort=HybridRel (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F907D0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+        "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=50.0&longitude=10.0&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F90A50>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+        "GDELT is in cooldown. Try again later.",
+        "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=24.0&longitude=45.0&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F90CD0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+        "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=22.0&longitude=113.0&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F90F50>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+        "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=-15.0&longitude=-60.0&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F911D0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+        "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=1.0&longitude=20.0&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F91450>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))"
+      ],
+      "route": "/api/osint/scene/intel",
+      "status": "ok"
+    },
+    "intel_meta_response_meta": {
+      "route": "/api/intel/meta",
+      "source": "intel",
+      "timestamp": 1773801528,
+      "status": "ok",
+      "warnings": []
+    }
+  },
+  "review_notes": [
+    "Derived from the real local FastAPI scene contract, not hand-authored test JSON.",
+    "Scene content reflects capture-time source availability, warnings, and freshness semantics.",
+    "Conflict overlays remain centroid highlights rather than incident polygons or country fills."
+  ],
+  "scene_payload_sha256": "0feb535a024e8d398e3248d8f7edc53a2dc75a9685d509b59c99dff1ccd85987",
+  "intel_meta_sha256": "2dc37c7d5e47106f1c0100c223937f7c8a39e91d3086d7962b43bf1ee61e6a10",
+  "scene_payload": {
+    "scene_id": "osint-intel",
+    "title": "Regional OSINT Signal Scene",
+    "kind": "osint",
+    "camera_defaults": {
+      "target_lat": 17.5,
+      "target_lon": 7.2,
+      "distance": 5.4,
+      "pitch": 33.8,
+      "bearing": 0.0
+    },
+    "timeline": {
+      "mode": "regional-intel",
+      "start_ts": 1773792009,
+      "end_ts": 1773797987,
+      "point_count": 6,
+      "trail_count": 0,
+      "selected_ids": [
+        "region:north-america",
+        "region:middle-east",
+        "region:asia-pacific",
+        "region:europe"
+      ]
+    },
+    "layers": [
+      {
+        "id": "regional-intel",
+        "kind": "point",
+        "label": "Regional OSINT Signals",
+        "features": [
+          {
+            "id": "region:north-america",
+            "layer": "regional-intel",
+            "geometry": {
+              "type": "Point",
+              "coordinates": [
+                -98.6,
+                39.8
+              ]
+            },
+            "ts": 1773801506,
+            "properties": {
+              "label": "North America",
+              "region": "North America",
+              "kind": "region",
+              "category": "high",
+              "industries": [
+                "energy",
+                "agriculture",
+                "logistics",
+                "tech"
+              ],
+              "display_scope": "region-centroid",
+              "combined_risk": {
+                "score": 7,
+                "level": "High",
+                "confidence": null
+              },
+              "weather": {
+                "score": null,
+                "level": "Unavailable",
+                "confidence": null,
+                "status": "unavailable",
+                "temp_c": null,
+                "wind_ms": null,
+                "precip_mm": null,
+                "precip_24h": null,
+                "signals": [],
+                "impacts": [],
+                "freshness": {
+                  "timestamp": null,
+                  "age_sec": null,
+                  "state": "unknown",
+                  "is_stale": true
+                }
+              },
+              "conflict": {
+                "score": 4,
+                "level": "Moderate",
+                "confidence": null,
+                "status": "news_fallback",
+                "count": 7,
+                "signals": [
+                  "Moderate conflict reporting",
+                  "Energy exposure signals"
+                ],
+                "impacts": [
+                  "Energy supply risks elevated.",
+                  "Tech and infrastructure risk elevated.",
+                  "Finance, trade, and insurance risk elevated."
+                ],
+                "event_counts": {
+                  "conflict": 5,
+                  "disruption": 2,
+                  "sanctions": 1
+                },
+                "impact_counts": {
+                  "energy": 3,
+                  "manufacturing_supply_chain": 4,
+                  "shipping_logistics": 1,
+                  "defense_security": 1
+                },
+                "affected_markets": [
+                  "manufacturing_supply_chain",
+                  "energy",
+                  "defense_security",
+                  "shipping_logistics"
+                ],
+                "freshness": {
+                  "timestamp": 1773797391,
+                  "age_sec": 4115,
+                  "state": "stale",
+                  "is_stale": true
+                }
+              },
+              "news": {
+                "count": 14,
+                "risk_score": 10,
+                "confidence": null,
+                "sentiment_avg": -1.0,
+                "negative_ratio": 0.071,
+                "category_counts": {
+                  "conflict": 6,
+                  "rates": 1,
+                  "tech": 2,
+                  "energy": 5,
+                  "policy": 1,
+                  "markets": 1,
+                  "economy": 1,
+                  "shipping": 1,
+                  "general": 2
+                },
+                "event_counts": {
+                  "conflict": 5,
+                  "disruption": 2,
+                  "sanctions": 1
+                },
+                "impact_counts": {
+                  "energy": 3,
+                  "manufacturing_supply_chain": 4,
+                  "shipping_logistics": 1,
+                  "defense_security": 1
+                },
+                "emotion_counts": {
+                  "anger": 1,
+                  "anticipation": 1,
+                  "optimism": 1,
+                  "sadness": 1,
+                  "fear": 1
+                },
+                "region_counts": {
+                  "Middle East": 5,
+                  "North America": 14,
+                  "Asia-Pacific": 4
+                },
+                "subregion_counts": {
+                  "Middle East": {
+                    "tech": 1,
+                    "general": 3,
+                    "energy": 1
+                  },
+                  "North America": {
+                    "tech": 2,
+                    "energy": 5,
+                    "general": 7,
+                    "shipping": 1,
+                    "defense": 1
+                  },
+                  "Asia-Pacific": {
+                    "general": 3,
+                    "energy": 1
+                  }
+                },
+                "region_emotion_counts": {
+                  "Middle East": {},
+                  "North America": {
+                    "anger": 1,
+                    "anticipation": 1,
+                    "optimism": 1,
+                    "sadness": 1,
+                    "fear": 1
+                  },
+                  "Asia-Pacific": {
+                    "optimism": 1,
+                    "sadness": 1
+                  }
+                },
+                "industry_emotion_counts": {
+                  "tech": {},
+                  "energy": {
+                    "anger": 1,
+                    "anticipation": 1,
+                    "fear": 1
+                  },
+                  "shipping": {
+                    "fear": 1
+                  },
+                  "defense": {}
+                },
+                "region_industry_emotion_counts": {
+                  "Middle East": {
+                    "tech": {},
+                    "energy": {}
+                  },
+                  "North America": {
+                    "tech": {},
+                    "energy": {
+                      "anger": 1,
+                      "anticipation": 1,
+                      "fear": 1
+                    },
+                    "shipping": {
+                      "fear": 1
+                    },
+                    "defense": {}
+                  },
+                  "Asia-Pacific": {
+                    "energy": {}
+                  }
+                },
+                "emotion_series": [
+                  {
+                    "label": "14:38",
+                    "emotions": {}
+                  },
+                  {
+                    "label": "20:38",
+                    "emotions": {
+                      "fear": 1
+                    }
+                  },
+                  {
+                    "label": "02:38",
+                    "emotions": {
+                      "anger": 1,
+                      "anticipation": 1,
+                      "optimism": 1,
+                      "sadness": 1
+                    }
+                  }
+                ],
+                "top_sources": [
+                  "CNBC Top",
+                  "CNBC World",
+                  "MarketWatch"
+                ],
+                "stale": true,
+                "cached": true,
+                "skipped_sources": [],
+                "health": {
+                  "CNBC World": {
+                    "last_fail": 1773801510,
+                    "fail_count": 1,
+                    "backoff_until": 1773802110
+                  },
+                  "MarketWatch": {
+                    "last_fail": 1773801512,
+                    "fail_count": 1,
+                    "backoff_until": 1773802112
+                  },
+                  "BBC Business": {
+                    "last_fail": 1773801514,
+                    "fail_count": 1,
+                    "backoff_until": 1773802114
+                  },
+                  "CNBC Top": {
+                    "last_fail": 1773801508,
+                    "fail_count": 1,
+                    "backoff_until": 1773802108
+                  }
+                },
+                "freshness": {
+                  "timestamp": 1773797391,
+                  "age_sec": 4115,
+                  "state": "stale",
+                  "is_stale": true
+                }
+              },
+              "emotion": {
+                "count": 5,
+                "dominant": "anger",
+                "counts": {
+                  "anger": 1,
+                  "anticipation": 1,
+                  "optimism": 1,
+                  "sadness": 1,
+                  "fear": 1
+                },
+                "sentiment_avg": -1.0,
+                "negative_ratio": 0.071,
+                "series": [
+                  {
+                    "label": "14:38",
+                    "emotions": {}
+                  },
+                  {
+                    "label": "20:38",
+                    "emotions": {
+                      "fear": 1
+                    }
+                  },
+                  {
+                    "label": "02:38",
+                    "emotions": {
+                      "anger": 1,
+                      "anticipation": 1,
+                      "optimism": 1,
+                      "sadness": 1
+                    }
+                  }
+                ]
+              },
+              "presentation": {
+                "dominant_channel": "news",
+                "intensity": 0.875,
+                "top_signal": "anger",
+                "hotspot_visible": true
+              },
+              "coverage": {
+                "weather": false,
+                "conflict": true,
+                "news": true
+              }
+            },
+            "source": "intel",
+            "confidence": null,
+            "freshness": {
+              "timestamp": 1773801506,
+              "age_sec": 0,
+              "state": "fresh",
+              "is_stale": false
+            },
+            "warnings": [
+              "Weather risk is sampled from a representative regional coordinate.",
+              "Conflict risk reflects regional signal density, not precise event locations.",
+              "News and emotion metrics reflect title-and-summary classification, not article geolocation.",
+              "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=39.8&longitude=-98.6&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F90050>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+              "GDELT fetch failed: HTTPSConnectionPool(host='api.gdeltproject.org', port=443): Max retries exceeded with url: /api/v2/doc/doc?query=%28conflict+OR+war+OR+attack+OR+missile+OR+drone+OR+strike+OR+protest+OR+blockade+OR+sanctions%29+AND+%28%22North+America%22+OR+%22United+States%22+OR+Canada+OR+Mexico+OR+%22Panama+Canal%22%29&mode=ArtList&format=json&maxrecords=25&sort=HybridRel (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F907D0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))"
+            ]
+          },
+          {
+            "id": "region:middle-east",
+            "layer": "regional-intel",
+            "geometry": {
+              "type": "Point",
+              "coordinates": [
+                45.0,
+                24.0
+              ]
+            },
+            "ts": 1773801506,
+            "properties": {
+              "label": "Middle East",
+              "region": "Middle East",
+              "kind": "region",
+              "category": "high",
+              "industries": [
+                "energy",
+                "shipping",
+                "defense"
+              ],
+              "display_scope": "region-centroid",
+              "combined_risk": {
+                "score": 6,
+                "level": "High",
+                "confidence": null
+              },
+              "weather": {
+                "score": null,
+                "level": "Unavailable",
+                "confidence": null,
+                "status": "unavailable",
+                "temp_c": null,
+                "wind_ms": null,
+                "precip_mm": null,
+                "precip_24h": null,
+                "signals": [],
+                "impacts": [],
+                "freshness": {
+                  "timestamp": null,
+                  "age_sec": null,
+                  "state": "unknown",
+                  "is_stale": true
+                }
+              },
+              "conflict": {
+                "score": 5,
+                "level": "Moderate",
+                "confidence": null,
+                "status": "rss_fallback",
+                "count": 15,
+                "signals": [
+                  "Elevated conflict reporting",
+                  "Energy exposure signals"
+                ],
+                "impacts": [
+                  "Energy supply risks elevated.",
+                  "Aviation routing and airport operations risk elevated.",
+                  "Tech and infrastructure risk elevated."
+                ],
+                "event_counts": {
+                  "conflict": 13,
+                  "disruption": 4,
+                  "infrastructure": 1
+                },
+                "impact_counts": {
+                  "defense_security": 2,
+                  "energy": 7,
+                  "finance_insurance": 2,
+                  "shipping_logistics": 3,
+                  "aviation": 1
+                },
+                "affected_markets": [
+                  "energy",
+                  "shipping_logistics",
+                  "defense_security",
+                  "finance_insurance",
+                  "aviation"
+                ],
+                "freshness": {
+                  "timestamp": 1773797987,
+                  "age_sec": 3519,
+                  "state": "stale",
+                  "is_stale": true
+                }
+              },
+              "news": {
+                "count": 18,
+                "risk_score": 8,
+                "confidence": null,
+                "sentiment_avg": 1.0,
+                "negative_ratio": 0.0,
+                "category_counts": {
+                  "conflict": 13,
+                  "rates": 5,
+                  "tech": 1,
+                  "economy": 2,
+                  "energy": 7,
+                  "policy": 1,
+                  "markets": 1,
+                  "general": 1
+                },
+                "event_counts": {
+                  "conflict": 13,
+                  "disruption": 4,
+                  "infrastructure": 1
+                },
+                "impact_counts": {
+                  "defense_security": 2,
+                  "energy": 7,
+                  "finance_insurance": 2,
+                  "shipping_logistics": 3,
+                  "aviation": 1
+                },
+                "emotion_counts": {
+                  "anger": 2,
+                  "optimism": 2,
+                  "anticipation": 1,
+                  "fear": 1
+                },
+                "region_counts": {
+                  "Asia-Pacific": 4,
+                  "Middle East": 18,
+                  "North America": 5
+                },
+                "subregion_counts": {
+                  "Asia-Pacific": {
+                    "general": 2,
+                    "energy": 1,
+                    "finance": 1
+                  },
+                  "Middle East": {
+                    "general": 6,
+                    "tech": 1,
+                    "defense": 2,
+                    "energy": 7,
+                    "finance": 2,
+                    "aviation": 1
+                  },
+                  "North America": {
+                    "tech": 1,
+                    "general": 3,
+                    "energy": 1
+                  }
+                },
+                "region_emotion_counts": {
+                  "Asia-Pacific": {},
+                  "Middle East": {
+                    "anger": 2,
+                    "optimism": 2,
+                    "anticipation": 1,
+                    "fear": 1
+                  },
+                  "North America": {}
+                },
+                "industry_emotion_counts": {
+                  "tech": {},
+                  "defense": {
+                    "anger": 2
+                  },
+                  "energy": {
+                    "optimism": 2,
+                    "anticipation": 1,
+                    "fear": 1
+                  },
+                  "finance": {
+                    "anticipation": 1
+                  },
+                  "aviation": {}
+                },
+                "region_industry_emotion_counts": {
+                  "Middle East": {
+                    "tech": {},
+                    "defense": {
+                      "anger": 2
+                    },
+                    "energy": {
+                      "optimism": 2,
+                      "anticipation": 1,
+                      "fear": 1
+                    },
+                    "finance": {
+                      "anticipation": 1
+                    },
+                    "aviation": {}
+                  },
+                  "North America": {
+                    "tech": {},
+                    "energy": {}
+                  },
+                  "Asia-Pacific": {
+                    "energy": {},
+                    "finance": {}
+                  }
+                },
+                "emotion_series": [
+                  {
+                    "label": "14:38",
+                    "emotions": {}
+                  },
+                  {
+                    "label": "20:38",
+                    "emotions": {
+                      "anticipation": 1,
+                      "optimism": 1
+                    }
+                  },
+                  {
+                    "label": "02:38",
+                    "emotions": {
+                      "anger": 2,
+                      "optimism": 1,
+                      "fear": 1
+                    }
+                  }
+                ],
+                "top_sources": [
+                  "BBC Business",
+                  "CNBC Top",
+                  "CNBC World",
+                  "MarketWatch"
+                ],
+                "stale": true,
+                "cached": true,
+                "skipped_sources": [],
+                "health": {
+                  "CNBC World": {
+                    "last_fail": 1773801510,
+                    "fail_count": 1,
+                    "backoff_until": 1773802110
+                  },
+                  "MarketWatch": {
+                    "last_fail": 1773801512,
+                    "fail_count": 1,
+                    "backoff_until": 1773802112
+                  },
+                  "BBC Business": {
+                    "last_fail": 1773801514,
+                    "fail_count": 1,
+                    "backoff_until": 1773802114
+                  },
+                  "CNBC Top": {
+                    "last_fail": 1773801508,
+                    "fail_count": 1,
+                    "backoff_until": 1773802108
+                  }
+                },
+                "freshness": {
+                  "timestamp": 1773797987,
+                  "age_sec": 3519,
+                  "state": "stale",
+                  "is_stale": true
+                }
+              },
+              "emotion": {
+                "count": 6,
+                "dominant": "anger",
+                "counts": {
+                  "anger": 2,
+                  "optimism": 2,
+                  "anticipation": 1,
+                  "fear": 1
+                },
+                "sentiment_avg": 1.0,
+                "negative_ratio": 0.0,
+                "series": [
+                  {
+                    "label": "14:38",
+                    "emotions": {}
+                  },
+                  {
+                    "label": "20:38",
+                    "emotions": {
+                      "anticipation": 1,
+                      "optimism": 1
+                    }
+                  },
+                  {
+                    "label": "02:38",
+                    "emotions": {
+                      "anger": 2,
+                      "optimism": 1,
+                      "fear": 1
+                    }
+                  }
+                ]
+              },
+              "presentation": {
+                "dominant_channel": "news",
+                "intensity": 1.0,
+                "top_signal": "anger",
+                "hotspot_visible": true
+              },
+              "coverage": {
+                "weather": false,
+                "conflict": true,
+                "news": true
+              }
+            },
+            "source": "intel",
+            "confidence": null,
+            "freshness": {
+              "timestamp": 1773801506,
+              "age_sec": 0,
+              "state": "fresh",
+              "is_stale": false
+            },
+            "warnings": [
+              "Weather risk is sampled from a representative regional coordinate.",
+              "Conflict risk reflects regional signal density, not precise event locations.",
+              "News and emotion metrics reflect title-and-summary classification, not article geolocation.",
+              "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=24.0&longitude=45.0&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F90CD0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+              "GDELT is in cooldown. Try again later."
+            ]
+          },
+          {
+            "id": "region:asia-pacific",
+            "layer": "regional-intel",
+            "geometry": {
+              "type": "Point",
+              "coordinates": [
+                113.0,
+                22.0
+              ]
+            },
+            "ts": 1773801506,
+            "properties": {
+              "label": "Asia-Pacific",
+              "region": "Asia-Pacific",
+              "kind": "region",
+              "category": "moderate",
+              "industries": [
+                "manufacturing",
+                "shipping",
+                "tech"
+              ],
+              "display_scope": "region-centroid",
+              "combined_risk": {
+                "score": 4,
+                "level": "Moderate",
+                "confidence": null
+              },
+              "weather": {
+                "score": null,
+                "level": "Unavailable",
+                "confidence": null,
+                "status": "unavailable",
+                "temp_c": null,
+                "wind_ms": null,
+                "precip_mm": null,
+                "precip_24h": null,
+                "signals": [],
+                "impacts": [],
+                "freshness": {
+                  "timestamp": null,
+                  "age_sec": null,
+                  "state": "unknown",
+                  "is_stale": true
+                }
+              },
+              "conflict": {
+                "score": 4,
+                "level": "Moderate",
+                "confidence": null,
+                "status": "rss_fallback",
+                "count": 5,
+                "signals": [
+                  "Moderate conflict reporting",
+                  "Energy exposure signals"
+                ],
+                "impacts": [
+                  "Energy supply risks elevated.",
+                  "Finance, trade, and insurance risk elevated."
+                ],
+                "event_counts": {
+                  "conflict": 4,
+                  "disruption": 1,
+                  "sanctions": 1
+                },
+                "impact_counts": {
+                  "manufacturing_supply_chain": 1,
+                  "energy": 1,
+                  "finance_insurance": 1
+                },
+                "affected_markets": [
+                  "energy",
+                  "finance_insurance",
+                  "manufacturing_supply_chain"
+                ],
+                "freshness": {
+                  "timestamp": 1773797987,
+                  "age_sec": 3519,
+                  "state": "stale",
+                  "is_stale": true
+                }
+              },
+              "news": {
+                "count": 7,
+                "risk_score": 5,
+                "confidence": null,
+                "sentiment_avg": 0.0,
+                "negative_ratio": 0.0,
+                "category_counts": {
+                  "conflict": 4,
+                  "rates": 3,
+                  "policy": 1,
+                  "energy": 1,
+                  "markets": 1,
+                  "economy": 2,
+                  "general": 1
+                },
+                "event_counts": {
+                  "conflict": 4,
+                  "disruption": 1,
+                  "sanctions": 1
+                },
+                "impact_counts": {
+                  "manufacturing_supply_chain": 1,
+                  "energy": 1,
+                  "finance_insurance": 1
+                },
+                "emotion_counts": {
+                  "optimism": 1,
+                  "sadness": 1
+                },
+                "region_counts": {
+                  "Asia-Pacific": 7,
+                  "Middle East": 4,
+                  "North America": 4
+                },
+                "subregion_counts": {
+                  "Asia-Pacific": {
+                    "general": 5,
+                    "energy": 1,
+                    "finance": 1
+                  },
+                  "Middle East": {
+                    "general": 2,
+                    "energy": 1,
+                    "finance": 1
+                  },
+                  "North America": {
+                    "general": 3,
+                    "energy": 1
+                  }
+                },
+                "region_emotion_counts": {
+                  "Asia-Pacific": {
+                    "optimism": 1,
+                    "sadness": 1
+                  },
+                  "Middle East": {},
+                  "North America": {
+                    "optimism": 1,
+                    "sadness": 1
+                  }
+                },
+                "industry_emotion_counts": {
+                  "energy": {},
+                  "finance": {}
+                },
+                "region_industry_emotion_counts": {
+                  "Asia-Pacific": {
+                    "energy": {},
+                    "finance": {}
+                  },
+                  "Middle East": {
+                    "energy": {},
+                    "finance": {}
+                  },
+                  "North America": {
+                    "energy": {}
+                  }
+                },
+                "emotion_series": [
+                  {
+                    "label": "14:38",
+                    "emotions": {}
+                  },
+                  {
+                    "label": "20:38",
+                    "emotions": {}
+                  },
+                  {
+                    "label": "02:38",
+                    "emotions": {
+                      "optimism": 1,
+                      "sadness": 1
+                    }
+                  }
+                ],
+                "top_sources": [
+                  "CNBC Top",
+                  "CNBC World"
+                ],
+                "stale": true,
+                "cached": true,
+                "skipped_sources": [],
+                "health": {
+                  "CNBC World": {
+                    "last_fail": 1773801510,
+                    "fail_count": 1,
+                    "backoff_until": 1773802110
+                  },
+                  "MarketWatch": {
+                    "last_fail": 1773801512,
+                    "fail_count": 1,
+                    "backoff_until": 1773802112
+                  },
+                  "BBC Business": {
+                    "last_fail": 1773801514,
+                    "fail_count": 1,
+                    "backoff_until": 1773802114
+                  },
+                  "CNBC Top": {
+                    "last_fail": 1773801508,
+                    "fail_count": 1,
+                    "backoff_until": 1773802108
+                  }
+                },
+                "freshness": {
+                  "timestamp": 1773797987,
+                  "age_sec": 3519,
+                  "state": "stale",
+                  "is_stale": true
+                }
+              },
+              "emotion": {
+                "count": 2,
+                "dominant": "optimism",
+                "counts": {
+                  "optimism": 1,
+                  "sadness": 1
+                },
+                "sentiment_avg": 0.0,
+                "negative_ratio": 0.0,
+                "series": [
+                  {
+                    "label": "14:38",
+                    "emotions": {}
+                  },
+                  {
+                    "label": "20:38",
+                    "emotions": {}
+                  },
+                  {
+                    "label": "02:38",
+                    "emotions": {
+                      "optimism": 1,
+                      "sadness": 1
+                    }
+                  }
+                ]
+              },
+              "presentation": {
+                "dominant_channel": "news",
+                "intensity": 0.438,
+                "top_signal": "optimism",
+                "hotspot_visible": true
+              },
+              "coverage": {
+                "weather": false,
+                "conflict": true,
+                "news": true
+              }
+            },
+            "source": "intel",
+            "confidence": null,
+            "freshness": {
+              "timestamp": 1773801506,
+              "age_sec": 0,
+              "state": "fresh",
+              "is_stale": false
+            },
+            "warnings": [
+              "Weather risk is sampled from a representative regional coordinate.",
+              "Conflict risk reflects regional signal density, not precise event locations.",
+              "News and emotion metrics reflect title-and-summary classification, not article geolocation.",
+              "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=22.0&longitude=113.0&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F90F50>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+              "GDELT is in cooldown. Try again later."
+            ]
+          },
+          {
+            "id": "region:europe",
+            "layer": "regional-intel",
+            "geometry": {
+              "type": "Point",
+              "coordinates": [
+                10.0,
+                50.0
+              ]
+            },
+            "ts": 1773801506,
+            "properties": {
+              "label": "Europe",
+              "region": "Europe",
+              "kind": "region",
+              "category": "low",
+              "industries": [
+                "industry",
+                "energy",
+                "manufacturing",
+                "finance"
+              ],
+              "display_scope": "region-centroid",
+              "combined_risk": {
+                "score": 1,
+                "level": "Low",
+                "confidence": null
+              },
+              "weather": {
+                "score": null,
+                "level": "Unavailable",
+                "confidence": null,
+                "status": "unavailable",
+                "temp_c": null,
+                "wind_ms": null,
+                "precip_mm": null,
+                "precip_24h": null,
+                "signals": [],
+                "impacts": [],
+                "freshness": {
+                  "timestamp": null,
+                  "age_sec": null,
+                  "state": "unknown",
+                  "is_stale": true
+                }
+              },
+              "conflict": {
+                "score": 0,
+                "level": "Low",
+                "confidence": null,
+                "status": "rss_fallback",
+                "count": 0,
+                "signals": [],
+                "impacts": [],
+                "event_counts": {},
+                "impact_counts": {
+                  "energy": 1,
+                  "finance_insurance": 2
+                },
+                "affected_markets": [
+                  "finance_insurance",
+                  "energy"
+                ],
+                "freshness": {
+                  "timestamp": 1773792009,
+                  "age_sec": 9497,
+                  "state": "stale",
+                  "is_stale": true
+                }
+              },
+              "news": {
+                "count": 4,
+                "risk_score": 3,
+                "confidence": null,
+                "sentiment_avg": -0.333,
+                "negative_ratio": 0.5,
+                "category_counts": {
+                  "tech": 1,
+                  "economy": 1,
+                  "energy": 1,
+                  "policy": 1,
+                  "markets": 2
+                },
+                "event_counts": {},
+                "impact_counts": {
+                  "energy": 1,
+                  "finance_insurance": 2
+                },
+                "emotion_counts": {
+                  "anticipation": 1,
+                  "fear": 2
+                },
+                "region_counts": {
+                  "Europe": 4
+                },
+                "subregion_counts": {
+                  "Europe": {
+                    "tech": 1,
+                    "energy": 1,
+                    "finance": 2
+                  }
+                },
+                "region_emotion_counts": {
+                  "Europe": {
+                    "anticipation": 1,
+                    "fear": 2
+                  }
+                },
+                "industry_emotion_counts": {
+                  "tech": {},
+                  "energy": {
+                    "anticipation": 1
+                  },
+                  "finance": {
+                    "fear": 2
+                  }
+                },
+                "region_industry_emotion_counts": {
+                  "Europe": {
+                    "tech": {},
+                    "energy": {
+                      "anticipation": 1
+                    },
+                    "finance": {
+                      "fear": 2
+                    }
+                  }
+                },
+                "emotion_series": [
+                  {
+                    "label": "14:38",
+                    "emotions": {
+                      "fear": 2
+                    }
+                  },
+                  {
+                    "label": "20:38",
+                    "emotions": {
+                      "anticipation": 1
+                    }
+                  },
+                  {
+                    "label": "02:38",
+                    "emotions": {}
+                  }
+                ],
+                "top_sources": [
+                  "BBC Business",
+                  "CNBC Top",
+                  "CNBC World"
+                ],
+                "stale": true,
+                "cached": true,
+                "skipped_sources": [],
+                "health": {
+                  "CNBC World": {
+                    "last_fail": 1773801510,
+                    "fail_count": 1,
+                    "backoff_until": 1773802110
+                  },
+                  "MarketWatch": {
+                    "last_fail": 1773801512,
+                    "fail_count": 1,
+                    "backoff_until": 1773802112
+                  },
+                  "BBC Business": {
+                    "last_fail": 1773801514,
+                    "fail_count": 1,
+                    "backoff_until": 1773802114
+                  },
+                  "CNBC Top": {
+                    "last_fail": 1773801508,
+                    "fail_count": 1,
+                    "backoff_until": 1773802108
+                  }
+                },
+                "freshness": {
+                  "timestamp": 1773792009,
+                  "age_sec": 9497,
+                  "state": "stale",
+                  "is_stale": true
+                }
+              },
+              "emotion": {
+                "count": 3,
+                "dominant": "fear",
+                "counts": {
+                  "anticipation": 1,
+                  "fear": 2
+                },
+                "sentiment_avg": -0.333,
+                "negative_ratio": 0.5,
+                "series": [
+                  {
+                    "label": "14:38",
+                    "emotions": {
+                      "fear": 2
+                    }
+                  },
+                  {
+                    "label": "20:38",
+                    "emotions": {
+                      "anticipation": 1
+                    }
+                  },
+                  {
+                    "label": "02:38",
+                    "emotions": {}
+                  }
+                ]
+              },
+              "presentation": {
+                "dominant_channel": "news",
+                "intensity": 0.25,
+                "top_signal": "anticipation",
+                "hotspot_visible": false
+              },
+              "coverage": {
+                "weather": false,
+                "conflict": true,
+                "news": true
+              }
+            },
+            "source": "intel",
+            "confidence": null,
+            "freshness": {
+              "timestamp": 1773801506,
+              "age_sec": 0,
+              "state": "fresh",
+              "is_stale": false
+            },
+            "warnings": [
+              "Weather risk is sampled from a representative regional coordinate.",
+              "Conflict risk reflects regional signal density, not precise event locations.",
+              "News and emotion metrics reflect title-and-summary classification, not article geolocation.",
+              "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=50.0&longitude=10.0&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F90A50>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+              "GDELT is in cooldown. Try again later."
+            ]
+          },
+          {
+            "id": "region:latin-america",
+            "layer": "regional-intel",
+            "geometry": {
+              "type": "Point",
+              "coordinates": [
+                -60.0,
+                -15.0
+              ]
+            },
+            "ts": 1773801506,
+            "properties": {
+              "label": "Latin America",
+              "region": "Latin America",
+              "kind": "region",
+              "category": "low",
+              "industries": [
+                "agriculture",
+                "mining",
+                "energy"
+              ],
+              "display_scope": "region-centroid",
+              "combined_risk": {
+                "score": 0,
+                "level": "Low",
+                "confidence": null
+              },
+              "weather": {
+                "score": null,
+                "level": "Unavailable",
+                "confidence": null,
+                "status": "unavailable",
+                "temp_c": null,
+                "wind_ms": null,
+                "precip_mm": null,
+                "precip_24h": null,
+                "signals": [],
+                "impacts": [],
+                "freshness": {
+                  "timestamp": null,
+                  "age_sec": null,
+                  "state": "unknown",
+                  "is_stale": true
+                }
+              },
+              "conflict": {
+                "score": 0,
+                "level": "Low",
+                "confidence": null,
+                "status": "rss_fallback",
+                "count": 0,
+                "signals": [],
+                "impacts": [],
+                "event_counts": {},
+                "impact_counts": {},
+                "affected_markets": [],
+                "freshness": {
+                  "timestamp": null,
+                  "age_sec": null,
+                  "state": "stale",
+                  "is_stale": true
+                }
+              },
+              "news": {
+                "count": 0,
+                "risk_score": null,
+                "confidence": null,
+                "sentiment_avg": 0.0,
+                "negative_ratio": 0.0,
+                "category_counts": {},
+                "event_counts": {},
+                "impact_counts": {},
+                "emotion_counts": {},
+                "region_counts": {},
+                "subregion_counts": {},
+                "region_emotion_counts": {},
+                "industry_emotion_counts": {},
+                "region_industry_emotion_counts": {},
+                "emotion_series": [],
+                "top_sources": [],
+                "stale": true,
+                "cached": true,
+                "skipped_sources": [],
+                "health": {
+                  "CNBC World": {
+                    "last_fail": 1773801510,
+                    "fail_count": 1,
+                    "backoff_until": 1773802110
+                  },
+                  "MarketWatch": {
+                    "last_fail": 1773801512,
+                    "fail_count": 1,
+                    "backoff_until": 1773802112
+                  },
+                  "BBC Business": {
+                    "last_fail": 1773801514,
+                    "fail_count": 1,
+                    "backoff_until": 1773802114
+                  },
+                  "CNBC Top": {
+                    "last_fail": 1773801508,
+                    "fail_count": 1,
+                    "backoff_until": 1773802108
+                  }
+                },
+                "freshness": {
+                  "timestamp": null,
+                  "age_sec": null,
+                  "state": "stale",
+                  "is_stale": true
+                }
+              },
+              "emotion": {
+                "count": 0,
+                "dominant": null,
+                "counts": {},
+                "sentiment_avg": 0.0,
+                "negative_ratio": 0.0,
+                "series": []
+              },
+              "presentation": {
+                "dominant_channel": "combined",
+                "intensity": 0.2,
+                "top_signal": "Regional monitoring active.",
+                "hotspot_visible": false
+              },
+              "coverage": {
+                "weather": false,
+                "conflict": true,
+                "news": false
+              }
+            },
+            "source": "intel",
+            "confidence": null,
+            "freshness": {
+              "timestamp": 1773801506,
+              "age_sec": 0,
+              "state": "fresh",
+              "is_stale": false
+            },
+            "warnings": [
+              "Weather risk is sampled from a representative regional coordinate.",
+              "Conflict risk reflects regional signal density, not precise event locations.",
+              "News and emotion metrics reflect title-and-summary classification, not article geolocation.",
+              "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=-15.0&longitude=-60.0&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F911D0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+              "GDELT is in cooldown. Try again later."
+            ]
+          },
+          {
+            "id": "region:africa",
+            "layer": "regional-intel",
+            "geometry": {
+              "type": "Point",
+              "coordinates": [
+                20.0,
+                1.0
+              ]
+            },
+            "ts": 1773801506,
+            "properties": {
+              "label": "Africa",
+              "region": "Africa",
+              "kind": "region",
+              "category": "low",
+              "industries": [
+                "mining",
+                "energy",
+                "agriculture"
+              ],
+              "display_scope": "region-centroid",
+              "combined_risk": {
+                "score": 0,
+                "level": "Low",
+                "confidence": null
+              },
+              "weather": {
+                "score": null,
+                "level": "Unavailable",
+                "confidence": null,
+                "status": "unavailable",
+                "temp_c": null,
+                "wind_ms": null,
+                "precip_mm": null,
+                "precip_24h": null,
+                "signals": [],
+                "impacts": [],
+                "freshness": {
+                  "timestamp": null,
+                  "age_sec": null,
+                  "state": "unknown",
+                  "is_stale": true
+                }
+              },
+              "conflict": {
+                "score": 0,
+                "level": "Low",
+                "confidence": null,
+                "status": "rss_fallback",
+                "count": 0,
+                "signals": [],
+                "impacts": [],
+                "event_counts": {},
+                "impact_counts": {},
+                "affected_markets": [],
+                "freshness": {
+                  "timestamp": null,
+                  "age_sec": null,
+                  "state": "stale",
+                  "is_stale": true
+                }
+              },
+              "news": {
+                "count": 0,
+                "risk_score": null,
+                "confidence": null,
+                "sentiment_avg": 0.0,
+                "negative_ratio": 0.0,
+                "category_counts": {},
+                "event_counts": {},
+                "impact_counts": {},
+                "emotion_counts": {},
+                "region_counts": {},
+                "subregion_counts": {},
+                "region_emotion_counts": {},
+                "industry_emotion_counts": {},
+                "region_industry_emotion_counts": {},
+                "emotion_series": [],
+                "top_sources": [],
+                "stale": true,
+                "cached": true,
+                "skipped_sources": [],
+                "health": {
+                  "CNBC World": {
+                    "last_fail": 1773801510,
+                    "fail_count": 1,
+                    "backoff_until": 1773802110
+                  },
+                  "MarketWatch": {
+                    "last_fail": 1773801512,
+                    "fail_count": 1,
+                    "backoff_until": 1773802112
+                  },
+                  "BBC Business": {
+                    "last_fail": 1773801514,
+                    "fail_count": 1,
+                    "backoff_until": 1773802114
+                  },
+                  "CNBC Top": {
+                    "last_fail": 1773801508,
+                    "fail_count": 1,
+                    "backoff_until": 1773802108
+                  }
+                },
+                "freshness": {
+                  "timestamp": null,
+                  "age_sec": null,
+                  "state": "stale",
+                  "is_stale": true
+                }
+              },
+              "emotion": {
+                "count": 0,
+                "dominant": null,
+                "counts": {},
+                "sentiment_avg": 0.0,
+                "negative_ratio": 0.0,
+                "series": []
+              },
+              "presentation": {
+                "dominant_channel": "combined",
+                "intensity": 0.2,
+                "top_signal": "Regional monitoring active.",
+                "hotspot_visible": false
+              },
+              "coverage": {
+                "weather": false,
+                "conflict": true,
+                "news": false
+              }
+            },
+            "source": "intel",
+            "confidence": null,
+            "freshness": {
+              "timestamp": 1773801506,
+              "age_sec": 0,
+              "state": "fresh",
+              "is_stale": false
+            },
+            "warnings": [
+              "Weather risk is sampled from a representative regional coordinate.",
+              "Conflict risk reflects regional signal density, not precise event locations.",
+              "News and emotion metrics reflect title-and-summary classification, not article geolocation.",
+              "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=1.0&longitude=20.0&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F91450>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+              "GDELT is in cooldown. Try again later."
+            ]
+          }
+        ],
+        "legend": [
+          {
+            "label": "Combined",
+            "value": "combined",
+            "color": "#48f1a6"
+          },
+          {
+            "label": "Weather",
+            "value": "weather",
+            "color": "#75d7ff"
+          },
+          {
+            "label": "Conflict",
+            "value": "conflict",
+            "color": "#ff8b73"
+          },
+          {
+            "label": "News",
+            "value": "news",
+            "color": "#ffd166"
+          }
+        ],
+        "filters": {
+          "industry": "all",
+          "categories": [],
+          "sources": []
+        },
+        "style_hints": {
+          "color_by": "presentation.dominant_channel",
+          "size_by": "presentation.intensity",
+          "halo": "emissive"
+        },
+        "time_bounds": {
+          "start_ts": 1773792009,
+          "end_ts": 1773797987
+        },
+        "meta": {
+          "source": "intel",
+          "count": 6,
+          "warnings": [
+            "News cache is stale; regional signals may lag live conditions.",
+            "Weather risk is sampled from a representative regional coordinate.",
+            "Conflict risk reflects regional signal density, not precise event locations.",
+            "News and emotion metrics reflect title-and-summary classification, not article geolocation.",
+            "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=39.8&longitude=-98.6&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F90050>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+            "GDELT fetch failed: HTTPSConnectionPool(host='api.gdeltproject.org', port=443): Max retries exceeded with url: /api/v2/doc/doc?query=%28conflict+OR+war+OR+attack+OR+missile+OR+drone+OR+strike+OR+protest+OR+blockade+OR+sanctions%29+AND+%28%22North+America%22+OR+%22United+States%22+OR+Canada+OR+Mexico+OR+%22Panama+Canal%22%29&mode=ArtList&format=json&maxrecords=25&sort=HybridRel (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F907D0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+            "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=50.0&longitude=10.0&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F90A50>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+            "GDELT is in cooldown. Try again later.",
+            "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=24.0&longitude=45.0&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F90CD0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+            "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=22.0&longitude=113.0&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F90F50>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+            "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=-15.0&longitude=-60.0&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F911D0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+            "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=1.0&longitude=20.0&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F91450>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))"
+          ],
+          "cached_news": true,
+          "stale_news": true,
+          "skipped_sources": []
+        }
+      },
+      {
+        "id": "regional-conflict-overlays",
+        "kind": "pulse",
+        "label": "Regional Conflict Hotspots",
+        "features": [
+          {
+            "id": "pulse:region:north-america",
+            "layer": "regional-conflict-overlays",
+            "geometry": {
+              "type": "Point",
+              "coordinates": [
+                -98.6,
+                39.8
+              ]
+            },
+            "ts": 1773801506,
+            "properties": {
+              "label": "North America hotspot",
+              "region": "North America",
+              "kind": "impact-zone",
+              "category": "moderate",
+              "display_scope": "region-centroid-highlight",
+              "scope_kind": "centroid-highlight",
+              "conflict_score": 4,
+              "article_count": 7,
+              "event_counts": {
+                "conflict": 5,
+                "disruption": 2,
+                "sanctions": 1
+              },
+              "impact_counts": {
+                "energy": 3,
+                "manufacturing_supply_chain": 4,
+                "shipping_logistics": 1,
+                "defense_security": 1
+              },
+              "affected_markets": [
+                "manufacturing_supply_chain",
+                "energy",
+                "defense_security",
+                "shipping_logistics"
+              ],
+              "top_event_tags": [
+                "conflict",
+                "disruption",
+                "sanctions"
+              ],
+              "presentation": {
+                "pulse_intensity": 1.0,
+                "top_signal": "anger"
+              },
+              "provenance": {
+                "conflict_status": "news_fallback",
+                "news_cached": true,
+                "news_stale": true,
+                "display_note": "Centroid pulse is a reviewed regional highlight, not incident geometry."
+              }
+            },
+            "source": "intel",
+            "confidence": null,
+            "freshness": {
+              "timestamp": 1773801506,
+              "age_sec": 0,
+              "state": "fresh",
+              "is_stale": false
+            },
+            "warnings": [
+              "Pulse overlay is a centroid highlight for regional impact, not a polygon or exact incident footprint."
+            ]
+          },
+          {
+            "id": "pulse:region:middle-east",
+            "layer": "regional-conflict-overlays",
+            "geometry": {
+              "type": "Point",
+              "coordinates": [
+                45.0,
+                24.0
+              ]
+            },
+            "ts": 1773801506,
+            "properties": {
+              "label": "Middle East hotspot",
+              "region": "Middle East",
+              "kind": "impact-zone",
+              "category": "moderate",
+              "display_scope": "region-centroid-highlight",
+              "scope_kind": "centroid-highlight",
+              "conflict_score": 5,
+              "article_count": 15,
+              "event_counts": {
+                "conflict": 13,
+                "disruption": 4,
+                "infrastructure": 1
+              },
+              "impact_counts": {
+                "defense_security": 2,
+                "energy": 7,
+                "finance_insurance": 2,
+                "shipping_logistics": 3,
+                "aviation": 1
+              },
+              "affected_markets": [
+                "energy",
+                "shipping_logistics",
+                "defense_security",
+                "finance_insurance",
+                "aviation"
+              ],
+              "top_event_tags": [
+                "conflict",
+                "disruption",
+                "infrastructure"
+              ],
+              "presentation": {
+                "pulse_intensity": 1.0,
+                "top_signal": "anger"
+              },
+              "provenance": {
+                "conflict_status": "rss_fallback",
+                "news_cached": true,
+                "news_stale": true,
+                "display_note": "Centroid pulse is a reviewed regional highlight, not incident geometry."
+              }
+            },
+            "source": "intel",
+            "confidence": null,
+            "freshness": {
+              "timestamp": 1773801506,
+              "age_sec": 0,
+              "state": "fresh",
+              "is_stale": false
+            },
+            "warnings": [
+              "Pulse overlay is a centroid highlight for regional impact, not a polygon or exact incident footprint."
+            ]
+          },
+          {
+            "id": "pulse:region:asia-pacific",
+            "layer": "regional-conflict-overlays",
+            "geometry": {
+              "type": "Point",
+              "coordinates": [
+                113.0,
+                22.0
+              ]
+            },
+            "ts": 1773801506,
+            "properties": {
+              "label": "Asia-Pacific hotspot",
+              "region": "Asia-Pacific",
+              "kind": "impact-zone",
+              "category": "moderate",
+              "display_scope": "region-centroid-highlight",
+              "scope_kind": "centroid-highlight",
+              "conflict_score": 4,
+              "article_count": 5,
+              "event_counts": {
+                "conflict": 4,
+                "disruption": 1,
+                "sanctions": 1
+              },
+              "impact_counts": {
+                "manufacturing_supply_chain": 1,
+                "energy": 1,
+                "finance_insurance": 1
+              },
+              "affected_markets": [
+                "energy",
+                "finance_insurance",
+                "manufacturing_supply_chain"
+              ],
+              "top_event_tags": [
+                "conflict",
+                "disruption",
+                "sanctions"
+              ],
+              "presentation": {
+                "pulse_intensity": 0.75,
+                "top_signal": "optimism"
+              },
+              "provenance": {
+                "conflict_status": "rss_fallback",
+                "news_cached": true,
+                "news_stale": true,
+                "display_note": "Centroid pulse is a reviewed regional highlight, not incident geometry."
+              }
+            },
+            "source": "intel",
+            "confidence": null,
+            "freshness": {
+              "timestamp": 1773801506,
+              "age_sec": 0,
+              "state": "fresh",
+              "is_stale": false
+            },
+            "warnings": [
+              "Pulse overlay is a centroid highlight for regional impact, not a polygon or exact incident footprint."
+            ]
+          }
+        ],
+        "legend": [],
+        "filters": {
+          "industry": "all",
+          "categories": [],
+          "sources": []
+        },
+        "style_hints": {
+          "fill": "#ff5c6a",
+          "stroke": "#ff8b73",
+          "min_opacity": 0.14,
+          "max_opacity": 0.3,
+          "pulse_period_ms": 4200,
+          "blend_mode": "screen"
+        },
+        "time_bounds": {
+          "start_ts": 1773792009,
+          "end_ts": 1773797987
+        },
+        "meta": {
+          "source": "intel",
+          "count": 3,
+          "warnings": [
+            "Conflict pulses are centroid highlights, not exact event polygons.",
+            "News cache is stale; regional signals may lag live conditions.",
+            "Weather risk is sampled from a representative regional coordinate.",
+            "Conflict risk reflects regional signal density, not precise event locations.",
+            "News and emotion metrics reflect title-and-summary classification, not article geolocation.",
+            "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=39.8&longitude=-98.6&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F90050>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+            "GDELT fetch failed: HTTPSConnectionPool(host='api.gdeltproject.org', port=443): Max retries exceeded with url: /api/v2/doc/doc?query=%28conflict+OR+war+OR+attack+OR+missile+OR+drone+OR+strike+OR+protest+OR+blockade+OR+sanctions%29+AND+%28%22North+America%22+OR+%22United+States%22+OR+Canada+OR+Mexico+OR+%22Panama+Canal%22%29&mode=ArtList&format=json&maxrecords=25&sort=HybridRel (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F907D0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+            "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=50.0&longitude=10.0&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F90A50>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+            "GDELT is in cooldown. Try again later.",
+            "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=24.0&longitude=45.0&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F90CD0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+            "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=22.0&longitude=113.0&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F90F50>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+            "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=-15.0&longitude=-60.0&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F911D0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+            "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=1.0&longitude=20.0&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F91450>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))"
+          ]
+        }
+      }
+    ],
+    "focus_targets": [
+      {
+        "id": "region:north-america",
+        "layer": "regional-intel",
+        "label": "North America",
+        "kind": "news",
+        "category": "High",
+        "lat": 39.8,
+        "lon": -98.6,
+        "confidence": null
+      },
+      {
+        "id": "region:middle-east",
+        "layer": "regional-intel",
+        "label": "Middle East",
+        "kind": "news",
+        "category": "High",
+        "lat": 24.0,
+        "lon": 45.0,
+        "confidence": null
+      },
+      {
+        "id": "region:asia-pacific",
+        "layer": "regional-intel",
+        "label": "Asia-Pacific",
+        "kind": "news",
+        "category": "Moderate",
+        "lat": 22.0,
+        "lon": 113.0,
+        "confidence": null
+      },
+      {
+        "id": "region:europe",
+        "layer": "regional-intel",
+        "label": "Europe",
+        "kind": "news",
+        "category": "Low",
+        "lat": 50.0,
+        "lon": 10.0,
+        "confidence": null
+      },
+      {
+        "id": "region:latin-america",
+        "layer": "regional-intel",
+        "label": "Latin America",
+        "kind": "combined",
+        "category": "Low",
+        "lat": -15.0,
+        "lon": -60.0,
+        "confidence": null
+      },
+      {
+        "id": "region:africa",
+        "layer": "regional-intel",
+        "label": "Africa",
+        "kind": "combined",
+        "category": "Low",
+        "lat": 1.0,
+        "lon": 20.0,
+        "confidence": null
+      }
+    ],
+    "bounds": {
+      "min_lon": -98.6,
+      "max_lon": 113.0,
+      "min_lat": -15.0,
+      "max_lat": 50.0
+    },
+    "meta": {
+      "source": "intel",
+      "timestamp": 1773801528,
+      "industry_filter": "all",
+      "categories": [],
+      "sources": [],
+      "region_count": 6,
+      "cached_news": true,
+      "stale_news": true,
+      "skipped_sources": [],
+      "available_lenses": [
+        "combined",
+        "weather",
+        "conflict",
+        "news",
+        "emotion"
+      ],
+      "available_overlays": [
+        "regional-conflict-overlays"
+      ],
+      "emotion": {
+        "supported": true,
+        "fields": [
+          "count",
+          "dominant",
+          "sentiment_avg",
+          "negative_ratio",
+          "emotion_counts",
+          "event_counts",
+          "impact_counts",
+          "region_counts",
+          "subregion_counts",
+          "emotion_series"
+        ]
+      },
+      "warnings": [
+        "News cache is stale; regional signals may lag live conditions.",
+        "Weather risk is sampled from a representative regional coordinate.",
+        "Conflict risk reflects regional signal density, not precise event locations.",
+        "News and emotion metrics reflect title-and-summary classification, not article geolocation.",
+        "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=39.8&longitude=-98.6&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F90050>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+        "GDELT fetch failed: HTTPSConnectionPool(host='api.gdeltproject.org', port=443): Max retries exceeded with url: /api/v2/doc/doc?query=%28conflict+OR+war+OR+attack+OR+missile+OR+drone+OR+strike+OR+protest+OR+blockade+OR+sanctions%29+AND+%28%22North+America%22+OR+%22United+States%22+OR+Canada+OR+Mexico+OR+%22Panama+Canal%22%29&mode=ArtList&format=json&maxrecords=25&sort=HybridRel (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F907D0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+        "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=50.0&longitude=10.0&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F90A50>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+        "GDELT is in cooldown. Try again later.",
+        "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=24.0&longitude=45.0&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F90CD0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+        "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=22.0&longitude=113.0&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F90F50>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+        "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=-15.0&longitude=-60.0&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F911D0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))",
+        "Open-Meteo fetch failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=1.0&longitude=20.0&current=temperature_2m%2Cwind_speed_10m%2Cprecipitation&hourly=temperature_2m%2Cwind_speed_10m%2Cprecipitation&forecast_days=1&timezone=UTC (Caused by ProxyError('Unable to connect to proxy', NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000173C3F91450>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')))"
+      ],
+      "route": "/api/osint/scene/intel",
+      "status": "ok"
+    }
+  },
+  "intel_meta_payload": {
+    "regions": [
+      {
+        "name": "Global",
+        "industries": [
+          "energy",
+          "agriculture",
+          "shipping",
+          "aviation"
+        ]
+      },
+      {
+        "name": "North America",
+        "industries": [
+          "energy",
+          "agriculture",
+          "logistics",
+          "tech"
+        ]
+      },
+      {
+        "name": "Europe",
+        "industries": [
+          "industry",
+          "energy",
+          "manufacturing",
+          "finance"
+        ]
+      },
+      {
+        "name": "Middle East",
+        "industries": [
+          "energy",
+          "shipping",
+          "defense"
+        ]
+      },
+      {
+        "name": "Asia-Pacific",
+        "industries": [
+          "manufacturing",
+          "shipping",
+          "tech"
+        ]
+      },
+      {
+        "name": "Latin America",
+        "industries": [
+          "agriculture",
+          "mining",
+          "energy"
+        ]
+      },
+      {
+        "name": "Africa",
+        "industries": [
+          "mining",
+          "energy",
+          "agriculture"
+        ]
+      }
+    ],
+    "industries": [
+      "agriculture",
+      "aviation",
+      "defense",
+      "energy",
+      "finance",
+      "industry",
+      "logistics",
+      "manufacturing",
+      "mining",
+      "shipping",
+      "tech"
+    ],
+    "categories": [
+      "agriculture",
+      "agriculture_food",
+      "aviation",
+      "commodities",
+      "conflict",
+      "defense",
+      "defense_security",
+      "disaster",
+      "disruption",
+      "economy",
+      "energy",
+      "finance",
+      "finance_insurance",
+      "infrastructure",
+      "manufacturing_supply_chain",
+      "markets",
+      "policy",
+      "rates",
+      "sanctions",
+      "scarcity",
+      "shipping",
+      "shipping_logistics",
+      "tech",
+      "technology",
+      "water_utilities",
+      "weather"
+    ],
+    "sources": [
+      "CNBC Top",
+      "CNBC World",
+      "MarketWatch",
+      "BBC Business"
+    ],
+    "meta": {
+      "route": "/api/intel/meta",
+      "source": "intel",
+      "timestamp": 1773801528,
+      "status": "ok",
+      "warnings": []
+    }
+  }
+}

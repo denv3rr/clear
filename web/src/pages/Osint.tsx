@@ -66,11 +66,14 @@ export default function Osint() {
   };
 
   const activeLabel = tabs.find((tab) => tab.id === activeTab)?.label || "Trackers";
-  const preferredScene = activeTab === "trackers" ? "trackers" : "intel";
+  const preferredScene = "overview";
   const globeCallout =
     activeTab === "trackers"
-      ? "Open the globe to move from list-and-card review into an immersive world view. Phase 0 currently centers on live trackers and replay trails, with conflict, emotion, weather, and cargo layers next in line."
-      : "Open the globe to pivot into a regional risk view where weather, conflict, and news pressure converge on the same world canvas.";
+      ? "Open the overview globe to move from list-and-card review into the fused world view. Tracker-only mode is still available inside the overlay, but the default launch now keeps regional conflict, weather, news, and emotion layers on the same canvas."
+      : activeTab === "intel"
+        ? "Open the overview globe to pivot into a regional risk view while keeping live tracker activity on the same canvas."
+        : "Open the overview globe to combine live trackers, hotspots, and regional emotion/news pressure on one world canvas.";
+  const globeButtonLabel = isOpen ? "Globe Live" : "Open Overview Globe";
 
   return (
     <div className="space-y-5">
@@ -87,7 +90,7 @@ export default function Osint() {
                 onClick={() => openScene(preferredScene)}
                 className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-3 py-1 text-[11px] text-emerald-200 hover:border-emerald-300 hover:text-emerald-100"
               >
-                {isOpen ? "Globe Live" : "Open Globe"}
+                {globeButtonLabel}
               </button>
             </div>
           }

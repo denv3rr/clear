@@ -4,6 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "capture:intel:fixture": "python ../scripts/capture_globe_fixture.py --scene intel --output tests/fixtures/intel-globe.fixture.json",
+    "capture:tracker:fixture": "python ../scripts/capture_globe_fixture.py --scene tracker --output tests/fixtures/tracker-globe.fixture.json",
     "dev": "vite",
     "build": "vite build",
     "build:check": "node scripts/check-bundle.mjs",

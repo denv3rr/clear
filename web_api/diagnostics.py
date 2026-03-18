@@ -9,6 +9,7 @@ from modules.client_mgr.data_handler import DataHandler
 from core.database import SessionLocal
 from core import models
 from modules.client_store import DbClientStore
+from modules.market_data.collectors import load_cached_news
 from modules.market_data.registry import build_feed_registry, summarize_feed_registry
 from modules.market_data.trackers import GlobalTrackers
 from utils.system import SystemHost
@@ -129,6 +130,11 @@ def duplicate_account_summary() -> Dict[str, object]:
     return store.find_duplicate_accounts()
 
 
+def duplicate_client_summary() -> Dict[str, object]:
+    store = DbClientStore()
+    return store.find_duplicate_clients()
+
+
 def orphaned_counts() -> Dict[str, int]:
     db = SessionLocal()
     try:
@@ -153,21 +159,28 @@ def orphaned_counts() -> Dict[str, int]:
 def news_cache_info(max_age_hours: int = 6) -> Dict[str, Optional[object]]:
     path = os.path.join("data", "intel_news.json")
     if not os.path.exists(path):
-        return {"status": "missing", "items": 0, "age_hours": None}
+        return {"status": "missing", "items": 0, "raw_items": 0, "duplicate_items": 0, "age_hours": None}
     try:
         with open(path, "r", encoding="utf-8") as handle:
             payload = json.load(handle)
         ts = int(payload.get("ts", 0) or 0)
-        items = payload.get("items") or []
+        raw_items = payload.get("items") or []
+        deduped_items = load_cached_news(path, ttl_seconds=10**9, allow_stale=True)
         age_hours = round(max(0.0, (time.time() - ts) / 3600.0), 2) if ts else None
         status = "fresh"
-        if not items:
+        if not deduped_items:
             status = "empty"
         elif age_hours is not None and age_hours > max_age_hours:
             status = "stale"
-        return {"status": status, "items": len(items), "age_hours": age_hours}
+        return {
+            "status": status,
+            "items": len(deduped_items),
+            "raw_items": len(raw_items),
+            "duplicate_items": max(0, len(raw_items) - len(deduped_items)),
+            "age_hours": age_hours,
+        }
     except Exception:
-        return {"status": "error", "items": 0, "age_hours": None}
+        return {"status": "error", "items": 0, "raw_items": 0, "duplicate_items": 0, "age_hours": None}
 
 
 def report_cache_info() -> Dict[str, Optional[object]]:

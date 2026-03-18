@@ -27,6 +27,52 @@ class TestNewsCollectors(unittest.TestCase):
         self.assertEqual(len(deduped), 1)
         self.assertEqual(deduped[0]["url"], "http://b")
 
+    def test_dedupe_items_merges_same_url_across_sources(self):
+        items = [
+            {
+                "title": "Oil routes remain under pressure",
+                "summary": "Shipping lanes tightened after renewed strikes.",
+                "source": "CNBC Top",
+                "url": "https://www.cnbc.com/article?id=1&utm_source=rss",
+                "published_ts": 100,
+            },
+            {
+                "title": "Oil routes remain under pressure",
+                "summary": "Shipping lanes tightened after renewed strikes.",
+                "source": "CNBC World",
+                "url": "https://www.cnbc.com/article?id=1",
+                "published_ts": 101,
+            },
+        ]
+        deduped = _dedupe_items(items)
+        self.assertEqual(len(deduped), 1)
+        self.assertEqual(
+            deduped[0]["canonical_url"],
+            "https://www.cnbc.com/article?id=1",
+        )
+        self.assertEqual(deduped[0]["source"], "CNBC Top")
+        self.assertEqual(deduped[0]["sources"], ["CNBC Top", "CNBC World"])
+        self.assertEqual(deduped[0]["published_ts"], 101)
+
+    def test_dedupe_items_merges_same_content_without_url(self):
+        items = [
+            {
+                "title": "Iran conflict escalates",
+                "summary": "Iran conflict escalates after overnight strikes near shipping lanes.",
+                "source": "Feed A",
+                "published_ts": 100,
+            },
+            {
+                "title": "Iran conflict escalates",
+                "summary": "Iran conflict escalates after overnight strikes near shipping lanes.",
+                "source": "Feed B",
+                "published_ts": 99,
+            },
+        ]
+        deduped = _dedupe_items(items)
+        self.assertEqual(len(deduped), 1)
+        self.assertEqual(deduped[0]["sources"], ["Feed A", "Feed B"])
+
 
 if __name__ == "__main__":
     unittest.main()

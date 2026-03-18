@@ -17,7 +17,11 @@ from modules.view_models import (
     list_clients,
     portfolio_dashboard,
 )
-from modules.client_store import DbClientStore
+from modules.client_store import (
+    DbClientStore,
+    DuplicateAccountError,
+    DuplicateClientError,
+)
 from modules.client_mgr.schema import Client, Account, ClientPatch, AccountPatch
 from web_api.auth import require_api_key
 from web_api.view_model import attach_meta, validate_payload
@@ -67,14 +71,21 @@ def client_duplicate_accounts(
     db: Session = Depends(get_db),
 ):
     store = DbClientStore(db)
-    payload = store.find_duplicate_accounts()
+    account_duplicates = store.find_duplicate_accounts()
+    client_name_duplicates = store.find_duplicate_clients()
+    payload = {
+        **account_duplicates,
+        "client_name_duplicates": client_name_duplicates,
+    }
     warnings = validate_payload(
         payload,
-        required_keys=("count", "clients", "details"),
+        required_keys=("count", "clients", "details", "client_name_duplicates"),
         warnings=[],
     )
     if payload.get("count", 0) > 0:
         warnings.append("Duplicate accounts detected.")
+    if client_name_duplicates.get("count", 0) > 0:
+        warnings.append("Duplicate client names detected.")
     return attach_meta(
         payload,
         route="/api/clients/duplicates",
@@ -133,8 +144,17 @@ def client_create(payload: Client, _auth: None = Depends(require_api_key), db: S
     store = DbClientStore(db)
     try:
         response = store.create_client(payload.model_dump())
+    except DuplicateClientError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": str(exc),
+                "existing_client_id": exc.existing_client_id,
+                "incoming_client_id": exc.incoming_client_id,
+            },
+        )
     except IntegrityError:
-        raise HTTPException(status_code=409, detail="Client name already exists.")
+        raise HTTPException(status_code=409, detail="Client identifier conflict.")
     response = client_detail(response)
     warnings = validate_payload(response, required_keys=("client_id",), warnings=[])
     return attach_meta(
@@ -153,10 +173,20 @@ def client_update(
     db: Session = Depends(get_db)
 ):
     store = DbClientStore(db)
-    updated = store.update_client(
-        client_id,
-        payload.model_dump(exclude_unset=True, exclude_none=True),
-    )
+    try:
+        updated = store.update_client(
+            client_id,
+            payload.model_dump(exclude_unset=True, exclude_none=True),
+        )
+    except DuplicateClientError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": str(exc),
+                "existing_client_id": exc.existing_client_id,
+                "incoming_client_id": exc.incoming_client_id,
+            },
+        )
     if updated is None:
         raise HTTPException(status_code=404, detail="Client not found")
     response = client_detail(updated)
@@ -205,7 +235,18 @@ def account_create(
     db: Session = Depends(get_db)
 ):
     store = DbClientStore(db)
-    account_payload = store.create_account(client_id, payload.model_dump())
+    try:
+        account_payload = store.create_account(client_id, payload.model_dump())
+    except DuplicateAccountError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": str(exc),
+                "client_id": exc.client_id,
+                "existing_account_id": exc.existing_account_id,
+                "incoming_account_id": exc.incoming_account_id,
+            },
+        )
     if account_payload is None:
         raise HTTPException(status_code=404, detail="Client not found")
     client_payload = store.fetch_client(client_id)
@@ -230,11 +271,22 @@ def account_update(
     db: Session = Depends(get_db)
 ):
     store = DbClientStore(db)
-    account_payload = store.update_account(
-        client_id,
-        account_id,
-        payload.model_dump(exclude_unset=True, exclude_none=True),
-    )
+    try:
+        account_payload = store.update_account(
+            client_id,
+            account_id,
+            payload.model_dump(exclude_unset=True, exclude_none=True),
+        )
+    except DuplicateAccountError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": str(exc),
+                "client_id": exc.client_id,
+                "existing_account_id": exc.existing_account_id,
+                "incoming_account_id": exc.incoming_account_id,
+            },
+        )
     if account_payload is None:
         raise HTTPException(status_code=404, detail="Account not found")
     client_payload = store.fetch_client(client_id)

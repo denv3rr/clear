@@ -34,9 +34,89 @@ DEFAULT_TAX_SETTINGS = {
 }
 
 
+class DuplicateClientError(ValueError):
+    def __init__(self, message: str, *, existing_client_id: str = "", incoming_client_id: str = ""):
+        super().__init__(message)
+        self.existing_client_id = existing_client_id
+        self.incoming_client_id = incoming_client_id
+
+
+class DuplicateAccountError(ValueError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        existing_account_id: str = "",
+        incoming_account_id: str = "",
+        client_id: str = "",
+    ):
+        super().__init__(message)
+        self.existing_account_id = existing_account_id
+        self.incoming_account_id = incoming_account_id
+        self.client_id = client_id
+
+
+def _normalize_text(value: Any) -> str:
+    return " ".join(str(value or "").split()).strip().casefold()
+
+
+def _canonicalize_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            str(key): _canonicalize_value(val)
+            for key, val in sorted(value.items(), key=lambda item: str(item[0]))
+        }
+    if isinstance(value, list):
+        normalized = [_canonicalize_value(item) for item in value]
+        return sorted(
+            normalized,
+            key=lambda item: json.dumps(item, sort_keys=True, separators=(",", ":")),
+        )
+    if isinstance(value, str):
+        return _normalize_text(value)
+    return value
+
+
+def _canonical_json(value: Any) -> str:
+    return json.dumps(
+        _canonicalize_value(value),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _client_name_key(name: Any) -> str:
+    return _normalize_text(name)
+
+
+def _account_field(source: Any, *names: str) -> Any:
+    if isinstance(source, dict):
+        for name in names:
+            if name in source:
+                return source.get(name)
+        return None
+    for name in names:
+        if hasattr(source, name):
+            return getattr(source, name)
+    return None
+
+
+def _account_identity_key(account: Any) -> str:
+    parts = [
+        _normalize_text(_account_field(account, "account_name", "name")),
+        _normalize_text(_account_field(account, "account_type")),
+        _normalize_text(_account_field(account, "ownership_type")),
+        _normalize_text(_account_field(account, "custodian")),
+    ]
+    return "|".join(parts)
+
+
 def _account_fingerprint(account: models.Account) -> str:
     pydantic_account = Account.model_validate(account)
-    return pydantic_account.model_dump_json(exclude={'account_id', 'current_value', 'active_interval', 'extra'})
+    payload = pydantic_account.model_dump(
+        exclude={"account_id", "current_value", "active_interval", "extra"}
+    )
+    return _canonical_json(payload)
 
 
 @contextmanager
@@ -89,9 +169,19 @@ class DbClientStore:
 
         with _session_scope(self._db) as db:
             self._ensure_identifiers(db)
+            client_uid = validated_client.client_id or str(uuid.uuid4())
+            name_key = _client_name_key(validated_client.name)
+            existing = self._find_client_by_name_key(db, name_key)
+            if existing is not None:
+                raise DuplicateClientError(
+                    "Client already exists under the same normalized name.",
+                    existing_client_id=existing.client_uid or str(existing.id),
+                    incoming_client_id=client_uid,
+                )
             client = models.Client(
-                client_uid=validated_client.client_id or str(uuid.uuid4()),
+                client_uid=client_uid,
                 name=validated_client.name,
+                name_key=name_key,
                 risk_profile=validated_client.risk_profile,
                 risk_profile_source=validated_client.risk_profile_source,
                 active_interval=validated_client.active_interval,
@@ -120,7 +210,22 @@ class DbClientStore:
                 raise
 
             if validated_payload.name is not None:
+                name_key = _client_name_key(validated_payload.name)
+                existing = self._find_client_by_name_key(
+                    db,
+                    name_key,
+                    exclude_client_uid=client.client_uid or "",
+                )
+                if existing is not None:
+                    raise DuplicateClientError(
+                        "Client already exists under the same normalized name.",
+                        existing_client_id=existing.client_uid or str(existing.id),
+                        incoming_client_id=client.client_uid or str(client.id),
+                    )
+
+            if validated_payload.name is not None:
                 client.name = validated_payload.name
+                client.name_key = _client_name_key(validated_payload.name)
             if validated_payload.risk_profile is not None:
                 client.risk_profile = validated_payload.risk_profile
             if validated_payload.risk_profile_source is not None:
@@ -155,19 +260,25 @@ class DbClientStore:
             self._ensure_identifiers(db)
             existing = {client.client_uid: client for client in db.query(models.Client).all()}
             existing_by_name = {
-                str(client.name).strip().lower(): client
+                client.name_key or _client_name_key(client.name): client
                 for client in existing.values()
-                if client.name
+                if client.name_key or client.name
             }
             incoming_ids = set()
 
             for payload in validated_payloads:
                 client_uid = payload.client_id or str(uuid.uuid4())
                 client = existing.get(client_uid)
-                if client is None and allow_name_merge:
-                    name_key = str(payload.name or "").strip().lower()
-                    if name_key:
-                        client = existing_by_name.get(name_key)
+                name_key = _client_name_key(payload.name)
+                if client is None and allow_name_merge and name_key:
+                    client = existing_by_name.get(name_key)
+                elif client is None and name_key and name_key in existing_by_name:
+                    existing_client = existing_by_name[name_key]
+                    raise DuplicateClientError(
+                        "Client already exists under the same normalized name.",
+                        existing_client_id=existing_client.client_uid or str(existing_client.id),
+                        incoming_client_id=client_uid,
+                    )
                 
                 if client is not None:
                     incoming_ids.add(client.client_uid)
@@ -178,6 +289,7 @@ class DbClientStore:
                     client = models.Client(
                         client_uid=client_uid,
                         name=payload.name,
+                        name_key=name_key,
                         risk_profile=payload.risk_profile,
                         risk_profile_source=payload.risk_profile_source,
                         active_interval=payload.active_interval,
@@ -186,11 +298,22 @@ class DbClientStore:
                     )
                     db.add(client)
                     db.flush()
-                    name_key = str(client.name or "").strip().lower()
                     if name_key:
                         existing_by_name.setdefault(name_key, client)
                 elif overwrite:
+                    existing_client = self._find_client_by_name_key(
+                        db,
+                        name_key,
+                        exclude_client_uid=client.client_uid or "",
+                    )
+                    if existing_client is not None:
+                        raise DuplicateClientError(
+                            "Client already exists under the same normalized name.",
+                            existing_client_id=existing_client.client_uid or str(existing_client.id),
+                            incoming_client_id=client.client_uid or str(client.id),
+                        )
                     client.name = payload.name
+                    client.name_key = name_key
                     client.risk_profile = payload.risk_profile
                     client.risk_profile_source = payload.risk_profile_source
                     client.active_interval = payload.active_interval
@@ -224,9 +347,24 @@ class DbClientStore:
             client = self._find_client(db, client_ref)
             if client is None:
                 return None
+            account_uid = validated_account.account_id or str(uuid.uuid4())
+            identity_key = _account_identity_key(validated_account)
+            existing = self._find_conflicting_account(
+                db,
+                client.id,
+                identity_key,
+            )
+            if existing is not None:
+                raise DuplicateAccountError(
+                    "Account already exists under the same normalized identity.",
+                    existing_account_id=existing.account_uid or str(existing.id),
+                    incoming_account_id=account_uid,
+                    client_id=client.client_uid or str(client.id),
+                )
             account = models.Account(
-                account_uid=validated_account.account_id or str(uuid.uuid4()),
+                account_uid=account_uid,
                 name=validated_account.account_name,
+                identity_key=identity_key,
                 account_type=validated_account.account_type,
                 current_value=validated_account.current_value,
                 active_interval=validated_account.active_interval,
@@ -262,8 +400,39 @@ class DbClientStore:
                 logging.error(f"Account data validation failed: {e}")
                 raise
 
+            proposed_identity_key = _account_identity_key(
+                {
+                    "name": validated_payload.account_name
+                    if validated_payload.account_name is not None
+                    else account.name,
+                    "account_type": validated_payload.account_type
+                    if validated_payload.account_type is not None
+                    else account.account_type,
+                    "ownership_type": validated_payload.ownership_type
+                    if validated_payload.ownership_type is not None
+                    else account.ownership_type,
+                    "custodian": validated_payload.custodian
+                    if validated_payload.custodian is not None
+                    else account.custodian,
+                }
+            )
+            existing = self._find_conflicting_account(
+                db,
+                client.id,
+                proposed_identity_key,
+                exclude_account_uid=account.account_uid or "",
+            )
+            if existing is not None:
+                raise DuplicateAccountError(
+                    "Account already exists under the same normalized identity.",
+                    existing_account_id=existing.account_uid or str(existing.id),
+                    incoming_account_id=account.account_uid or str(account.id),
+                    client_id=client.client_uid or str(client.id),
+                )
+
             if validated_payload.account_name is not None:
                 account.name = validated_payload.account_name
+            account.identity_key = proposed_identity_key
             if validated_payload.account_type is not None:
                 account.account_type = validated_payload.account_type
             if validated_payload.current_value is not None:
@@ -334,6 +503,45 @@ class DbClientStore:
                 "details": duplicates,
             }
 
+    def find_duplicate_clients(self) -> Dict[str, Any]:
+        self.ensure_schema()
+        with _session_scope(self._db) as db:
+            groups: Dict[str, List[models.Client]] = {}
+            for client in db.query(models.Client).all():
+                key = client.name_key or _client_name_key(client.name)
+                if not key:
+                    continue
+                groups.setdefault(key, []).append(client)
+
+            duplicates: List[Dict[str, Any]] = []
+            total_duplicates = 0
+            duplicate_groups = 0
+            for name_key, clients in groups.items():
+                if len(clients) <= 1:
+                    continue
+                duplicate_groups += 1
+                clients_sorted = sorted(clients, key=lambda item: item.id or 0)
+                keeper = clients_sorted[0]
+                dupes = clients_sorted[1:]
+                duplicates.append(
+                    {
+                        "normalized_name": name_key,
+                        "client_name": keeper.name or "",
+                        "keep_client_id": keeper.client_uid or str(keeper.id),
+                        "duplicate_ids": [
+                            dup.client_uid or str(dup.id) for dup in dupes
+                        ],
+                        "duplicate_names": [dup.name or "" for dup in dupes],
+                        "duplicate_count": len(dupes),
+                    }
+                )
+                total_duplicates += len(dupes)
+            return {
+                "count": total_duplicates,
+                "groups": duplicate_groups,
+                "details": duplicates,
+            }
+
     def remove_duplicate_accounts(self) -> Dict[str, Any]:
         self.ensure_schema()
         with _session_scope(self._db) as db:
@@ -381,15 +589,29 @@ class DbClientStore:
         overwrite: bool = True,
     ) -> None:
         existing = {acc.account_uid: acc for acc in client.accounts}
+        existing_by_identity = {
+            acc.identity_key or _account_identity_key(acc): acc
+            for acc in client.accounts
+        }
         incoming_ids = set()
         for payload in accounts:
             account_uid = payload.account_id or str(uuid.uuid4())
+            identity_key = _account_identity_key(payload)
             incoming_ids.add(account_uid)
             account = existing.get(account_uid)
             if account is None:
+                conflicting = existing_by_identity.get(identity_key)
+                if conflicting is not None:
+                    raise DuplicateAccountError(
+                        "Account already exists under the same normalized identity.",
+                        existing_account_id=conflicting.account_uid or str(conflicting.id),
+                        incoming_account_id=account_uid,
+                        client_id=client.client_uid or str(client.id),
+                    )
                 account = models.Account(
                     account_uid=account_uid,
                     name=payload.account_name,
+                    identity_key=identity_key,
                     account_type=payload.account_type,
                     current_value=payload.current_value,
                     active_interval=payload.active_interval,
@@ -406,7 +628,21 @@ class DbClientStore:
                 db.add(account)
                 db.flush()
             elif overwrite:
+                conflicting = self._find_conflicting_account(
+                    db,
+                    client.id,
+                    identity_key,
+                    exclude_account_uid=account.account_uid or "",
+                )
+                if conflicting is not None:
+                    raise DuplicateAccountError(
+                        "Account already exists under the same normalized identity.",
+                        existing_account_id=conflicting.account_uid or str(conflicting.id),
+                        incoming_account_id=account.account_uid or str(account.id),
+                        client_id=client.client_uid or str(client.id),
+                    )
                 account.name = payload.account_name
+                account.identity_key = identity_key
                 account.account_type = payload.account_type
                 account.current_value = payload.current_value
                 account.active_interval = payload.active_interval
@@ -418,6 +654,8 @@ class DbClientStore:
                 account.lots = {k: [lot.model_dump() for lot in v] for k, v in payload.lots.items()} or account.lots
                 account.manual_holdings = payload.manual_holdings or account.manual_holdings
                 account.extra = payload.extra or account.extra
+            existing[account.account_uid] = account
+            existing_by_identity[identity_key] = account
         if delete_missing:
             for acc_uid, account in existing.items():
                 if acc_uid not in incoming_ids:
@@ -430,13 +668,55 @@ class DbClientStore:
         ):
             client.client_uid = str(uuid.uuid4())
             dirty = True
+        for client in db.query(models.Client).all():
+            name_key = _client_name_key(client.name)
+            if (client.name_key or "") != name_key:
+                client.name_key = name_key
+                dirty = True
         for account in db.query(models.Account).filter(
             (models.Account.account_uid.is_(None)) | (models.Account.account_uid == "")
         ):
             account.account_uid = str(uuid.uuid4())
             dirty = True
+        for account in db.query(models.Account).all():
+            identity_key = _account_identity_key(account)
+            if (account.identity_key or "") != identity_key:
+                account.identity_key = identity_key
+                dirty = True
         if dirty:
             db.commit()
+
+    def _find_client_by_name_key(
+        self,
+        db: Session,
+        name_key: str,
+        *,
+        exclude_client_uid: str = "",
+    ) -> Optional[models.Client]:
+        if not name_key:
+            return None
+        query = db.query(models.Client).filter(models.Client.name_key == name_key)
+        if exclude_client_uid:
+            query = query.filter(models.Client.client_uid != exclude_client_uid)
+        return query.first()
+
+    def _find_conflicting_account(
+        self,
+        db: Session,
+        client_id: int,
+        identity_key: str,
+        *,
+        exclude_account_uid: str = "",
+    ) -> Optional[models.Account]:
+        if not identity_key:
+            return None
+        query = db.query(models.Account).filter(
+            models.Account.client_id == client_id,
+            models.Account.identity_key == identity_key,
+        )
+        if exclude_account_uid:
+            query = query.filter(models.Account.account_uid != exclude_account_uid)
+        return query.first()
 
     def _find_client(self, db: Session, client_ref: Any) -> Optional[models.Client]:
         if client_ref is None:

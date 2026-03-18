@@ -6,6 +6,7 @@ import re
 from email.utils import parsedate_to_datetime
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from xml.etree import ElementTree
 
 import requests
@@ -135,26 +136,137 @@ def _parse_published_ts(value: str) -> Optional[int]:
         return None
 
 
-def _dedupe_items(items: List[Dict[str, object]]) -> List[Dict[str, object]]:
-    deduped: Dict[tuple, Dict[str, object]] = {}
+TRACKING_QUERY_PARAMS = {
+    "cmpid",
+    "fbclid",
+    "gclid",
+    "mc_cid",
+    "mc_eid",
+    "ocid",
+    "ref",
+    "source",
+    "taid",
+}
+
+
+def _normalize_summary(summary: str) -> str:
+    return _normalize_title(_clean_text(summary or ""))
+
+
+def _canonicalize_url(value: str) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = urlsplit(raw)
+    except Exception:
+        return raw.lower()
+    scheme = parsed.scheme.lower()
+    netloc = parsed.netloc.lower()
+    path = re.sub(r"/+$", "", parsed.path or "")
+    filtered_query = [
+        (key, item)
+        for key, item in parse_qsl(parsed.query, keep_blank_values=False)
+        if not key.lower().startswith("utm_") and key.lower() not in TRACKING_QUERY_PARAMS
+    ]
+    query = urlencode(filtered_query, doseq=True)
+    return urlunsplit((scheme, netloc, path, query, ""))
+
+
+def _coerce_sources(item: Dict[str, object]) -> List[str]:
+    values: List[str] = []
+    raw_sources = item.get("sources")
+    if isinstance(raw_sources, list):
+        values.extend(str(source).strip() for source in raw_sources if str(source).strip())
+    primary = str(item.get("source") or "").strip()
+    if primary:
+        values.append(primary)
+    return sorted(set(values), key=lambda entry: entry.lower())
+
+
+def _secondary_dedupe_identity(item: Dict[str, object]) -> Tuple[str, ...]:
+    title = _normalize_title(str(item.get("title", "")))
+    summary = _normalize_summary(str(item.get("summary", "") or item.get("description", "") or ""))
+    if summary:
+        return ("content", title, summary)
+    source_text = _normalize_summary(str(item.get("source_text", "") or ""))
+    if source_text:
+        return ("source_text", title, source_text)
+    return ("title", title)
+
+
+def _primary_dedupe_identity(item: Dict[str, object]) -> Tuple[str, ...]:
+    canonical_url = _canonicalize_url(str(item.get("url") or ""))
+    if canonical_url:
+        return ("url", canonical_url)
+    return _secondary_dedupe_identity(item)
+
+
+def _dedupe_rank(item: Dict[str, object]) -> Tuple[int, int, int, int]:
+    summary = _clean_text(str(item.get("summary", "") or item.get("description", "") or ""))
+    source_text = _clean_text(str(item.get("source_text", "") or ""))
+    published_ts = item.get("published_ts")
+    try:
+        published_value = int(published_ts or 0)
+    except Exception:
+        published_value = 0
+    return (
+        1 if _canonicalize_url(str(item.get("url") or "")) else 0,
+        published_value,
+        len(summary),
+        len(source_text),
+    )
+
+
+def _pick_preferred_item(existing: Dict[str, object], incoming: Dict[str, object]) -> Dict[str, object]:
+    if _dedupe_rank(incoming) > _dedupe_rank(existing):
+        return incoming
+    return existing
+
+
+def _merge_article_provenance(existing: Dict[str, object], incoming: Dict[str, object]) -> Dict[str, object]:
+    preferred = dict(_pick_preferred_item(existing, incoming))
+    canonical_url = _canonicalize_url(str(preferred.get("url") or "")) or _canonicalize_url(
+        str(existing.get("url") or incoming.get("url") or "")
+    )
+    if canonical_url:
+        preferred["canonical_url"] = canonical_url
+    sources = sorted(
+        set(_coerce_sources(existing)).union(_coerce_sources(incoming)),
+        key=lambda entry: entry.lower(),
+    )
+    if sources:
+        preferred["sources"] = sources
+        preferred["source"] = sources[0]
+    return preferred
+
+
+def _collapse_duplicates(
+    items: List[Dict[str, object]],
+    key_builder,
+) -> List[Dict[str, object]]:
+    deduped: Dict[Tuple[str, ...], Dict[str, object]] = {}
     for item in items:
-        title = _normalize_title(str(item.get("title", "")))
-        source = (item.get("source") or "").strip().lower()
-        url = (item.get("url") or "").strip().lower()
-        key = (title, source)
+        key = key_builder(item)
         existing = deduped.get(key)
         if existing is None:
-            deduped[key] = item
+            seed = dict(item)
+            sources = _coerce_sources(seed)
+            if sources:
+                seed["sources"] = sources
+                seed["source"] = sources[0]
+            canonical_url = _canonicalize_url(str(seed.get("url") or ""))
+            if canonical_url:
+                seed["canonical_url"] = canonical_url
+            deduped[key] = seed
             continue
-        existing_ts = existing.get("published_ts")
-        incoming_ts = item.get("published_ts")
-        if incoming_ts and (not existing_ts or incoming_ts > existing_ts):
-            deduped[key] = item
-            continue
-        if not existing.get("url") and item.get("url"):
-            deduped[key] = item
-            continue
+        deduped[key] = _merge_article_provenance(existing, item)
     return list(deduped.values())
+
+
+def _dedupe_items(items: List[Dict[str, object]]) -> List[Dict[str, object]]:
+    primary_pass = _collapse_duplicates(items, _primary_dedupe_identity)
+    return _collapse_duplicates(primary_pass, _secondary_dedupe_identity)
 
 
 DEFAULT_SOURCES = [
@@ -742,13 +854,16 @@ def load_cached_news(
         ts = int(payload.get("ts", 0) or 0)
         if not allow_stale and (int(time.time()) - ts) > ttl_seconds:
             return None
-        return payload.get("items", [])
+        items = payload.get("items", [])
+        if not isinstance(items, list):
+            return None
+        return _dedupe_items([item for item in items if isinstance(item, dict)])
     except Exception:
         return None
 
 
 def store_cached_news(path: str, items: List[Dict[str, object]]) -> None:
-    payload = {"ts": int(time.time()), "items": items}
+    payload = {"ts": int(time.time()), "items": _dedupe_items(items)}
     parent = None
     try:
         import os

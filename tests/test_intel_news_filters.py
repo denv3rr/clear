@@ -127,6 +127,42 @@ class TestIntelNewsFilters(unittest.TestCase):
             self.assertTrue(result["stale"])
             self.assertEqual(result["items"][0]["title"], "Cached item")
 
+    def test_fetch_news_signals_dedupes_cached_duplicates(self):
+        intel = MarketIntel()
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as handle:
+            json.dump(
+                {
+                    "ts": int(time.time()),
+                    "items": [
+                        {
+                            "title": "Same article",
+                            "summary": "Repeated article body",
+                            "source": "CNBC Top",
+                            "url": "https://example.com/article?id=42&utm_source=rss",
+                            "published_ts": 100,
+                        },
+                        {
+                            "title": "Same article",
+                            "summary": "Repeated article body",
+                            "source": "CNBC World",
+                            "url": "https://example.com/article?id=42",
+                            "published_ts": 100,
+                        },
+                    ],
+                },
+                handle,
+            )
+            path = handle.name
+        try:
+            intel._news_cache_file = path
+            result = intel.fetch_news_signals(ttl_seconds=600, force=False)
+            self.assertTrue(result["cached"])
+            self.assertFalse(result["stale"])
+            self.assertEqual(len(result["items"]), 1)
+            self.assertEqual(result["items"][0]["sources"], ["CNBC Top", "CNBC World"])
+        finally:
+            os.unlink(path)
+
     def test_news_cache_status(self):
         self.assertEqual(news_cache_status(None), "unknown")
         self.assertEqual(news_cache_status({"items": []}), "empty")

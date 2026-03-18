@@ -23,12 +23,19 @@ def _add_column(table: str, column: str, column_type: str, default_sql: str | No
         conn.commit()
 
 
+def _ensure_index(table: str, index_name: str, columns: str) -> None:
+    with engine.connect() as conn:
+        conn.execute(text(f"CREATE INDEX IF NOT EXISTS {index_name} ON {table} ({columns})"))
+        conn.commit()
+
+
 def ensure_client_schema() -> None:
     clients_cols = _existing_columns("clients")
     accounts_cols = _existing_columns("accounts")
 
     client_updates = {
         "client_uid": ("TEXT", None),
+        "name_key": ("TEXT", "''"),
         "risk_profile_source": ("TEXT", "'auto'"),
         "active_interval": ("TEXT", "'1M'"),
         "tax_profile": ("TEXT", "'{}'"),
@@ -40,6 +47,7 @@ def ensure_client_schema() -> None:
 
     account_updates = {
         "account_uid": ("TEXT", None),
+        "identity_key": ("TEXT", "''"),
         "current_value": ("REAL", "0.0"),
         "active_interval": ("TEXT", "'1M'"),
         "ownership_type": ("TEXT", "'Individual'"),
@@ -54,6 +62,9 @@ def ensure_client_schema() -> None:
     for column, (col_type, default) in account_updates.items():
         if column not in accounts_cols:
             _add_column("accounts", column, col_type, default)
+
+    _ensure_index("clients", "ix_clients_name_key", "name_key")
+    _ensure_index("accounts", "ix_accounts_identity_key", "identity_key")
 
 def create_db_and_tables():
     Base.metadata.create_all(bind=engine)
