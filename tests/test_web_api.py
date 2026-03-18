@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from web_api import app as web_app
 from web_api.routes import clients as clients_routes
 from web_api.routes import intel as intel_routes
+from web_api.routes import scene as scene_routes
 from web_api.routes import trackers as tracker_routes
 
 def _api_headers():
@@ -330,6 +331,134 @@ def test_tracker_history_endpoint_stubbed():
     payload = resp.json()
     assert payload["id"] == "abc123"
     assert payload["history"]
+
+
+def test_osint_tracker_scene_endpoint_stubbed():
+    client = TestClient(web_app.app)
+    snapshot = {
+        "mode": "combined",
+        "warnings": [],
+        "points": [
+            {
+                "id": "flt-1",
+                "kind": "flight",
+                "category": "commercial",
+                "label": "AAL120",
+                "lat": 40.64,
+                "lon": -73.78,
+                "updated_ts": 1700000100,
+                "speed_heat": 0.6,
+                "operator": "AAL",
+                "operator_name": "American Airlines",
+                "country": "United States",
+            }
+        ],
+    }
+    history = {
+        "id": "flt-1",
+        "history": [
+            {"ts": 1700000000, "lat": 40.64, "lon": -73.78, "speed_kts": 420},
+            {"ts": 1700000300, "lat": 40.2, "lon": -72.1, "speed_kts": 430},
+        ],
+        "summary": {"distance_km": 180.5, "duration_sec": 300, "route_hint": "JFK -> offshore"},
+    }
+    with mock.patch.object(scene_routes.GlobalTrackers, "get_snapshot") as mocked_snapshot, mock.patch.object(
+        scene_routes.GlobalTrackers, "get_history"
+    ) as mocked_history:
+        mocked_snapshot.return_value = snapshot
+        mocked_history.return_value = history
+        resp = client.get("/api/osint/scene/trackers?mode=combined", headers=_api_headers())
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["scene_id"] == "osint-trackers"
+    assert payload["layers"][0]["kind"] == "point"
+    assert payload["layers"][1]["kind"] == "path"
+    assert payload["meta"]["route"] == "/api/osint/scene/trackers"
+
+
+def test_osint_tracker_scene_requires_key(monkeypatch):
+    monkeypatch.setenv("CLEAR_WEB_API_KEY", "secret")
+    client = TestClient(web_app.app)
+    resp = client.get("/api/osint/scene/trackers")
+    assert resp.status_code == 401
+    resp = client.get(
+        "/api/osint/scene/trackers",
+        headers={"X-API-Key": "secret"},
+    )
+    assert resp.status_code == 200
+
+
+def test_osint_intel_scene_endpoint_stubbed():
+    client = TestClient(web_app.app)
+    sentinel_intel = object()
+    scene_payload = {
+        "scene_id": "osint-intel",
+        "title": "Regional OSINT Signal Scene",
+        "kind": "osint",
+        "camera_defaults": {"target_lat": 25.0, "target_lon": 15.0, "distance": 3.5},
+        "timeline": {"mode": "regional-intel", "point_count": 2, "trail_count": 0},
+        "layers": [
+            {
+                "id": "regional-intel",
+                "kind": "point",
+                "label": "Regional OSINT Signals",
+                "features": [
+                    {
+                        "id": "region:europe",
+                        "layer": "regional-intel",
+                        "geometry": {"type": "Point", "coordinates": [10.0, 50.0]},
+                        "properties": {"region": "Europe"},
+                    }
+                ],
+            }
+        ],
+        "focus_targets": [
+            {"id": "region:europe", "label": "Europe", "lat": 50.0, "lon": 10.0}
+        ],
+        "meta": {"warnings": ["Scene warning"]},
+    }
+    with mock.patch.object(scene_routes, "MarketIntel") as mocked_intel_cls, mock.patch.object(
+        scene_routes, "build_intel_scene"
+    ) as mocked_builder:
+        mocked_intel_cls.return_value = sentinel_intel
+        mocked_builder.return_value = scene_payload
+        resp = client.get(
+            "/api/osint/scene/intel?industry=energy&categories=conflict,macro&sources=Reuters,FT",
+            headers=_api_headers(),
+        )
+    assert resp.status_code == 200
+    payload = resp.json()
+    mocked_builder.assert_called_once_with(
+        sentinel_intel,
+        industry_filter="energy",
+        categories=["conflict", "macro"],
+        enabled_sources=["Reuters", "FT"],
+    )
+    assert payload["scene_id"] == "osint-intel"
+    assert payload["layers"][0]["kind"] == "point"
+    assert payload["meta"]["route"] == "/api/osint/scene/intel"
+    assert "Scene warning" in payload["meta"]["warnings"]
+
+
+def test_osint_intel_scene_requires_key(monkeypatch):
+    monkeypatch.setenv("CLEAR_WEB_API_KEY", "secret")
+    client = TestClient(web_app.app)
+    resp = client.get("/api/osint/scene/intel")
+    assert resp.status_code == 401
+    with mock.patch.object(scene_routes, "build_intel_scene") as mocked_builder:
+        mocked_builder.return_value = {
+            "scene_id": "osint-intel",
+            "camera_defaults": {},
+            "timeline": {},
+            "layers": [{"id": "regional-intel", "kind": "point", "features": []}],
+            "focus_targets": [],
+            "meta": {"warnings": []},
+        }
+        resp = client.get(
+            "/api/osint/scene/intel",
+            headers={"X-API-Key": "secret"},
+        )
+    assert resp.status_code == 200
 
 
 def test_tracker_analysis_endpoint_stubbed():

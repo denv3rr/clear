@@ -2,14 +2,14 @@ from __future__ import annotations
 
 def build_context(context: dict | None = None) -> str:
     """
-    Builds a context string from a dictionary of context selectors.
-    This is a placeholder implementation.
+    Builds a deterministic context string from context selectors.
     """
     if not context:
         return "No context provided."
 
     parts = []
-    for key, value in context.items():
+    for key in sorted(context):
+        value = context[key]
         parts.append(f"{key}: {value}")
 
     return "\n".join(parts)

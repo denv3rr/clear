@@ -23,7 +23,10 @@ type IntelReport = {
   sections?: { title: string; rows: string[][] }[];
   risk_level?: string;
   risk_score?: number;
-  confidence?: string;
+  confidence?: string | null;
+  support?: {
+    summary?: string;
+  };
   risk_series?: { label: string; value: number }[];
   news?: {
     count?: number;
@@ -185,7 +188,7 @@ export default function Intel() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <KpiCard label="Risk Level" value={data?.risk_level || "Loading"} tone="text-green-300" />
           <KpiCard label="Risk Score" value={data?.risk_score !== undefined ? `${data.risk_score}/10` : "?"} tone="text-slate-100" />
-          <KpiCard label="Confidence" value={data?.confidence || "?"} tone="text-slate-100" />
+          <KpiCard label="Data Support" value={data?.support?.summary || "?"} tone="text-slate-100" />
         </div>
 
         <Collapsible title="Filters" meta={`${region} ? ${industry}`} open={filtersOpen} onToggle={() => setFiltersOpen((prev) => !prev)}>

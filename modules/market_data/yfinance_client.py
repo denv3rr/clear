@@ -252,6 +252,7 @@ class YahooWrapper:
 
     # Snapshot cache (period, interval) -> (ts, results)
     _SNAPSHOT_CACHE: Dict[Tuple[str, str], Tuple[int, List[Dict[str, Any]]]] = {}
+    _SNAPSHOT_EMPTY_BACKOFF: Dict[Tuple[str, str], int] = {}
     _SNAPSHOT_TTL_SECONDS = 120  # Cache Macro view for 2 mins
 
     # Detailed quote cache (ticker, period, interval) -> (ts, data)
@@ -430,6 +431,10 @@ class YahooWrapper:
             ts, data = cached
             if (YahooWrapper._now() - int(ts or 0)) <= YahooWrapper._SNAPSHOT_TTL_SECONDS:
                 return data
+        backoff_until = int(YahooWrapper._SNAPSHOT_EMPTY_BACKOFF.get(key, 0) or 0)
+        if backoff_until > YahooWrapper._now():
+            return []
+        YahooWrapper._SNAPSHOT_EMPTY_BACKOFF.pop(key, None)
 
         # Prepare Ticker List
         ticker_meta: Dict[str, Dict[str, str]] = {}
@@ -542,10 +547,10 @@ class YahooWrapper:
         
         if results:
             YahooWrapper._SNAPSHOT_CACHE[key] = (YahooWrapper._now(), results)
+            YahooWrapper._SNAPSHOT_EMPTY_BACKOFF.pop(key, None)
             YahooWrapper._set_fast_cache(fast_key, results)
         else:
-            # Cache failure for 15s to stop the refresh loop from hanging
-            fake_ts = YahooWrapper._now() - YahooWrapper._SNAPSHOT_TTL_SECONDS + 15
-            YahooWrapper._SNAPSHOT_CACHE[key] = (fake_ts, [])
+            # Back off briefly after an empty batch so the UI does not thrash the feed.
+            YahooWrapper._SNAPSHOT_EMPTY_BACKOFF[key] = YahooWrapper._now() + 15
 
         return results

@@ -109,7 +109,7 @@ class ToolkitRunMixin:
             ],
             "risk_level": risk_level,
             "risk_score": None,
-            "confidence": "Medium" if signals else "Low",
+            "confidence": None,
             "signals": signals,
             "impacts": impacts,
             "sections": [
@@ -257,7 +257,7 @@ class ToolkitRunMixin:
             ],
             "risk_level": risk_level,
             "risk_score": None,
-            "confidence": "Medium",
+            "confidence": None,
             "signals": [
                 f"Regime: {estimate.get('current_regime') or 'Unknown'}",
                 f"Beta: {metrics.get('beta'):.2f}" if metrics.get("beta") is not None else "Beta N/A",
@@ -431,7 +431,7 @@ class ToolkitRunMixin:
                 ],
                 "risk_level": "Moderate",
                 "risk_score": None,
-                "confidence": "Medium" if signals else "Low",
+                "confidence": None,
                 "signals": signals,
                 "impacts": impacts,
                 "sections": [

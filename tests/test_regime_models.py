@@ -1,4 +1,5 @@
 import unittest
+import math
 import numpy as np
 from modules.client_mgr.regime import RegimeModels
 
@@ -32,7 +33,10 @@ class TestRegimeModels(unittest.TestCase):
                 self.assertAlmostEqual(P[i][j], expected_P[i][j], places=6)
 
     def test_make_bins_quantiles(self):
-        returns = np.random.normal(0, 1, 1000).tolist()
+        returns = [
+            math.sin(index / 13.0) * 0.03 + ((index % 5) - 2) * 0.001
+            for index in range(1000)
+        ]
         bins = RegimeModels._make_bins_quantiles(returns)
         self.assertEqual(len(bins), 6)
         self.assertEqual(bins[0], -float('inf'))
@@ -45,7 +49,10 @@ class TestRegimeModels(unittest.TestCase):
         self.assertAlmostEqual(pi[1], 9.0/14.0, places=6)
 
     def test_compute_markov_snapshot(self):
-        returns = np.random.normal(0, 1, 100).tolist()
+        returns = [
+            math.sin(index / 9.0) * 0.02 + math.cos(index / 5.0) * 0.008
+            for index in range(120)
+        ]
         snapshot = RegimeModels.compute_markov_snapshot(returns)
         self.assertIn("model", snapshot)
         self.assertEqual(snapshot["model"], "Markov")

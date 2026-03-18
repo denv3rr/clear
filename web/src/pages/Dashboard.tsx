@@ -17,8 +17,11 @@ import { useApi } from "../lib/api";
 type IntelSummary = {
   risk_level?: string;
   risk_score?: number;
-  confidence?: string;
-  risk_series?: { label: string; value: number }[];
+  confidence?: string | null;
+  support?: {
+    summary?: string;
+  };
+  risk_series?: { label: string; value: number }[]; 
   news?: {
     sentiment_avg?: number;
     negative_ratio?: number;
@@ -52,8 +55,8 @@ export default function Dashboard() {
         tone: "text-green-400"
       },
       {
-        label: "Confidence",
-        value: intelSummary?.confidence || "—",
+        label: "Data Support",
+        value: intelSummary?.support?.summary || "—",
         tone: "text-green-200"
       },
       {

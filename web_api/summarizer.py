@@ -242,7 +242,7 @@ def summarize(
         response = {
             "answer": "Filesystem or path access requests are not permitted.",
             "sources": [],
-            "confidence": "Low",
+            "confidence": None,
             "warnings": warnings,
             "routing": {"rule": "guardrail", "handler": "path_access_blocked"},
         }
@@ -251,7 +251,7 @@ def summarize(
         response = {
             "answer": "Assistant scope denied for this page context.",
             "sources": [],
-            "confidence": "Low",
+            "confidence": None,
             "warnings": warnings,
             "routing": {"rule": "scope", "handler": "scope_denied"},
         }
@@ -281,7 +281,7 @@ def summarize(
                                     "database",
                                 )
                             ],
-                            "confidence": "Medium",
+                            "confidence": None,
                             "warnings": warnings,
                             "routing": routing,
                         }
@@ -293,7 +293,7 @@ def summarize(
                             "sources": [
                                 _build_source(f"/api/clients/{client_id}", "database")
                             ],
-                            "confidence": "Medium",
+                            "confidence": None,
                             "warnings": warnings,
                             "routing": routing,
                         }
@@ -305,7 +305,7 @@ def summarize(
                     response = {
                         "answer": handle_clients(clients),
                         "sources": [_build_source("/api/clients", "database")],
-                        "confidence": "Medium" if count else "Low",
+                        "confidence": None,
                         "warnings": warnings,
                         "routing": routing,
                     }
@@ -320,7 +320,7 @@ def summarize(
                     response = {
                         "answer": handle_news(news),
                         "sources": [_build_source("/api/intel/news", "intel")],
-                        "confidence": "Medium" if count else "Low",
+                        "confidence": None,
                         "warnings": warnings,
                         "routing": routing,
                     }
@@ -335,7 +335,7 @@ def summarize(
                         "sources": [
                             _build_source("/api/trackers/snapshot", "trackers")
                         ],
-                        "confidence": "Medium" if count else "Low",
+                        "confidence": None,
                         "warnings": warnings,
                         "routing": routing,
                     }
@@ -344,7 +344,7 @@ def summarize(
     response = {
         "answer": "No deterministic assistant rule matched this question.",
         "sources": [],
-        "confidence": "Low",
+        "confidence": None,
         "warnings": warnings + ["Unsupported assistant query."],
         "routing": {"rule": "unmatched", "handler": None},
     }

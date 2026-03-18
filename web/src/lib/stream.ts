@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { DEMO_MODE, getMockTrackerSnapshot } from "./mockData";
-import { extractWarnings, getApiBase, getApiKey, getAuthHint, isDemoOverride } from "./api";
+import { extractWarnings, getApiBase, getApiKey, getAuthHint } from "./api";
 import { useTrackerPause } from "./trackerPause";
 
 const API_BASE = getApiBase();
@@ -103,21 +102,6 @@ export function useTrackerStream<T>(options: StreamOptions = {}) {
         cancelled = true;
         clearRetry();
         closeSocket();
-      };
-    }
-    if (DEMO_MODE || isDemoOverride()) {
-      setConnected(true);
-      setError(null);
-      setData(getMockTrackerSnapshot(mode) as T);
-      setWarnings([]);
-      if (!interval) return;
-      const timer = setInterval(() => {
-        setData(getMockTrackerSnapshot(mode) as T);
-        setWarnings([]);
-      }, interval * 1000);
-      return () => {
-        cancelled = true;
-        clearInterval(timer);
       };
     }
     connect();

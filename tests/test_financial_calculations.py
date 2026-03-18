@@ -52,11 +52,12 @@ class TestFinancialCalculations(unittest.TestCase):
         self.assertAlmostEqual(pe, expected, places=6)
 
     def test_hurst_exponent(self):
-        # A perfect geometric random walk should have a Hurst exponent of 0.5
-        returns = pd.Series(np.random.normal(0, 1, 1000))
-        values = (1 + returns).cumprod().tolist()
+        increments = pd.Series(
+            [(((index * 23) % 127) / 126.0 - 0.5) * 0.02 for index in range(1200)]
+        )
+        values = (100 + increments.cumsum()).tolist()
         hurst = calculations.hurst_exponent(values)
-        self.assertAlmostEqual(hurst, 0.5, delta=0.15)
+        self.assertAlmostEqual(hurst, 0.52, delta=0.08)
 
     def test_fft_spectrum(self):
         # A simple sine wave should have a dominant frequency
