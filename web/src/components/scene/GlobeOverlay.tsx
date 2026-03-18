@@ -30,8 +30,8 @@ type SceneFeature = {
   id: string;
   layer: string;
   geometry: {
-    type: "Point" | "LineString";
-    coordinates: number[] | number[][];
+    type: "Point" | "LineString" | "Polygon" | "MultiPolygon";
+    coordinates: number[] | number[][] | number[][][] | number[][][][];
   };
   ts?: number | null;
   properties?: Record<string, unknown>;
@@ -46,9 +46,14 @@ type SceneFeature = {
 
 type SceneLayer = {
   id: string;
-  kind: "point" | "path";
+  kind: "point" | "path" | "pulse" | "area";
   label: string;
   features: SceneFeature[];
+  style_hints?: Record<string, unknown>;
+  time_bounds?: {
+    start_ts?: number | null;
+    end_ts?: number | null;
+  };
   legend?: Array<{
     label?: string;
     value?: string;
@@ -92,6 +97,7 @@ type ScenePayload = {
   meta?: {
     timestamp?: number;
     available_lenses?: string[];
+    available_overlays?: string[];
     warnings?: string[];
   };
 };
@@ -306,6 +312,12 @@ function formatStringList(values: unknown, limit = 4) {
     .map((value) => value.trim());
   if (!entries.length) return "n/a";
   return entries.slice(0, limit).join(", ");
+}
+
+function formatTopCountList(record: Record<string, unknown> | null, limit = 4) {
+  return getTopEntries(record, limit)
+    .map(([label, count]) => `${formatDisplayLabel(label)} (${Math.round(Number(count))})`)
+    .join(" • ") || "n/a";
 }
 
 function getTopEntries(record: Record<string, unknown> | null, limit = 3) {
@@ -880,6 +892,79 @@ function TrackerTrail({
   );
 }
 
+function HotspotPulse({
+  feature,
+  onSelect,
+  reducedMotion,
+  selected
+}: {
+  feature: SceneFeature;
+  onSelect: (id: string) => void;
+  reducedMotion: boolean;
+  selected: boolean;
+}) {
+  const outerRef = useRef<Mesh | null>(null);
+  const innerRef = useRef<Mesh | null>(null);
+  const coords = Array.isArray(feature.geometry.coordinates)
+    ? (feature.geometry.coordinates as number[])
+    : [];
+  const properties = asRecord(feature.properties);
+  const presentation = asRecord(properties?.presentation);
+  const intensity = Math.max(
+    0.3,
+    Math.min(1, getNumericValue(presentation?.pulse_intensity) ?? 0.55)
+  );
+  const targetId = String(properties?.target_id || feature.id.replace(/^pulse:/, ""));
+  const position = useMemo(() => {
+    if (coords.length < 2) {
+      return new THREE.Vector3(0, 0, 0);
+    }
+    return latLonToVector(coords[1], coords[0], GLOBE_RADIUS, 0.018);
+  }, [coords]);
+  const pulseOffset = useMemo(() => feature.id.length * 0.11, [feature.id]);
+
+  useEffect(() => {
+    if (!reducedMotion) return;
+    outerRef.current?.scale.set(1.55 + intensity * 0.35, 0.8, 1.55 + intensity * 0.35);
+    innerRef.current?.scale.set(1.15 + intensity * 0.28, 0.72, 1.15 + intensity * 0.28);
+  }, [intensity, reducedMotion]);
+
+  useFrame((state) => {
+    if (reducedMotion) return;
+    const pulse = 1 + Math.sin(state.clock.elapsedTime * 1.45 + pulseOffset) * 0.12;
+    const selectedBoost = selected ? 0.18 : 0;
+    outerRef.current?.scale.set(
+      (1.45 + intensity * 0.34 + selectedBoost) * pulse,
+      0.78,
+      (1.45 + intensity * 0.34 + selectedBoost) * pulse
+    );
+    innerRef.current?.scale.set(
+      (1.08 + intensity * 0.24 + selectedBoost) * pulse,
+      0.72,
+      (1.08 + intensity * 0.24 + selectedBoost) * pulse
+    );
+  });
+
+  return (
+    <group
+      position={position}
+      onClick={(event) => {
+        event.stopPropagation();
+        onSelect(targetId);
+      }}
+    >
+      <mesh ref={outerRef}>
+        <sphereGeometry args={[0.1 + intensity * 0.04, 18, 18]} />
+        <meshBasicMaterial color="#ff5c6a" transparent opacity={selected ? 0.2 : 0.12} depthWrite={false} />
+      </mesh>
+      <mesh ref={innerRef}>
+        <sphereGeometry args={[0.065 + intensity * 0.03, 18, 18]} />
+        <meshBasicMaterial color="#ff8b73" transparent opacity={selected ? 0.18 : 0.1} depthWrite={false} />
+      </mesh>
+    </group>
+  );
+}
+
 function LivePoint({
   accentColor,
   feature,
@@ -1005,13 +1090,16 @@ function GlobeScene({
   selectedId: string | null;
 }) {
   const controlsRef = useRef<any>(null);
-  const pointLayer = scene.layers.find((layer) => layer.kind === "point");
-  const pathLayer = scene.layers.find((layer) => layer.kind === "path");
-  const liveFeatures = pointLayer?.features || [];
-  const pathFeatures = pathLayer?.features || [];
+  const pointLayers = scene.layers.filter((layer) => layer.kind === "point");
+  const pathLayers = scene.layers.filter((layer) => layer.kind === "path");
+  const pulseLayers = scene.layers.filter((layer) => layer.kind === "pulse");
+  const liveFeatures = pointLayers.flatMap((layer) => layer.features || []);
+  const pathFeatures = pathLayers.flatMap((layer) => layer.features || []);
+  const pulseFeatures = pulseLayers.flatMap((layer) => layer.features || []);
   const activeQuality = reducedMotion ? 0.5 : qualityFactor;
   const starsCount = reducedMotion ? 450 : Math.round(1200 + activeQuality * 2200);
   const bloomIntensity = reducedMotion ? 0.25 : 0.35 + activeQuality * 0.55;
+  const showHotspotOverlays = sceneId === "intel" && (intelLens === "combined" || intelLens === "conflict");
 
   return (
     <Canvas
@@ -1073,6 +1161,19 @@ function GlobeScene({
               />
             );
           })}
+        </group>
+        <group>
+          {showHotspotOverlays
+            ? pulseFeatures.map((feature) => (
+                <HotspotPulse
+                  key={feature.id}
+                  feature={feature}
+                  onSelect={onSelect}
+                  reducedMotion={reducedMotion}
+                  selected={selectedId === String(asRecord(feature.properties)?.target_id || feature.id.replace(/^pulse:/, ""))}
+                />
+              ))
+            : null}
         </group>
         <group>
           {liveFeatures.map((feature) => (
@@ -1242,10 +1343,14 @@ export function GlobeOverlay() {
   }, [data]);
 
   const scene = data || fallbackScene;
-  const pointLayer = scene?.layers.find((layer) => layer.kind === "point");
-  const pathLayer = scene?.layers.find((layer) => layer.kind === "path");
-  const pointFeatures = pointLayer?.features || [];
-  const pathFeatures = pathLayer?.features || [];
+  const pointLayers = scene?.layers.filter((layer) => layer.kind === "point") || [];
+  const pathLayers = scene?.layers.filter((layer) => layer.kind === "path") || [];
+  const pulseLayers = scene?.layers.filter((layer) => layer.kind === "pulse") || [];
+  const pointLayer = pointLayers[0];
+  const pathLayer = pathLayers[0];
+  const pointFeatures = pointLayers.flatMap((layer) => layer.features || []);
+  const pathFeatures = pathLayers.flatMap((layer) => layer.features || []);
+  const pulseFeatures = pulseLayers.flatMap((layer) => layer.features || []);
   const warnings = Array.from(
     new Set([
       ...(geographyError ? [`Geography overlay unavailable: ${geographyError}`] : []),
@@ -1405,6 +1510,7 @@ export function GlobeOverlay() {
           : formatDisplayLabel(conflict?.status || conflict?.level)
       );
       addRow("Headlines", `${Math.round(getNumericValue(news?.count) || 0)}`);
+      addRow("Conflict Articles", `${Math.round(getNumericValue(conflict?.count) || 0)}`);
       addRow(
         "Dominant Emotion",
         formatDisplayLabel(emotion?.dominant || getDominantEmotion(selectedFeature))
@@ -1412,6 +1518,8 @@ export function GlobeOverlay() {
       addRow("Emotion Observations", `${Math.round(getNumericValue(emotion?.count) || 0)}`);
       addRow("Sentiment Avg", formatMetricValue(news?.sentiment_avg));
       addRow("Negative Share", formatRatioAsPercent(news?.negative_ratio));
+      addRow("Context Tags", formatTopCountList(asRecord(news?.event_counts)));
+      addRow("Impacted Markets", formatTopCountList(asRecord(news?.impact_counts)));
       addRow("Industries", formatStringList(properties?.industries));
       addRow("Top Sources", formatStringList(news?.top_sources));
       addRow("Scope", formatDisplayLabel(properties?.display_scope));
@@ -1443,6 +1551,36 @@ export function GlobeOverlay() {
 
     return rows;
   }, [sceneId, selectedFeature, selectedTrail]);
+
+  const selectedEmotionMix = useMemo(() => {
+    if (sceneId !== "intel" || !selectedFeature) return [];
+    return getTopEntries(asRecord(asRecord(selectedFeature.properties)?.emotion)?.counts || null, 5).map(
+      ([emotion, count]) => ({
+        emotion,
+        count: Math.round(Number(count) || 0)
+      })
+    );
+  }, [sceneId, selectedFeature]);
+
+  const selectedContextMix = useMemo(() => {
+    if (sceneId !== "intel" || !selectedFeature) return [];
+    return getTopEntries(asRecord(asRecord(asRecord(selectedFeature.properties)?.news)?.event_counts), 5).map(
+      ([name, count]) => ({
+        name,
+        count: Math.round(Number(count) || 0)
+      })
+    );
+  }, [sceneId, selectedFeature]);
+
+  const selectedImpactMix = useMemo(() => {
+    if (sceneId !== "intel" || !selectedFeature) return [];
+    return getTopEntries(asRecord(asRecord(asRecord(selectedFeature.properties)?.news)?.impact_counts), 5).map(
+      ([name, count]) => ({
+        name,
+        count: Math.round(Number(count) || 0)
+      })
+    );
+  }, [sceneId, selectedFeature]);
 
   const aggregateRows = useMemo(() => {
     if (sceneId === "trackers") {
@@ -1490,6 +1628,8 @@ export function GlobeOverlay() {
     }
 
     const channelCounts = new Map<string, number>();
+    const eventCounts = new Map<string, number>();
+    const impactCounts = new Map<string, number>();
     const emotionCounts = new Map<string, number>();
     const sourceCounts = new Map<string, number>();
     let headlineCount = 0;
@@ -1504,6 +1644,18 @@ export function GlobeOverlay() {
       if (dominantChannel) {
         channelCounts.set(dominantChannel, (channelCounts.get(dominantChannel) || 0) + 1);
       }
+      Object.entries(asRecord(news?.event_counts) || {}).forEach(([eventName, count]) => {
+        eventCounts.set(
+          eventName,
+          (eventCounts.get(eventName) || 0) + Math.round(getNumericValue(count) || 0)
+        );
+      });
+      Object.entries(asRecord(news?.impact_counts) || {}).forEach(([impactName, count]) => {
+        impactCounts.set(
+          impactName,
+          (impactCounts.get(impactName) || 0) + Math.round(getNumericValue(count) || 0)
+        );
+      });
       Object.entries(asRecord(news?.emotion_counts) || {}).forEach(([emotion, count]) => {
         emotionCounts.set(
           emotion,
@@ -1526,14 +1678,17 @@ export function GlobeOverlay() {
 
     return [
       { label: "Visible Regions", value: `${pointFeatures.length}` },
+      { label: "Visible Conflict Overlays", value: `${pulseFeatures.length}` },
       { label: "Elevated Regions", value: `${intelHighRiskCount}` },
       { label: "Headlines Across Nodes", value: `${headlineCount}` },
       { label: "Dominant Channels", value: topValues(channelCounts) },
+      { label: "Top Context Tags", value: topValues(eventCounts) },
+      { label: "Impacted Markets", value: topValues(impactCounts) },
       { label: "Top Emotions", value: topValues(emotionCounts) },
       { label: "Most Referenced Sources", value: topValues(sourceCounts) },
       { label: "Industry Filter", value: formatDisplayLabel(sceneState.intelIndustry) }
     ];
-  }, [intelHighRiskCount, pathFeatures.length, pointFeatures, sceneId, sceneState.intelIndustry]);
+  }, [intelHighRiskCount, pathFeatures.length, pointFeatures, pulseFeatures.length, sceneId, sceneState.intelIndustry]);
 
   const sceneLegendEntries = useMemo(() => {
     if (sceneId === "trackers") {
@@ -1576,12 +1731,23 @@ export function GlobeOverlay() {
         }));
     }
 
-    return (pointLayer?.legend || []).map((entry) => ({
+    const baseEntries = (pointLayer?.legend || []).map((entry) => ({
       label: String(entry.label || entry.value || "Signal"),
       color: String(entry.color || "#48f1a6"),
       count: null
     }));
-  }, [pointFeatures, pointLayer?.legend, sceneId, sceneState.intelLens]);
+    if (sceneId === "intel" && (sceneState.intelLens === "combined" || sceneState.intelLens === "conflict") && pulseFeatures.length) {
+      return [
+        ...baseEntries,
+        {
+          label: `Conflict Pulse (${pulseFeatures.length})`,
+          color: "#ff5c6a",
+          count: pulseFeatures.length
+        }
+      ];
+    }
+    return baseEntries;
+  }, [pointFeatures, pointLayer?.legend, pulseFeatures.length, sceneId, sceneState.intelLens]);
 
   const availableLenses = useMemo(() => {
     const raw = scene?.meta?.available_lenses || [];
@@ -1797,7 +1963,7 @@ export function GlobeOverlay() {
                     ))}
                 </select>
               </label>
-              <p className="globe-panel__label">Categories</p>
+              <p className="globe-panel__label">Contexts / Channels</p>
               <div className="globe-toggle-group">
                 {(intelMeta?.categories || []).map((category) => (
                   <button
@@ -2046,6 +2212,59 @@ export function GlobeOverlay() {
                   <span className="globe-detail-row__value">{row.value}</span>
                 </div>
               ))}
+            </div>
+          ) : null}
+          {sceneId === "intel" && selectedEmotionMix.length ? (
+            <div className="mt-4 space-y-3">
+              <div>
+                <p className="globe-panel__label">Regional Emotion Mix</p>
+                <div className="mt-2 space-y-2">
+                  {selectedEmotionMix.map((entry) => {
+                    const maxCount = Math.max(...selectedEmotionMix.map((item) => item.count), 1);
+                    return (
+                      <div key={entry.emotion} className="space-y-1">
+                        <div className="flex items-center justify-between text-[11px] text-slate-300">
+                          <span>{formatDisplayLabel(entry.emotion)}</span>
+                          <span>{entry.count}</span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-slate-900/80">
+                          <div
+                            className="h-1.5 rounded-full"
+                            style={{
+                              width: `${Math.max(10, (entry.count / maxCount) * 100)}%`,
+                              backgroundColor: getEmotionAccent(entry.emotion)
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              {selectedContextMix.length ? (
+                <div>
+                  <p className="globe-panel__label">Conflict Triggers</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {selectedContextMix.map((entry) => (
+                      <span key={entry.name} className="globe-badge">
+                        {formatDisplayLabel(entry.name)} {entry.count}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {selectedImpactMix.length ? (
+                <div>
+                  <p className="globe-panel__label">Impacted Markets</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {selectedImpactMix.map((entry) => (
+                      <span key={entry.name} className="globe-badge">
+                        {formatDisplayLabel(entry.name)} {entry.count}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
           <div className="globe-overlay__actions">

@@ -346,6 +346,7 @@ def build_intel_scene(
         base_warnings.append("One or more news collectors were skipped during this refresh.")
 
     features: List[Dict[str, Any]] = []
+    pulse_features: List[Dict[str, Any]] = []
     focus_targets: List[Dict[str, Any]] = []
     scene_warnings = list(base_warnings)
     timeline_ts: List[int] = []
@@ -362,7 +363,7 @@ def build_intel_scene(
         feature_warnings = [
             "Weather risk is sampled from a representative regional coordinate.",
             "Conflict risk reflects regional signal density, not precise event locations.",
-            "News and emotion metrics reflect headline classification, not article geolocation.",
+            "News and emotion metrics reflect title-and-summary classification, not article geolocation.",
         ]
 
         region_news_items = intel.filter_news_items(
@@ -532,6 +533,8 @@ def build_intel_scene(
             3,
         )
         emotion_counts = news_metrics.get("emotion_counts", {}) or {}
+        event_counts = news_metrics.get("event_counts", {}) or {}
+        impact_counts = news_metrics.get("impact_counts", {}) or {}
         emotion_total = sum(int(count or 0) for count in emotion_counts.values())
         dominant_emotion = (
             sorted(
@@ -582,6 +585,12 @@ def build_intel_scene(
                         "count": conflict_source_count,
                         "signals": conflict_signals,
                         "impacts": conflict_impacts,
+                        "event_counts": event_counts,
+                        "impact_counts": impact_counts,
+                        "affected_markets": sorted(
+                            impact_counts,
+                            key=lambda key: (-int(impact_counts.get(key) or 0), key),
+                        ),
                         "freshness": conflict_freshness,
                     },
                     "news": {
@@ -591,9 +600,14 @@ def build_intel_scene(
                         "sentiment_avg": news_metrics.get("sentiment_avg", 0.0),
                         "negative_ratio": news_metrics.get("negative_ratio", 0.0),
                         "category_counts": news_metrics.get("category_counts", {}),
+                        "event_counts": event_counts,
+                        "impact_counts": impact_counts,
                         "emotion_counts": emotion_counts,
                         "region_counts": news_metrics.get("region_counts", {}),
                         "subregion_counts": news_metrics.get("subregion_counts", {}),
+                        "region_emotion_counts": news_metrics.get("region_emotion_counts", {}),
+                        "industry_emotion_counts": news_metrics.get("industry_emotion_counts", {}),
+                        "region_industry_emotion_counts": news_metrics.get("region_industry_emotion_counts", {}),
                         "emotion_series": news_metrics.get("emotion_series", []),
                         "top_sources": sorted(
                             {str(item.get("source", "")) for item in region_news_items if item.get("source")}
@@ -616,6 +630,10 @@ def build_intel_scene(
                         "dominant_channel": dominant_channel,
                         "intensity": max(0.2, min(1.0, intensity)),
                         "top_signal": top_signal,
+                        "hotspot_visible": bool(
+                            conflict_score
+                            or any(int(event_counts.get(tag) or 0) > 0 for tag in CONFLICT_CATEGORIES)
+                        ),
                     },
                     "coverage": {
                         "weather": weather_score is not None,
@@ -630,6 +648,63 @@ def build_intel_scene(
                 warnings=feature_warnings,
             )
         )
+        if conflict_score or any(int(event_counts.get(tag) or 0) > 0 for tag in CONFLICT_CATEGORIES):
+            pulse_features.append(
+                geo_feature(
+                    f"pulse:{feature_id}",
+                    "regional-conflict-overlays",
+                    geometry,
+                    properties={
+                        "label": f"{region.name} hotspot",
+                        "region": region.name,
+                        "kind": "impact-zone",
+                        "category": conflict_level.lower(),
+                        "display_scope": "region-centroid-highlight",
+                        "scope_kind": "centroid-highlight",
+                        "conflict_score": conflict_score,
+                        "article_count": conflict_source_count,
+                        "event_counts": event_counts,
+                        "impact_counts": impact_counts,
+                        "affected_markets": sorted(
+                            impact_counts,
+                            key=lambda key: (-int(impact_counts.get(key) or 0), key),
+                        ),
+                        "top_event_tags": [
+                            key
+                            for key, _value in sorted(
+                                event_counts.items(),
+                                key=lambda item: (-int(item[1] or 0), item[0]),
+                            )[:4]
+                        ],
+                        "presentation": {
+                            "pulse_intensity": max(
+                                0.26,
+                                min(
+                                    1.0,
+                                    max(
+                                        float(conflict_score or 0) / 10.0,
+                                        sum(int(event_counts.get(tag) or 0) for tag in CONFLICT_CATEGORIES) / 8.0,
+                                    ),
+                                ),
+                            ),
+                            "top_signal": top_signal,
+                        },
+                        "provenance": {
+                            "conflict_status": conflict_status,
+                            "news_cached": news_cache_cached,
+                            "news_stale": news_cache_stale,
+                            "display_note": "Centroid pulse is a reviewed regional highlight, not incident geometry.",
+                        },
+                    },
+                    source=source,
+                    ts=current_time,
+                    confidence=None,
+                    freshness=feature_freshness,
+                    warnings=[
+                        "Pulse overlay is a centroid highlight for regional impact, not a polygon or exact incident footprint.",
+                    ],
+                )
+            )
         focus_targets.append(
             {
                 "id": feature_id,
@@ -668,6 +743,14 @@ def build_intel_scene(
         "cached_news": news_cache_cached,
         "stale_news": news_cache_stale,
         "skipped_sources": skipped_sources,
+    }
+    pulse_layer_meta = {
+        "source": source,
+        "count": len(pulse_features),
+        "warnings": [
+            "Conflict pulses are centroid highlights, not exact event polygons.",
+            *list(dict.fromkeys(scene_warnings)),
+        ],
     }
     timeline = {
         "mode": "regional-intel",
@@ -711,7 +794,31 @@ def build_intel_scene(
                     "end_ts": timeline["end_ts"],
                 },
                 meta=layer_meta,
-            )
+            ),
+            geo_layer_payload(
+                "regional-conflict-overlays",
+                "pulse",
+                label="Regional Conflict Hotspots",
+                features=pulse_features,
+                filters={
+                    "industry": industry_filter,
+                    "categories": category_list,
+                    "sources": source_list,
+                },
+                style_hints={
+                    "fill": "#ff5c6a",
+                    "stroke": "#ff8b73",
+                    "min_opacity": 0.14,
+                    "max_opacity": 0.3,
+                    "pulse_period_ms": 4200,
+                    "blend_mode": "screen",
+                },
+                time_bounds={
+                    "start_ts": timeline["start_ts"],
+                    "end_ts": timeline["end_ts"],
+                },
+                meta=pulse_layer_meta,
+            ),
         ],
         focus_targets=focus_targets[:6],
         bounds=bounds,
@@ -726,6 +833,7 @@ def build_intel_scene(
             "stale_news": news_cache_stale,
             "skipped_sources": skipped_sources,
             "available_lenses": ["combined", "weather", "conflict", "news", "emotion"],
+            "available_overlays": ["regional-conflict-overlays"],
             "emotion": {
                 "supported": True,
                 "fields": [
@@ -734,6 +842,8 @@ def build_intel_scene(
                     "sentiment_avg",
                     "negative_ratio",
                     "emotion_counts",
+                    "event_counts",
+                    "impact_counts",
                     "region_counts",
                     "subregion_counts",
                     "emotion_series",

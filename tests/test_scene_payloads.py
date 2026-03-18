@@ -150,6 +150,8 @@ def test_build_intel_scene_payload_uses_regional_centroids_and_provenance():
                         "regions": ["Europe"],
                         "industries": ["shipping"],
                         "tags": ["conflict", "disruption"],
+                        "event_tags": ["conflict", "disruption"],
+                        "impact_channels": ["shipping_logistics"],
                         "categories": ["conflict"],
                         "sentiment": -0.6,
                         "emotions": {"fear": 2},
@@ -160,7 +162,9 @@ def test_build_intel_scene_payload_uses_regional_centroids_and_provenance():
                         "published_ts": 1699999800,
                         "regions": ["Middle East"],
                         "industries": ["energy"],
-                        "tags": ["conflict", "energy"],
+                        "tags": ["conflict", "scarcity"],
+                        "event_tags": ["conflict", "scarcity"],
+                        "impact_channels": ["energy", "water_utilities"],
                         "categories": ["conflict"],
                         "sentiment": -0.4,
                         "emotions": {"fear": 1, "urgency": 1},
@@ -172,6 +176,7 @@ def test_build_intel_scene_payload_uses_regional_centroids_and_provenance():
                         "regions": ["Asia-Pacific"],
                         "industries": ["manufacturing"],
                         "tags": ["supply-chain"],
+                        "impact_channels": ["manufacturing_supply_chain"],
                         "categories": ["macro"],
                         "sentiment": 0.2,
                         "emotions": {"relief": 1},
@@ -205,8 +210,10 @@ def test_build_intel_scene_payload_uses_regional_centroids_and_provenance():
 
     assert scene["scene_id"] == "osint-intel"
     assert scene["layers"][0]["kind"] == "point"
+    assert scene["layers"][1]["kind"] == "pulse"
     assert len(scene["layers"][0]["features"]) == len(REGIONS) - 1
     assert "emotion" in scene["meta"]["available_lenses"]
+    assert "regional-conflict-overlays" in scene["meta"]["available_overlays"]
     assert scene["meta"]["emotion"]["supported"] is True
     assert all(
         feature["properties"]["display_scope"] == "region-centroid"
@@ -232,6 +239,9 @@ def test_build_intel_scene_payload_uses_regional_centroids_and_provenance():
     assert "emotion_series" in europe["properties"]["news"]
     assert "subregion_counts" in europe["properties"]["news"]
     assert "region_counts" in europe["properties"]["news"]
+    assert europe["properties"]["news"]["event_counts"]["conflict"] == 1
+    assert "shipping_logistics" in europe["properties"]["news"]["impact_counts"]
+    assert "affected_markets" in europe["properties"]["conflict"]
 
     middle_east = next(
         feature
@@ -243,3 +253,10 @@ def test_build_intel_scene_payload_uses_regional_centroids_and_provenance():
     assert any(
         "precise event locations" in warning.lower() for warning in middle_east["warnings"]
     )
+    pulse = next(
+        feature
+        for feature in scene["layers"][1]["features"]
+        if feature["properties"]["region"] == "Europe"
+    )
+    assert pulse["properties"]["display_scope"] == "region-centroid-highlight"
+    assert pulse["properties"]["event_counts"]["conflict"] == 1

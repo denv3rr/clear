@@ -42,6 +42,8 @@ test("intel and news pages render real-data workspaces", async ({ page }) => {
   await page.goto("/osint?tab=intel");
   await expect(page.getByText("Global Impact Summary")).toBeVisible();
   await expect(page.getByText("Combined Overview")).toBeVisible();
+  await expect(page.getByText("Regional Emotion Matrix")).toBeVisible();
+  await expect(page.getByText("Conflict context")).toBeVisible();
 
   await page.goto("/osint?tab=news");
   await expect(page.getByText("Market Signals")).toBeVisible();
@@ -93,6 +95,10 @@ test("intel globe overlay opens with regional scene controls", async ({ page }) 
   ]);
   await expectAnyVisible([
     page.getByText("Visible Aggregate"),
+    page.getByText("Unavailable", { exact: true })
+  ]);
+  await expectAnyVisible([
+    page.getByText("Visible Conflict Overlays"),
     page.getByText("Unavailable", { exact: true })
   ]);
 });

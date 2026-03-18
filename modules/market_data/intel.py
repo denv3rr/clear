@@ -13,6 +13,7 @@ from modules.market_data.collectors import (
     store_cached_news,
     CONFLICT_CATEGORIES,
     DEFAULT_SOURCES,
+    HOTSPOT_EVENT_TAGS,
     NEWS_CATEGORIES,
 )
 
@@ -35,6 +36,16 @@ REGIONS: List[RegionSpec] = [
     RegionSpec("Africa", 1.0, 20.0, ["mining", "energy", "agriculture"]),
 ]
 
+REGION_CONFLICT_QUERY_TERMS: Dict[str, List[str]] = {
+    "Global": [],
+    "North America": ["North America", "United States", "Canada", "Mexico", "Panama Canal"],
+    "Europe": ["Europe", "Ukraine", "Russia", "Black Sea", "Poland", "Baltic"],
+    "Middle East": ["Middle East", "Iran", "Israel", "Gaza", "Lebanon", "Syria", "Yemen", "Red Sea"],
+    "Asia-Pacific": ["Asia Pacific", "China", "Taiwan", "South China Sea", "Japan", "Korea", "India", "Philippines"],
+    "Latin America": ["Latin America", "Brazil", "Argentina", "Colombia", "Venezuela", "Peru", "Panama Canal"],
+    "Africa": ["Africa", "Sudan", "Ethiopia", "Egypt", "Nigeria", "Sahel", "Libya"],
+}
+
 
 def get_intel_meta() -> Dict[str, object]:
     regions = [{"name": region.name, "industries": list(region.industries)} for region in REGIONS]
@@ -55,16 +66,30 @@ def _region_by_name(name: str) -> RegionSpec:
     return REGIONS[0]
 
 
-def _impact_for_weather(temp_c: Optional[float], wind_ms: Optional[float], precip_mm: Optional[float]) -> List[str]:
+def _impact_for_weather(
+    temp_c: Optional[float],
+    wind_ms: Optional[float],
+    precip_mm: Optional[float],
+    precip_24h: float = 0.0,
+    wind_max: float = 0.0,
+    temp_min: Optional[float] = None,
+    temp_max: Optional[float] = None,
+) -> List[str]:
     impacts: List[str] = []
     if wind_ms is not None and wind_ms >= 20:
         impacts.append("High wind may disrupt aviation and shipping.")
     elif wind_ms is not None and wind_ms >= 15:
         impacts.append("Gusty conditions could slow air and sea logistics.")
-    if precip_mm is not None and precip_mm >= 10:
-        impacts.append("Heavy precipitation may impact logistics and agriculture.")
-    if temp_c is not None and (temp_c >= 35 or temp_c <= -10):
-        impacts.append("Temperature extremes can stress energy demand and crops.")
+    if (precip_mm is not None and precip_mm >= 10) or precip_24h >= 25:
+        impacts.append("Flooding and heavy precipitation may disrupt logistics and agriculture.")
+    if temp_max is not None and temp_max >= 35:
+        impacts.append("Heat can stress power demand, labor safety, and crop conditions.")
+    if (temp_c is not None and temp_c <= -10) or (temp_min is not None and temp_min <= -10):
+        impacts.append("Cold extremes can raise heating load and outage risk.")
+    if temp_max is not None and temp_max >= 32 and wind_max >= 12:
+        impacts.append("Hot, windy conditions may worsen wildfire spread risk.")
+    if precip_24h < 1 and temp_max is not None and temp_max >= 30:
+        impacts.append("Dry heat may elevate water and crop stress.")
     return impacts
 
 
@@ -75,12 +100,18 @@ def _impact_for_conflict(themes: List[str]) -> List[str]:
         impacts.append("Energy supply risks elevated.")
     if "transport" in theme_text or "shipping" in theme_text or "port" in theme_text:
         impacts.append("Shipping and logistics risk elevated.")
+    if "airspace" in theme_text or "aviation" in theme_text or "airport" in theme_text:
+        impacts.append("Aviation routing and airport operations risk elevated.")
     if "military" in theme_text or "security" in theme_text or "attack" in theme_text:
         impacts.append("Defense-related industries may see volatility.")
     if "food" in theme_text or "agri" in theme_text or "crop" in theme_text:
         impacts.append("Agriculture supply risk elevated.")
+    if "water" in theme_text or "drought" in theme_text or "reservoir" in theme_text:
+        impacts.append("Water and utility pressure risk elevated.")
     if "cyber" in theme_text or "telecom" in theme_text or "tech" in theme_text:
         impacts.append("Tech and infrastructure risk elevated.")
+    if "sanction" in theme_text or "tariff" in theme_text or "embargo" in theme_text:
+        impacts.append("Finance, trade, and insurance risk elevated.")
     return impacts
 
 
@@ -185,14 +216,19 @@ def _aggregate_news_metrics(items: List[Dict[str, object]]) -> Dict[str, object]
         "sentiment_sum": 0.0,
         "sentiment_hits": 0,
         "negative_hits": 0,
-        "conflict_hits": 0,
-        "disruption_hits": 0,
+        "hotspot_hits": 0,
+        "weather_hits": 0,
         "timestamp_hits": 0,
     }
     category_counts: Dict[str, int] = {}
+    event_counts: Dict[str, int] = {}
+    impact_counts: Dict[str, int] = {}
     emotion_counts: Dict[str, int] = {}
     region_counts: Dict[str, int] = {}
     subregion_counts: Dict[str, Dict[str, int]] = {}
+    region_emotion_counts: Dict[str, Dict[str, int]] = {}
+    industry_emotion_counts: Dict[str, Dict[str, int]] = {}
+    region_industry_emotion_counts: Dict[str, Dict[str, Dict[str, int]]] = {}
 
     if not items:
         return {
@@ -200,9 +236,14 @@ def _aggregate_news_metrics(items: List[Dict[str, object]]) -> Dict[str, object]
             "sentiment_avg": 0.0,
             "negative_ratio": 0.0,
             "category_counts": {},
+            "event_counts": {},
+            "impact_counts": {},
             "emotion_counts": {},
             "region_counts": {},
             "subregion_counts": {},
+            "region_emotion_counts": {},
+            "industry_emotion_counts": {},
+            "region_industry_emotion_counts": {},
             "timestamp_ratio": 0.0,
             "risk_score": 0,
             "series": [],
@@ -217,16 +258,27 @@ def _aggregate_news_metrics(items: List[Dict[str, object]]) -> Dict[str, object]
             totals["negative_hits"] += 1
         if sentiment != 0:
             totals["sentiment_hits"] += 1
-        tags = [str(tag).lower() for tag in (item.get("tags") or [])]
-        if "conflict" in tags:
-            totals["conflict_hits"] += 1
-        if "disruption" in tags:
-            totals["disruption_hits"] += 1
+        event_tags = sorted(
+            {
+                str(tag).lower()
+                for tag in ((item.get("event_tags") or item.get("tags") or []))
+                if str(tag).strip()
+            }
+        )
+        if set(event_tags).intersection(HOTSPOT_EVENT_TAGS):
+            totals["hotspot_hits"] += 1
+        if "weather" in event_tags:
+            totals["weather_hits"] += 1
         if item.get("published_ts"):
             totals["timestamp_hits"] += 1
         for cat in item.get("categories", []) or []:
             key = str(cat).lower()
             category_counts[key] = category_counts.get(key, 0) + 1
+        for tag in event_tags:
+            event_counts[tag] = event_counts.get(tag, 0) + 1
+        for channel in item.get("impact_channels", []) or []:
+            key = str(channel).lower()
+            impact_counts[key] = impact_counts.get(key, 0) + 1
         for emotion, count in (item.get("emotions", {}) or {}).items():
             key = str(emotion).lower()
             emotion_counts[key] = emotion_counts.get(key, 0) + int(count or 0)
@@ -234,6 +286,10 @@ def _aggregate_news_metrics(items: List[Dict[str, object]]) -> Dict[str, object]
         industries = [str(industry) for industry in (item.get("industries") or []) if industry]
         for region in regions:
             region_counts[region] = region_counts.get(region, 0) + 1
+            region_emotion_counts.setdefault(region, {})
+            for emotion, count in (item.get("emotions", {}) or {}).items():
+                key = str(emotion).lower()
+                region_emotion_counts[region][key] = region_emotion_counts[region].get(key, 0) + int(count or 0)
             if not industries:
                 subregion_counts.setdefault(region, {})
                 subregion_counts[region]["general"] = subregion_counts[region].get("general", 0) + 1
@@ -241,6 +297,18 @@ def _aggregate_news_metrics(items: List[Dict[str, object]]) -> Dict[str, object]
                 for industry in industries:
                     subregion_counts.setdefault(region, {})
                     subregion_counts[region][industry] = subregion_counts[region].get(industry, 0) + 1
+                    region_industry_emotion_counts.setdefault(region, {})
+                    region_industry_emotion_counts[region].setdefault(industry, {})
+                    for emotion, count in (item.get("emotions", {}) or {}).items():
+                        key = str(emotion).lower()
+                        region_industry_emotion_counts[region][industry][key] = (
+                            region_industry_emotion_counts[region][industry].get(key, 0) + int(count or 0)
+                        )
+        for industry in industries:
+            industry_emotion_counts.setdefault(industry, {})
+            for emotion, count in (item.get("emotions", {}) or {}).items():
+                key = str(emotion).lower()
+                industry_emotion_counts[industry][key] = industry_emotion_counts[industry].get(key, 0) + int(count or 0)
 
     sentiment_avg = (
         totals["sentiment_sum"] / totals["sentiment_hits"]
@@ -249,16 +317,16 @@ def _aggregate_news_metrics(items: List[Dict[str, object]]) -> Dict[str, object]
     )
     count = totals["count"]
     negative_ratio = totals["negative_hits"] / count if count else 0.0
-    conflict_ratio = totals["conflict_hits"] / count if count else 0.0
-    disruption_ratio = totals["disruption_hits"] / count if count else 0.0
+    hotspot_ratio = totals["hotspot_hits"] / count if count else 0.0
+    weather_ratio = totals["weather_hits"] / count if count else 0.0
     volume_factor = min(1.0, count / 20.0)
     sentiment_pressure = max(0.0, -sentiment_avg)
     timestamp_ratio = totals["timestamp_hits"] / count if count else 0.0
 
     raw_score = (
         sentiment_pressure * 4.0
-        + conflict_ratio * 3.0
-        + disruption_ratio * 2.0
+        + hotspot_ratio * 3.0
+        + weather_ratio * 1.5
         + volume_factor * 1.5
     )
     news_score = int(round(min(10.0, raw_score * 2.0)))
@@ -295,9 +363,14 @@ def _aggregate_news_metrics(items: List[Dict[str, object]]) -> Dict[str, object]
         "sentiment_avg": round(sentiment_avg, 3),
         "negative_ratio": round(negative_ratio, 3),
         "category_counts": category_counts,
+        "event_counts": event_counts,
+        "impact_counts": impact_counts,
         "emotion_counts": emotion_counts,
         "region_counts": region_counts,
         "subregion_counts": subregion_counts,
+        "region_emotion_counts": region_emotion_counts,
+        "industry_emotion_counts": industry_emotion_counts,
+        "region_industry_emotion_counts": region_industry_emotion_counts,
         "timestamp_ratio": round(timestamp_ratio, 3),
         "risk_score": news_score,
         "series": series,
@@ -314,15 +387,28 @@ def _filter_conflict_news(
     categories_l = [c.lower() for c in (categories or []) if c]
     filtered = []
     for item in items:
-        title = str(item.get("title", "") or "")
-        tags = item.get("tags", []) or []
+        event_tags = {
+            str(tag).lower()
+            for tag in ((item.get("event_tags") or item.get("tags") or []))
+            if str(tag).strip()
+        }
         regions = item.get("regions", []) or []
         industries = item.get("industries", []) or []
-        has_conflict = "conflict" in tags or any(word in title.lower() for word in ("war", "strike", "protest", "attack", "conflict", "ceasefire"))
-        in_region = not region_l or any(region_l in r.lower() for r in regions)
-        derived = set()
-        if has_conflict:
-            derived.add("conflict")
+        impact_channels = {
+            str(channel).lower()
+            for channel in (item.get("impact_channels") or [])
+            if str(channel).strip()
+        }
+        categories_seen = {
+            str(category).lower()
+            for category in (item.get("categories") or [])
+            if str(category).strip()
+        }
+        has_conflict = bool(event_tags.intersection(HOTSPOT_EVENT_TAGS))
+        in_region = not region_l or region_name == "Global" or any(region_l == str(r).lower() for r in regions)
+        derived = set(categories_seen)
+        derived.update(event_tags)
+        derived.update(impact_channels)
         for industry in industries:
             derived.add(str(industry).lower())
         if regions:
@@ -346,8 +432,18 @@ def _filter_news_categories(
     wanted = {str(cat).lower() for cat in categories if cat}
     filtered: List[Dict[str, object]] = []
     for item in items:
-        cats = item.get("categories", []) or []
-        if any(str(cat).lower() in wanted for cat in cats):
+        seen = {
+            str(value).lower()
+            for values in (
+                item.get("categories") or [],
+                item.get("event_tags") or item.get("tags") or [],
+                item.get("impact_channels") or [],
+                item.get("industries") or [],
+            )
+            for value in values
+            if str(value).strip()
+        }
+        if seen.intersection(wanted):
             filtered.append(item)
     return filtered
 
@@ -398,7 +494,7 @@ def _merge_aliases(
 
 def load_ticker_aliases(path: str) -> Dict[str, List[str]]:
     try:
-        with open(path, "r", encoding="ascii") as f:
+        with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
     except Exception:
         return {}
@@ -415,7 +511,7 @@ def load_ticker_aliases(path: str) -> Dict[str, List[str]]:
 
 def validate_alias_file(path: str) -> Tuple[bool, str]:
     try:
-        with open(path, "r", encoding="ascii") as f:
+        with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
     except Exception as exc:
         return False, f"Invalid JSON: {exc}"
@@ -435,7 +531,7 @@ def validate_alias_file(path: str) -> Tuple[bool, str]:
 
 def _aliases_path_from_settings(settings_path: str) -> Optional[str]:
     try:
-        with open(settings_path, "r", encoding="ascii") as f:
+        with open(settings_path, "r", encoding="utf-8") as f:
             data = json.load(f)
     except Exception:
         return None
@@ -613,7 +709,15 @@ class WeatherIntel:
         max_temp = max([float(t) for t in temp_series if t is not None] or [0.0])
         min_temp = min([float(t) for t in temp_series if t is not None] or [0.0])
 
-        impacts = _impact_for_weather(temp, wind, precip)
+        impacts = _impact_for_weather(
+            temp,
+            wind,
+            precip,
+            precip_24h=total_precip,
+            wind_max=max_wind,
+            temp_min=min_temp,
+            temp_max=max_temp,
+        )
         return {
             "region": region.name,
             "temp_c": temp,
@@ -643,7 +747,25 @@ class ConflictIntel:
         backoff_until = int(self._health.get("backoff_until", 0) or 0)
         if now < backoff_until:
             return {"error": "GDELT is in cooldown. Try again later.", "cooldown": True}
-        query = f"conflict OR war OR protest OR strike OR blockade sourcecountry:{region.name.split()[0]}"
+        base_terms = [
+            "conflict",
+            "war",
+            "attack",
+            "missile",
+            "drone",
+            "strike",
+            "protest",
+            "blockade",
+            "sanctions",
+        ]
+        region_terms = REGION_CONFLICT_QUERY_TERMS.get(region.name, [])
+        query = "(" + " OR ".join(base_terms) + ")"
+        if region_terms:
+            scoped_terms = [
+                f"\"{term}\"" if " " in term else term
+                for term in region_terms
+            ]
+            query = f"{query} AND ({' OR '.join(scoped_terms)})"
         params = {
             "query": query,
             "mode": "ArtList",
@@ -699,6 +821,11 @@ class ConflictIntel:
             "count": len(articles),
             "articles": rows,
             "impacts": impacts,
+            "query_scope": {
+                "mode": "gdelt_doc_artlist",
+                "query": query,
+                "region_terms": region_terms,
+            },
         }
 
     def _record_success(self) -> None:
@@ -891,15 +1018,57 @@ class MarketIntel:
             "rows": [[f"Support: {support_summary} | Signals: {len(signals)} | Impacts: {len(impacts)} | Scope: {region.name} | Industry: {industry_filter}", ""]],
         })
         sources = ["Open-Meteo"]
+        weather_context_metrics = {
+            "event_counts": {},
+            "impact_counts": {},
+        }
         news_cached = load_cached_news(self._news_cache_file, ttl_seconds=999999)
         if news_cached:
             filtered = self._filter_news(news_cached, region.name, industry_filter)
+            filtered = [
+                item
+                for item in filtered
+                if {"weather", "disaster", "scarcity"}.intersection(
+                    {
+                        str(tag).lower()
+                        for tag in ((item.get("event_tags") or item.get("tags") or []))
+                        if str(tag).strip()
+                    }
+                )
+            ]
             if filtered:
+                weather_context_metrics = _aggregate_news_metrics(filtered)
                 sections.append({
-                    "title": "News Signals",
+                    "title": "Weather Context Headlines",
                     "rows": [[item.get("source", ""), item.get("title", "")[:90]] for item in filtered[:6]],
                 })
                 sources.extend(sorted({str(item.get("source", "")) for item in filtered if item.get("source")}))
+                sections.append({
+                    "title": "Weather Context Totals",
+                    "rows": [
+                        ["Context articles", str(weather_context_metrics.get("count", 0) or 0)],
+                        [
+                            "Event tags",
+                            ", ".join(
+                                f"{key}:{value}"
+                                for key, value in sorted(
+                                    (weather_context_metrics.get("event_counts", {}) or {}).items(),
+                                    key=lambda item: (-int(item[1] or 0), item[0]),
+                                )[:4]
+                            ) or "None",
+                        ],
+                        [
+                            "Impact channels",
+                            ", ".join(
+                                f"{key}:{value}"
+                                for key, value in sorted(
+                                    (weather_context_metrics.get("impact_counts", {}) or {}).items(),
+                                    key=lambda item: (-int(item[1] or 0), item[0]),
+                                )[:4]
+                            ) or "None",
+                        ],
+                    ],
+                })
         if sources:
             sections.append({
                 "title": "Report Sources",
@@ -916,9 +1085,12 @@ class MarketIntel:
                 "summary": support_summary,
                 "available_inputs": available_weather_inputs,
                 "expected_inputs": 3,
+                "context_articles": weather_context_metrics.get("count", 0) or 0,
             },
             "signals": signals,
             "impacts": impacts,
+            "event_counts": weather_context_metrics.get("event_counts", {}) or {},
+            "impact_counts": weather_context_metrics.get("impact_counts", {}) or {},
         }
 
     def conflict_report(
@@ -936,15 +1108,17 @@ class MarketIntel:
         data = self.conflict.fetch(region)
         if data.get("error"):
             items = _filter_conflict_news(news_payload.get("items", []), region.name, categories=categories)
+            item_metrics = _aggregate_news_metrics(items)
             themes: List[str] = []
             for item in items:
-                themes.extend([str(t) for t in (item.get("tags") or [])])
+                themes.extend([str(t) for t in ((item.get("event_tags") or item.get("tags") or []))])
+                themes.extend([str(t) for t in (item.get("impact_channels") or [])])
                 themes.extend([str(t) for t in (item.get("industries") or [])])
             score, signals = _score_conflict(len(items), themes)
             risk = _risk_level(score)
             summary = [
                 f"Region: {region.name}",
-                f"Conflict signals sourced from RSS feeds ({len(items)} items).",
+                f"Conflict signals sourced from RSS and cached local headlines ({len(items)} items).",
                 f"Risk Level: {risk} (score {score}/10)",
             ]
             if industry_filter != "all":
@@ -954,6 +1128,32 @@ class MarketIntel:
                 sections.append({
                     "title": "Conflict Signals (News)",
                     "rows": [[item.get("source", ""), item.get("title", "")[:90]] for item in items[:8]],
+                })
+                sections.append({
+                    "title": "Context Totals",
+                    "rows": [
+                        ["Articles", str(item_metrics.get("count", 0) or 0)],
+                        [
+                            "Event tags",
+                            ", ".join(
+                                f"{key}:{value}"
+                                for key, value in sorted(
+                                    (item_metrics.get("event_counts", {}) or {}).items(),
+                                    key=lambda item: (-int(item[1] or 0), item[0]),
+                                )[:5]
+                            ) or "None",
+                        ],
+                        [
+                            "Impact channels",
+                            ", ".join(
+                                f"{key}:{value}"
+                                for key, value in sorted(
+                                    (item_metrics.get("impact_counts", {}) or {}).items(),
+                                    key=lambda item: (-int(item[1] or 0), item[0]),
+                                )[:5]
+                            ) or "None",
+                        ],
+                    ],
                 })
             if signals:
                 sections.append({
@@ -977,9 +1177,37 @@ class MarketIntel:
                     "summary": f"{len(items)} supporting articles",
                     "article_count": len(items),
                     "source_mode": "rss_fallback",
+                    "query_scope": {"mode": "rss_fallback", "query": None, "region_terms": [region.name]},
                 },
                 "signals": signals,
                 "impacts": _impact_for_conflict(themes),
+                "event_counts": item_metrics.get("event_counts", {}) or {},
+                "impact_counts": item_metrics.get("impact_counts", {}) or {},
+                "hotspots": [
+                    {
+                        "region": region.name,
+                        "score": score,
+                        "article_count": len(items),
+                        "event_counts": item_metrics.get("event_counts", {}) or {},
+                        "affected_industries": sorted(
+                            {
+                                str(industry)
+                                for item in items
+                                for industry in (item.get("industries") or [])
+                                if str(industry).strip()
+                            }
+                        ),
+                        "impact_channels": item_metrics.get("impact_counts", {}) or {},
+                        "freshness": {
+                            "cached": bool(news_payload.get("cached")),
+                            "stale": bool(news_payload.get("stale")),
+                        },
+                        "provenance": {
+                            "source_mode": "rss_fallback",
+                            "sources": sorted({str(item.get("source", "")) for item in items if item.get("source")}),
+                        },
+                    }
+                ],
             }
 
         impacts = self._filter_impacts(data.get("impacts", []), industry_filter)
@@ -988,6 +1216,11 @@ class MarketIntel:
             themes.append(str(row.get("themes", "")))
         score, signals = _score_conflict(int(data.get("count", 0) or 0), themes)
         risk = _risk_level(score)
+        event_metrics = {
+            "event_counts": {},
+            "impact_counts": {},
+            "count": 0,
+        }
         summary = [
             f"Region: {region.name}",
             f"Articles: {data.get('count', 0)} recent signals",
@@ -1029,14 +1262,42 @@ class MarketIntel:
         })
         sources = ["GDELT"]
         news_items = news_payload.get("items", []) if news_payload else []
+        filtered: List[Dict[str, object]] = []
         if news_items:
             filtered = self._filter_news(news_items, region.name, industry_filter)
             if categories:
                 filtered = _filter_conflict_news(filtered, region.name, categories=categories)
             if filtered:
+                event_metrics = _aggregate_news_metrics(filtered)
                 sections.append({
                     "title": "News Signals",
                     "rows": [[item.get("source", ""), item.get("title", "")[:90]] for item in filtered[:6]],
+                })
+                sections.append({
+                    "title": "Context Totals",
+                    "rows": [
+                        ["Articles", str(event_metrics.get("count", 0) or 0)],
+                        [
+                            "Event tags",
+                            ", ".join(
+                                f"{key}:{value}"
+                                for key, value in sorted(
+                                    (event_metrics.get("event_counts", {}) or {}).items(),
+                                    key=lambda item: (-int(item[1] or 0), item[0]),
+                                )[:5]
+                            ) or "None",
+                        ],
+                        [
+                            "Impact channels",
+                            ", ".join(
+                                f"{key}:{value}"
+                                for key, value in sorted(
+                                    (event_metrics.get("impact_counts", {}) or {}).items(),
+                                    key=lambda item: (-int(item[1] or 0), item[0]),
+                                )[:5]
+                            ) or "None",
+                        ],
+                    ],
                 })
         if news_items:
             sources.extend(sorted({str(item.get("source", "")) for item in news_items if item.get("source")}))
@@ -1056,9 +1317,34 @@ class MarketIntel:
                 "summary": f"{int(data.get('count', 0) or 0)} supporting articles",
                 "article_count": int(data.get("count", 0) or 0),
                 "source_mode": "gdelt",
+                "query_scope": data.get("query_scope", {}),
             },
             "signals": signals,
             "impacts": impacts,
+            "event_counts": event_metrics.get("event_counts", {}) or {},
+            "impact_counts": event_metrics.get("impact_counts", {}) or {},
+            "hotspots": [
+                {
+                    "region": region.name,
+                    "score": score,
+                    "article_count": int(data.get("count", 0) or 0),
+                    "event_counts": event_metrics.get("event_counts", {}) or {},
+                    "affected_industries": sorted(
+                        {
+                            str(industry)
+                            for item in filtered
+                            for industry in (item.get("industries") or [])
+                            if str(industry).strip()
+                        }
+                    ),
+                    "impact_channels": event_metrics.get("impact_counts", {}) or {},
+                    "freshness": {"cached": False, "stale": False},
+                    "provenance": {
+                        "source_mode": "gdelt",
+                        "query_scope": data.get("query_scope", {}),
+                    },
+                }
+            ],
         }
 
     def combined_report(
@@ -1168,6 +1454,26 @@ class MarketIntel:
                     ["Articles", str(news_metrics.get("count", 0))],
                     ["Sentiment (avg)", str(news_metrics.get("sentiment_avg", 0.0))],
                     ["Negative ratio", str(news_metrics.get("negative_ratio", 0.0))],
+                    [
+                        "Event tags",
+                        ", ".join(
+                            f"{key}:{value}"
+                            for key, value in sorted(
+                                (news_metrics.get("event_counts", {}) or {}).items(),
+                                key=lambda item: (-int(item[1] or 0), item[0]),
+                            )[:5]
+                        ) or "None",
+                    ],
+                    [
+                        "Impact channels",
+                        ", ".join(
+                            f"{key}:{value}"
+                            for key, value in sorted(
+                                (news_metrics.get("impact_counts", {}) or {}).items(),
+                                key=lambda item: (-int(item[1] or 0), item[0]),
+                            )[:5]
+                        ) or "None",
+                    ],
                 ],
             })
         if weather.get("sections"):
@@ -1217,9 +1523,14 @@ class MarketIntel:
                 "sentiment_avg": news_metrics.get("sentiment_avg", 0.0),
                 "negative_ratio": news_metrics.get("negative_ratio", 0.0),
                 "category_counts": news_metrics.get("category_counts", {}),
+                "event_counts": news_metrics.get("event_counts", {}),
+                "impact_counts": news_metrics.get("impact_counts", {}),
                 "emotion_counts": news_metrics.get("emotion_counts", {}),
                 "region_counts": news_metrics.get("region_counts", {}),
                 "subregion_counts": news_metrics.get("subregion_counts", {}),
+                "region_emotion_counts": news_metrics.get("region_emotion_counts", {}),
+                "industry_emotion_counts": news_metrics.get("industry_emotion_counts", {}),
+                "region_industry_emotion_counts": news_metrics.get("region_industry_emotion_counts", {}),
                 "timestamp_ratio": news_metrics.get("timestamp_ratio", 0.0),
                 "emotion_series": news_metrics.get("emotion_series", []),
             },

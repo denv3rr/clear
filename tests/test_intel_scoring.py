@@ -41,9 +41,18 @@ class TestIntelScoring(unittest.TestCase):
         self.assertIn("Elevated conflict reporting", signals)
 
     def test_impact_for_weather(self):
-        impacts = _impact_for_weather(temp_c=-12.0, wind_ms=16.0, precip_mm=15.0)
+        impacts = _impact_for_weather(
+            temp_c=-12.0,
+            wind_ms=16.0,
+            precip_mm=15.0,
+            precip_24h=28.0,
+            wind_max=19.0,
+            temp_min=-14.0,
+            temp_max=34.0,
+        )
         self.assertTrue(any("logistics" in impact.lower() for impact in impacts))
-        self.assertTrue(any("precipitation" in impact.lower() for impact in impacts))
+        self.assertTrue(any("flood" in impact.lower() for impact in impacts))
+        self.assertTrue(any("wildfire" in impact.lower() for impact in impacts))
 
     def test_impact_for_conflict(self):
         impacts = _impact_for_conflict(["oil", "shipping", "military"])
@@ -52,14 +61,45 @@ class TestIntelScoring(unittest.TestCase):
 
     def test_news_aggregate_metrics(self):
         items = [
-            {"title": "Markets surge on growth", "sentiment": 0.8, "tags": [], "categories": ["markets"], "emotions": {"optimism": 1}},
-            {"title": "Conflict escalates after strike", "sentiment": -0.7, "tags": ["conflict"], "categories": ["conflict"], "emotions": {"fear": 2}},
-            {"title": "Rates fall as inflation cools", "sentiment": 0.3, "tags": [], "categories": ["rates"], "emotions": {"anticipation": 1}},
+            {
+                "title": "Markets surge on growth",
+                "sentiment": 0.8,
+                "tags": [],
+                "categories": ["markets"],
+                "impact_channels": ["finance_insurance"],
+                "emotions": {"optimism": 1},
+                "regions": ["North America"],
+                "industries": ["finance"],
+            },
+            {
+                "title": "Conflict escalates after strike",
+                "sentiment": -0.7,
+                "event_tags": ["conflict", "disruption"],
+                "categories": ["conflict"],
+                "impact_channels": ["shipping_logistics", "energy"],
+                "emotions": {"fear": 2},
+                "regions": ["Europe"],
+                "industries": ["shipping"],
+            },
+            {
+                "title": "Rates fall as inflation cools",
+                "sentiment": 0.3,
+                "tags": [],
+                "categories": ["rates"],
+                "impact_channels": ["finance_insurance"],
+                "emotions": {"anticipation": 1},
+                "regions": ["North America"],
+                "industries": ["finance"],
+            },
         ]
         metrics = _aggregate_news_metrics(items)
         self.assertEqual(metrics["count"], 3)
         self.assertGreaterEqual(metrics["risk_score"], 0)
         self.assertIn("markets", metrics["category_counts"])
+        self.assertEqual(metrics["event_counts"]["conflict"], 1)
+        self.assertEqual(metrics["impact_counts"]["finance_insurance"], 2)
+        self.assertIn("Europe", metrics["region_emotion_counts"])
+        self.assertIn("finance", metrics["industry_emotion_counts"])
 
     def test_news_metrics_empty_series(self):
         metrics = _aggregate_news_metrics([])
