@@ -1,7 +1,20 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Locator, test } from "@playwright/test";
+
+async function expectAnyVisible(locators: Locator[]) {
+  await expect
+    .poll(async () => {
+      for (const locator of locators) {
+        if (await locator.first().isVisible().catch(() => false)) {
+          return true;
+        }
+      }
+      return false;
+    })
+    .toBe(true);
+}
 
 test("dashboard renders overview and OSINT callout", async ({ page }) => {
-  await page.goto("/?demo=true");
+  await page.goto("/");
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "OSINT Trackers + Intel + News" })
@@ -9,34 +22,34 @@ test("dashboard renders overview and OSINT callout", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Open OSINT" })).toBeVisible();
 });
 
-test("clients render with profiles", async ({ page }) => {
-  await page.goto("/clients?demo=true");
+test("clients page renders command center with real data or safe empty state", async ({ page }) => {
+  await page.goto("/clients");
   await expect(page.getByText("Portfolio Command Center")).toBeVisible();
-  const clientButton = page.getByRole("button", { name: /Atlas Capital/i }).first();
-  await expect(clientButton).toBeVisible();
-  await clientButton.click();
-  await expect(page.getByText("Client Profile")).toBeVisible();
-  await expect(page.getByText("X: Sample Index")).toBeVisible();
+  await expect(page.getByPlaceholder("Name, ID, risk profile...")).toBeVisible();
+  await expect(page.getByRole("button", { name: "New Client" })).toBeVisible();
 });
 
-test("trackers page renders live feed", async ({ page }) => {
-  await page.goto("/osint?tab=trackers&demo=true");
+test("trackers page renders live feed controls", async ({ page }) => {
+  await page.goto("/osint?tab=trackers");
   await expect(page.getByRole("heading", { name: "Live Trackers" })).toBeVisible();
-  await expect(page.getByPlaceholder("Search flight number, operator, tail, ICAO24...")).toBeVisible();
+  await expect(
+    page.getByPlaceholder("Search flight number, operator, tail, ICAO24...")
+  ).toBeVisible();
+  await expect(page.getByText("Map Focus")).toBeVisible();
 });
 
-test("intel and news render data", async ({ page }) => {
-  await page.goto("/osint?tab=intel&demo=true");
+test("intel and news pages render real-data workspaces", async ({ page }) => {
+  await page.goto("/osint?tab=intel");
   await expect(page.getByText("Global Impact Summary")).toBeVisible();
   await expect(page.getByText("Combined Overview")).toBeVisible();
 
-  await page.goto("/osint?tab=news&demo=true");
+  await page.goto("/osint?tab=news");
   await expect(page.getByText("Market Signals")).toBeVisible();
-  await expect(page.getByText("US Treasuries steady as auction demand improves")).toBeVisible();
+  await expect(page.locator("#news-region")).toBeVisible();
 });
 
 test("osint tabs switch", async ({ page }) => {
-  await page.goto("/osint?tab=trackers&demo=true");
+  await page.goto("/osint?tab=trackers");
   await expect(page.getByRole("heading", { name: "Live Trackers" })).toBeVisible();
   await page.getByRole("button", { name: "Intel" }).click();
   await expect(page.getByText("Global Impact Summary")).toBeVisible();
@@ -44,17 +57,30 @@ test("osint tabs switch", async ({ page }) => {
   await expect(page.getByText("Market Signals")).toBeVisible();
 });
 
-test("dashboard empty data states render", async ({ page }) => {
-  await page.goto("/?demo=true&demo_empty=summary");
-  await expect(page.getByText("No risk series available.")).toBeVisible();      
+test("tracker globe overlay opens with live or degraded scene state", async ({ page }) => {
+  await page.goto("/osint?tab=trackers");
+  await page.getByTestId("osint-open-globe").click();
+  await expect(page.getByText("OSINT Tracker Scene")).toBeVisible();
+  await expect(page.getByText("Scene Status")).toBeVisible();
+  await expect(page.getByText("Focus Targets")).toBeVisible();
+  await expectAnyVisible([
+    page.getByRole("button", { name: "Refresh Scene" }),
+    page.getByRole("button", { name: "Retry Scene" })
+  ]);
+  await page.getByLabel("Close globe").click();
+  await expect(page.getByText("OSINT Tracker Scene")).toHaveCount(0);
 });
 
-test("clients empty index renders", async ({ page }) => {
-  await page.goto("/clients?demo=true&demo_empty=clients");
-  await expect(page.getByText("No client profiles loaded.")).toBeVisible();
-});
-
-test("news empty feed renders", async ({ page }) => {
-  await page.goto("/osint?tab=news&demo=true&demo_empty=news");
-  await expect(page.getByText("No news items available.")).toBeVisible();
+test("intel globe overlay opens with regional scene controls", async ({ page }) => {
+  await page.goto("/osint?tab=intel");
+  await page.getByTestId("osint-open-globe").click();
+  await expect(page.getByTestId("globe-overlay")).toBeVisible();
+  await expectAnyVisible([
+    page.getByText("Regional Nodes", { exact: true }),
+    page.getByRole("button", { name: "Retry Scene" })
+  ]);
+  await expectAnyVisible([
+    page.getByTestId("globe-lens-conflict"),
+    page.getByText("Unavailable", { exact: true })
+  ]);
 });

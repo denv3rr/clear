@@ -45,7 +45,7 @@ def query(
         response = summarize(payload.question, payload.context, payload.sources, payload.entry)
         warnings = validate_payload(
             response,
-            required_keys=("answer", "sources", "confidence", "warnings"),
+            required_keys=("answer", "sources", "warnings"),
             warnings=response.get("warnings"),
         )
         return attach_meta(
@@ -58,12 +58,12 @@ def query(
     response = {
         "answer": f"Mode '{payload.mode}' is not yet implemented.",
         "sources": [],
-        "confidence": "Low",
+        "confidence": None,
         "warnings": ["This assistant mode is not yet available."],
     }
     warnings = validate_payload(
         response,
-        required_keys=("answer", "sources", "confidence", "warnings"),
+        required_keys=("answer", "sources", "warnings"),
         warnings=response.get("warnings"),
     )
     attach_meta(

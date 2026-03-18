@@ -1,10 +1,19 @@
-import { useMemo } from "react";
+import { lazy, Suspense, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Card } from "../components/ui/Card";
 import { SectionHeader } from "../components/ui/SectionHeader";
-import Intel from "./Intel";
-import News from "./News";
-import { TrackersPanel } from "./Trackers";
+import { useSceneController } from "../lib/scene";
+
+const loadTrackersPanel = () =>
+  import("./Trackers").then((module) => ({
+    default: module.TrackersPanel,
+  }));
+const loadIntelPage = () => import("./Intel");
+const loadNewsPage = () => import("./News");
+
+const TrackersPanel = lazy(loadTrackersPanel);
+const Intel = lazy(loadIntelPage);
+const News = lazy(loadNewsPage);
 
 const tabs = [
   {
@@ -26,8 +35,26 @@ const tabs = [
 
 type OsintTab = (typeof tabs)[number]["id"];
 
+const TAB_PRELOADERS: Record<OsintTab, () => Promise<unknown>> = {
+  trackers: loadTrackersPanel,
+  intel: loadIntelPage,
+  news: loadNewsPage,
+};
+
+function TabLoadingState({ tab }: { tab: OsintTab }) {
+  return (
+    <Card className="rounded-2xl p-5">
+      <p className="tag text-xs text-emerald-300">LOADING</p>
+      <p className="mt-2 text-sm text-slate-300">
+        Loading {tab === "trackers" ? "tracker" : tab} workspace...
+      </p>
+    </Card>
+  );
+}
+
 export default function Osint() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { isOpen, openScene } = useSceneController();
   const activeTab = useMemo<OsintTab>(() => {
     const requested = (searchParams.get("tab") || "").toLowerCase();
     const found = tabs.find((tab) => tab.id === requested);
@@ -39,6 +66,11 @@ export default function Osint() {
   };
 
   const activeLabel = tabs.find((tab) => tab.id === activeTab)?.label || "Trackers";
+  const preferredScene = activeTab === "trackers" ? "trackers" : "intel";
+  const globeCallout =
+    activeTab === "trackers"
+      ? "Open the globe to move from list-and-card review into an immersive world view. Phase 0 currently centers on live trackers and replay trails, with conflict, emotion, weather, and cargo layers next in line."
+      : "Open the globe to pivot into a regional risk view where weather, conflict, and news pressure converge on the same world canvas.";
 
   return (
     <div className="space-y-5">
@@ -46,18 +78,39 @@ export default function Osint() {
         <SectionHeader
           label="OSINT"
           title="Open-Source Intelligence"
-          right={activeLabel}
+          right={
+            <div className="flex items-center gap-3">
+              <span>{activeLabel}</span>
+              <button
+                type="button"
+                data-testid="osint-open-globe"
+                onClick={() => openScene(preferredScene)}
+                className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-3 py-1 text-[11px] text-emerald-200 hover:border-emerald-300 hover:text-emerald-100"
+              >
+                {isOpen ? "Globe Live" : "Open Globe"}
+              </button>
+            </div>
+          }
         />
         <p className="mt-2 text-sm text-slate-400">
           Trackers are grouped here and only surface in reports when account tags
           make them relevant.
         </p>
+        <div className="mt-3 rounded-2xl border border-emerald-400/15 bg-emerald-400/5 px-4 py-3 text-xs text-slate-300">
+          {globeCallout}
+        </div>
         <div className="mt-4 flex flex-wrap gap-2">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               type="button"
               onClick={() => setTab(tab.id)}
+              onMouseEnter={() => {
+                void TAB_PRELOADERS[tab.id]();
+              }}
+              onFocus={() => {
+                void TAB_PRELOADERS[tab.id]();
+              }}
               className={[
                 "rounded-full border px-4 py-2 text-xs transition",
                 activeTab === tab.id
@@ -73,9 +126,11 @@ export default function Osint() {
           {tabs.find((tab) => tab.id === activeTab)?.description}
         </p>
       </Card>
-      {activeTab === "trackers" ? <TrackersPanel /> : null}
-      {activeTab === "intel" ? <Intel /> : null}
-      {activeTab === "news" ? <News /> : null}
+      <Suspense fallback={<TabLoadingState tab={activeTab} />}>
+        {activeTab === "trackers" ? <TrackersPanel /> : null}
+        {activeTab === "intel" ? <Intel /> : null}
+        {activeTab === "news" ? <News /> : null}
+      </Suspense>
     </div>
   );
 }

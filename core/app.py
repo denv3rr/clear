@@ -84,7 +84,7 @@ class ClearApp:
             self.market_feed.run_global_trackers()
 
         elif action == "fin_tools":
-            self.placeholder_module("Financial Math Toolkit")
+            self.unavailable_module("Financial Math Toolkit")
             
         elif action == "settings":
             # Use the already initialized instance
@@ -93,10 +93,11 @@ class ClearApp:
         elif action == "assistant":
             self.assistant_module.run()
 
-    # Using this as temp page when adding new modules
-    def placeholder_module(self, name: str):
-        self.console.print(f"\n[bold green]>> LOADING {name}...[/bold green]")
-        self.console.print("[italic]   Module logic to be implemented soon ...[/italic]")
+    def unavailable_module(self, name: str):
+        self.console.print(f"\n[bold yellow]>> {name} unavailable[/bold yellow]")
+        self.console.print(
+            "[italic]   This module remains disabled until a standards-compliant implementation is ready.[/italic]"
+        )
         InputSafe.pause()
 
     def shutdown(self):

@@ -19,7 +19,7 @@ def test_assistant_summary_endpoint_uses_payload():
         mocked.return_value = {
             "answer": "OK",
             "sources": [{"route": "/api/clients", "source": "database", "timestamp": 1}],
-            "confidence": "Medium",
+            "confidence": None,
             "warnings": [],
         }
         resp = client.post(
@@ -30,6 +30,7 @@ def test_assistant_summary_endpoint_uses_payload():
     assert resp.status_code == 200
     payload = resp.json()
     assert payload["answer"] == "OK"
+    assert payload["confidence"] is None
     assert payload["meta"]["route"] == "/api/assistant/query"
     assert payload["meta"]["status"] == "ok"
     args, _ = mocked.call_args
@@ -49,6 +50,7 @@ def test_assistant_non_summary_mode_is_explicit():
     assert resp.status_code == 501
     payload = resp.json()
     assert payload["answer"] == "Mode 'compare' is not yet implemented."
+    assert payload["confidence"] is None
     assert payload["meta"]["route"] == "/api/assistant/query"
     assert payload["meta"]["status"] == "error"
     mocked.assert_not_called()
@@ -70,7 +72,7 @@ def test_summarize_news_uses_context_and_sources():
             entry="osint",
         )
     mocked.assert_called_with({"region": "EU", "industry": "tech"}, ["bbc.com"])
-    assert result["confidence"] == "Medium"
+    assert result["confidence"] is None
     assert result["sources"]
     assert result["sources"][0]["route"] == "/api/intel/news"
 
@@ -217,7 +219,7 @@ def test_assistant_export_endpoint_returns_payload():
             {
                 "question": "How many clients?",
                 "answer": "You have 2 clients.",
-                "confidence": "Medium",
+                "confidence": None,
                 "warnings": [],
                 "sources": [{"route": "/api/clients", "source": "database", "timestamp": 1}],
             }
@@ -268,7 +270,7 @@ def test_assistant_query_blocks_unknown_scope():
     )
     assert resp.status_code == 200
     payload = resp.json()
-    assert payload["confidence"] == "Low"
+    assert payload["confidence"] is None
     assert "Blocked filesystem/path access request." in payload["warnings"]
     assert payload["answer"] == "Filesystem or path access requests are not permitted."
 
@@ -286,7 +288,7 @@ def test_assistant_query_denies_client_scope_on_dashboard_entry():
     )
     assert resp.status_code == 200
     payload = resp.json()
-    assert payload["confidence"] == "Low"
+    assert payload["confidence"] is None
     assert payload["answer"] == "Assistant scope denied for this page context."
 
 

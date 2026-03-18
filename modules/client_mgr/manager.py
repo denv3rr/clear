@@ -1027,7 +1027,7 @@ class ClientManager:
             "summary": summary,
             "risk_level": risk_level,
             "risk_score": None,
-            "confidence": "Medium" if signals else "Low",
+            "confidence": None,
             "signals": signals,
             "impacts": impacts,
             "sections": sections,

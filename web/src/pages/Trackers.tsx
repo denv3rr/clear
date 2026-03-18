@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import L from "leaflet";
+import type { LayerGroup as LeafletLayerGroup, Map as LeafletMap } from "leaflet";
 import { loadMapLibre, mapLibreWorkerUrl } from "../lib/maplibre";
 import type { MapLibre } from "../lib/maplibre";
+import { loadLeaflet, type LeafletLib } from "../lib/leaflet";
 import { Card } from "../components/ui/Card";
 import { Collapsible } from "../components/ui/Collapsible";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
@@ -249,7 +250,6 @@ export function TrackersPanel() {
   const { ref: mapRef, size: mapSize } = useMeasuredSize<HTMLDivElement>();
   const mapInstance = useRef<MapLibre["Map"] | null>(null);
   const [maplibre, setMapLibre] = useState<MapLibre | null>(null);
-  const styleFallbackUsed = useRef(false);
   const styleRequested = useRef(false);
   const styleLoaded = useRef(false);
   const layersReadyRef = useRef(false);
@@ -260,11 +260,12 @@ export function TrackersPanel() {
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapStatus, setMapStatus] = useState("Initializing map...");
   const [mapDiagnostics, setMapDiagnostics] = useState<string[]>([]);
-  const leafletMap = useRef<L.Map | null>(null);
-  const leafletLayer = useRef<L.LayerGroup | null>(null);
-  const leafletHistoryLayer = useRef<L.LayerGroup | null>(null);
+  const [leaflet, setLeaflet] = useState<LeafletLib | null>(null);
+  const leafletMap = useRef<LeafletMap | null>(null);
+  const leafletLayer = useRef<LeafletLayerGroup | null>(null);
+  const leafletHistoryLayer = useRef<LeafletLayerGroup | null>(null);
   const [leafletStatus, setLeafletStatus] = useState("Initializing map...");
-  const [mapFallback, setMapFallback] = useState(true);
+  const [mapFallback, setMapFallback] = useState(false);
   const initialMapState = useMemo<MapStateBoot>(() => {
     const stored = loadMapState();
     const hasView =
@@ -315,7 +316,7 @@ export function TrackersPanel() {
   const [mapOpen, setMapOpen] = useState(true);
   const [feedOpen, setFeedOpen] = useState(true);
   const accentColor = "#48f1a6";
-  const preferLeaflet = true;
+  const preferLeaflet = false;
 
   useEffect(() => {
     if (!paused) {
@@ -702,8 +703,8 @@ export function TrackersPanel() {
       (point) => Number.isFinite(point.lat) && Number.isFinite(point.lon)
     );
     if (!points.length) return;
-    if (mapFallback && leafletMap.current) {
-      const bounds = L.latLngBounds(
+    if (mapFallback && leafletMap.current && leaflet) {
+      const bounds = leaflet.latLngBounds(
         points.map((point) => [point.lat as number, point.lon as number])
       );
       markProgrammaticMove();
@@ -722,13 +723,13 @@ export function TrackersPanel() {
       markProgrammaticMove();
       mapInstance.current.fitBounds(bounds, { padding: 80, maxZoom: 6 });
     }
-  }, [mapFallback, mapFilteredPoints, markProgrammaticMove, mapReady, maplibre]);
+  }, [leaflet, mapFallback, mapFilteredPoints, markProgrammaticMove, mapReady, maplibre]);
 
   useEffect(() => {
     let mounted = true;
     if (preferLeaflet) {
       setMapFallback(true);
-      setMapStatus("Leaflet map active.");
+      setMapStatus("Loading fallback map engine...");
       return () => {
         mounted = false;
       };
@@ -749,6 +750,30 @@ export function TrackersPanel() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!mapFallback || leaflet) {
+      return () => {
+        mounted = false;
+      };
+    }
+    setLeafletStatus("Loading fallback map engine...");
+    loadLeaflet()
+      .then((lib) => {
+        if (!mounted) return;
+        setLeaflet(lib);
+        setLeafletStatus("Leaflet engine ready.");
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setLeafletStatus("Leaflet engine failed.");
+        setMapError("Leaflet map engine failed to load.");
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [leaflet, mapFallback]);
 
   useEffect(() => {
     if (mapFallback) return;
@@ -949,12 +974,6 @@ export function TrackersPanel() {
       });
       map.on("error", (event) => {
         const message = event?.error?.message;
-        if (!styleFallbackUsed.current) {
-          styleFallbackUsed.current = true;
-          setMapStatus("Primary style blocked. Switching to fallback.");
-          map.setStyle("https://demotiles.maplibre.org/style.json");
-          return;
-        }
         const detail = message || "Map data unavailable.";
         setMapError(detail);
         mapErrorRef.current = detail;
@@ -1047,15 +1066,15 @@ export function TrackersPanel() {
   }, [mapOpen]);
 
   useEffect(() => {
-    if (!mapFallback || !mapRef.current || leafletMap.current) return;
+    if (!mapFallback || !mapRef.current || leafletMap.current || !leaflet) return;
     setLeafletStatus("Booting map engine...");
-    const map = L.map(mapRef.current, {
+    const map = leaflet.map(mapRef.current, {
       center: [15, 0],
       zoom: 2,
       zoomControl: true
     });
     map.setView(mapViewRef.current.center, mapViewRef.current.zoom, { animate: false });
-    const tiles = L.tileLayer(
+    const tiles = leaflet.tileLayer(
       "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
       {
         subdomains: "abcd",
@@ -1068,8 +1087,8 @@ export function TrackersPanel() {
       setMapError("Leaflet tile load error.");
     });
     tiles.addTo(map);
-    const layer = L.layerGroup().addTo(map);
-    const historyLayer = L.layerGroup().addTo(map);
+    const layer = leaflet.layerGroup().addTo(map);
+    const historyLayer = leaflet.layerGroup().addTo(map);
     leafletMap.current = map;
     leafletLayer.current = layer;
     leafletHistoryLayer.current = historyLayer;
@@ -1095,7 +1114,7 @@ export function TrackersPanel() {
       leafletLayer.current = null;
       leafletHistoryLayer.current = null;
     };
-  }, [mapFallback, recordLeafletView]);
+  }, [leaflet, mapFallback, recordLeafletView]);
 
   useEffect(() => {
     if (mapFallback || !mapInstance.current || !mapReady) return;
@@ -1118,7 +1137,7 @@ export function TrackersPanel() {
   }, [mapFallback, mapLayers, mapReady]);
 
   useEffect(() => {
-    if (!mapFallback) return;
+    if (!mapFallback || !leaflet) return;
     if (!leafletLayer.current || !leafletMap.current) return;
     const layer = leafletLayer.current;
     layer.clearLayers();
@@ -1130,7 +1149,7 @@ export function TrackersPanel() {
     );
     points.slice(0, 200).forEach((point) => {
       const color = point.kind === "ship" ? "#8892a0" : "#48f1a6";
-      L.circleMarker([point.lat as number, point.lon as number], {
+      leaflet.circleMarker([point.lat as number, point.lon as number], {
         radius: 4.5,
         color,
         weight: 1.2,
@@ -1140,17 +1159,17 @@ export function TrackersPanel() {
       }).addTo(layer);
     });
     if (points.length && !mapLock && !mapFollow && !mapAutoFitRef.current) {
-      const bounds = L.latLngBounds(
+      const bounds = leaflet.latLngBounds(
         points.map((point) => [point.lat as number, point.lon as number])
       );
       markProgrammaticMove();
       leafletMap.current.fitBounds(bounds, { padding: [30, 30], maxZoom: 5 });
       mapAutoFitRef.current = true;
     }
-  }, [mapFilteredPoints, mapFollow, mapLock, mapLayers.live, markProgrammaticMove]);
+  }, [leaflet, mapFilteredPoints, mapFollow, mapLock, mapLayers.live, markProgrammaticMove]);
 
   useEffect(() => {
-    if (!mapFallback) return;
+    if (!mapFallback || !leaflet) return;
     if (!leafletHistoryLayer.current || !leafletMap.current) return;
     const layer = leafletHistoryLayer.current;
     layer.clearLayers();
@@ -1159,13 +1178,13 @@ export function TrackersPanel() {
       .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lon))
       .map((point) => [point.lat as number, point.lon as number] as [number, number]);
     if (coords.length < 2) return;
-    const line = L.polyline(coords, {
+    const line = leaflet.polyline(coords, {
       color: accentColor,
       weight: 2,
       opacity: 0.8
     });
     line.addTo(layer);
-  }, [accentColor, history, mapFallback, mapLayers.history]);
+  }, [accentColor, history, leaflet, mapFallback, mapLayers.history]);
 
   useEffect(() => {
     if (mapFallback || !mapInstance.current || !mapReady || !mapFollow) return;

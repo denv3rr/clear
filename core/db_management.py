@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import text
 from core.database import Base, engine
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _existing_columns(table_name: str) -> set[str]:
@@ -56,4 +60,5 @@ def create_db_and_tables():
     try:
         ensure_client_schema()
     except Exception:
-        pass
+        LOGGER.exception("Client schema verification failed during startup")
+        raise

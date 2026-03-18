@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -10,6 +11,27 @@ from web_api.auth import require_websocket_key
 from web_api.view_model import attach_meta, validate_payload
 
 router = APIRouter()
+
+
+def _is_expected_disconnect_error(exc: BaseException) -> bool:
+    if isinstance(exc, (WebSocketDisconnect, ConnectionResetError, BrokenPipeError)):
+        return True
+    if isinstance(exc, OSError):
+        if exc.errno in {errno.EPIPE, errno.EBADF, errno.ECONNRESET, 10053, 10054}:
+            return True
+        message = str(exc).lower()
+        return any(token in message for token in ("broken pipe", "connection reset", "closed"))
+    if isinstance(exc, RuntimeError):
+        message = str(exc).lower()
+        return any(
+            token in message
+            for token in (
+                "close message has been sent",
+                "websocket is not connected",
+                "cannot call send once a close message has been sent",
+            )
+        )
+    return False
 
 
 @router.websocket("/ws/trackers")
@@ -42,3 +64,7 @@ async def trackers_stream(websocket: WebSocket, mode: Optional[str] = None, inte
             await asyncio.sleep(stream_interval)
     except WebSocketDisconnect:
         return
+    except (OSError, RuntimeError) as exc:
+        if _is_expected_disconnect_error(exc):
+            return
+        raise

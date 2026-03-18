@@ -27,7 +27,11 @@ def _normalize_source(source: Dict[str, Any]) -> Dict[str, Any]:
 def normalize_assistant_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     question = str(entry.get("question") or "").strip()
     answer = str(entry.get("answer") or "").strip() or "No response available."
-    confidence = str(entry.get("confidence") or "Low").strip() or "Low"
+    confidence_raw = entry.get("confidence")
+    confidence = None
+    if confidence_raw is not None:
+        normalized_confidence = str(confidence_raw).strip()
+        confidence = normalized_confidence or None
     warnings = [
         str(item) for item in _as_list(entry.get("warnings")) if str(item).strip()
     ]
@@ -116,7 +120,8 @@ def render_assistant_export_markdown(export_payload: Dict[str, Any]) -> str:
         lines.append("")
         lines.append(f"### Question: {entry.get('question', '')}")
         lines.append(f"Answer: {entry.get('answer', '')}")
-        lines.append(f"Confidence: {entry.get('confidence', '')}")
+        if entry.get("confidence"):
+            lines.append(f"Confidence: {entry.get('confidence', '')}")
         warnings = entry.get("warnings") or []
         if warnings:
             lines.append(f"Warnings: {', '.join(warnings)}")

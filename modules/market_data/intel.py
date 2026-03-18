@@ -154,23 +154,6 @@ def _score_conflict(article_count: int, themes: List[str]) -> Tuple[int, List[st
     return score, signals
 
 
-def _confidence_weather(temp_c: Optional[float], wind_ms: Optional[float], precip_mm: Optional[float]) -> str:
-    present = sum(1 for val in (temp_c, wind_ms, precip_mm) if val is not None)
-    if present == 3:
-        return "High"
-    if present == 2:
-        return "Medium"
-    return "Low"
-
-
-def _confidence_conflict(article_count: int) -> str:
-    if article_count >= 15:
-        return "High"
-    if article_count >= 5:
-        return "Medium"
-    return "Low"
-
-
 def _bucket_news(
     items: List[Dict[str, object]],
     bucket_hours: int,
@@ -854,13 +837,18 @@ class MarketIntel:
             float(data.get("temp_max") or 0.0),
         )
         risk = _risk_level(score)
-        confidence = _confidence_weather(data.get("temp_c"), data.get("wind_ms"), data.get("precip_mm"))
+        available_weather_inputs = sum(
+            1
+            for value in (data.get("temp_c"), data.get("wind_ms"), data.get("precip_mm"))
+            if value is not None
+        )
+        support_summary = f"{available_weather_inputs}/3 weather inputs available"
         summary = [
             f"Region: {region.name}",
             f"Temp: {data.get('temp_c', 'n/a')} C | Wind: {data.get('wind_ms', 'n/a')} m/s",
             f"24h Precip: {data.get('precip_24h', 0):.1f} mm | Wind Max: {data.get('wind_max', 0):.1f} m/s",
             f"Risk Level: {risk} (score {score}/10)",
-            f"Confidence: {confidence}",
+            f"Support: {support_summary}",
         ]
         if industry_filter != "all":
             summary.append(f"Industry Filter: {industry_filter}")
@@ -900,7 +888,7 @@ class MarketIntel:
         })
         sections.append({
             "title": "Model Notes",
-            "rows": [[f"Confidence: {confidence} | Signals: {len(signals)} | Impacts: {len(impacts)} | Scope: {region.name} | Industry: {industry_filter}", ""]],
+            "rows": [[f"Support: {support_summary} | Signals: {len(signals)} | Impacts: {len(impacts)} | Scope: {region.name} | Industry: {industry_filter}", ""]],
         })
         sources = ["Open-Meteo"]
         news_cached = load_cached_news(self._news_cache_file, ttl_seconds=999999)
@@ -923,7 +911,12 @@ class MarketIntel:
             "sections": sections,
             "risk_level": risk,
             "risk_score": score,
-            "confidence": confidence,
+            "confidence": None,
+            "support": {
+                "summary": support_summary,
+                "available_inputs": available_weather_inputs,
+                "expected_inputs": 3,
+            },
             "signals": signals,
             "impacts": impacts,
         }
@@ -949,12 +942,10 @@ class MarketIntel:
                 themes.extend([str(t) for t in (item.get("industries") or [])])
             score, signals = _score_conflict(len(items), themes)
             risk = _risk_level(score)
-            confidence = _confidence_conflict(len(items))
             summary = [
                 f"Region: {region.name}",
                 f"Conflict signals sourced from RSS feeds ({len(items)} items).",
                 f"Risk Level: {risk} (score {score}/10)",
-                f"Confidence: {confidence}",
             ]
             if industry_filter != "all":
                 summary.append(f"Industry Filter: {industry_filter}")
@@ -981,7 +972,12 @@ class MarketIntel:
                 "sections": sections,
                 "risk_level": risk,
                 "risk_score": score,
-                "confidence": confidence,
+                "confidence": None,
+                "support": {
+                    "summary": f"{len(items)} supporting articles",
+                    "article_count": len(items),
+                    "source_mode": "rss_fallback",
+                },
                 "signals": signals,
                 "impacts": _impact_for_conflict(themes),
             }
@@ -992,12 +988,10 @@ class MarketIntel:
             themes.append(str(row.get("themes", "")))
         score, signals = _score_conflict(int(data.get("count", 0) or 0), themes)
         risk = _risk_level(score)
-        confidence = _confidence_conflict(int(data.get("count", 0) or 0))
         summary = [
             f"Region: {region.name}",
             f"Articles: {data.get('count', 0)} recent signals",
             f"Risk Level: {risk} (score {score}/10)",
-            f"Confidence: {confidence}",
         ]
         if industry_filter != "all":
             summary.append(f"Industry Filter: {industry_filter}")
@@ -1031,7 +1025,7 @@ class MarketIntel:
         })
         sections.append({
             "title": "Model Notes",
-            "rows": [[f"Confidence: {confidence} | Signals: {len(signals)} | Impacts: {len(impacts)} | Scope: {region.name} | Industry: {industry_filter}", ""]],
+            "rows": [[f"Signals: {len(signals)} | Impacts: {len(impacts)} | Scope: {region.name} | Industry: {industry_filter}", ""]],
         })
         sources = ["GDELT"]
         news_items = news_payload.get("items", []) if news_payload else []
@@ -1057,7 +1051,12 @@ class MarketIntel:
             "sections": sections,
             "risk_level": risk,
             "risk_score": score,
-            "confidence": confidence,
+            "confidence": None,
+            "support": {
+                "summary": f"{int(data.get('count', 0) or 0)} supporting articles",
+                "article_count": int(data.get("count", 0) or 0),
+                "source_mode": "gdelt",
+            },
             "signals": signals,
             "impacts": impacts,
         }
@@ -1116,29 +1115,31 @@ class MarketIntel:
             combined_risk = _risk_level(combined_score)
         else:
             combined_risk = "Unavailable"
-        confidence = "Low"
-        if weather_ok and conflict_ok and news_ok and news_metrics.get("count", 0) >= 10:
-            confidence = "High"
-        elif weather_ok or conflict_ok or news_ok:
-            confidence = "Medium"
+        weather_support = weather.get("support", {}) if isinstance(weather, dict) else {}
+        conflict_support = conflict.get("support", {}) if isinstance(conflict, dict) else {}
+        available_inputs = ", ".join(sorted(components)) if components else "none"
+        support_summary = (
+            f"weather {weather_support.get('available_inputs', 0)}/3 inputs • "
+            f"conflict {conflict_support.get('article_count', 0)} articles • "
+            f"news {news_metrics.get('count', 0)} articles"
+        )
         summary = [
             f"Region: {region_name}",
             "Weather: "
             + (
-                f"{weather.get('risk_level', 'Unavailable')} ({weather.get('risk_score', 'n/a')}/10), "
-                f"Confidence {weather.get('confidence', 'n/a')}"
+                f"{weather.get('risk_level', 'Unavailable')} ({weather.get('risk_score', 'n/a')}/10)"
                 if weather_ok
                 else "Unavailable"
             ),
             "Conflict: "
             + (
-                f"{conflict.get('risk_level', 'Unavailable')} ({conflict.get('risk_score', 'n/a')}/10), "
-                f"Confidence {conflict.get('confidence', 'n/a')}"
+                f"{conflict.get('risk_level', 'Unavailable')} ({conflict.get('risk_score', 'n/a')}/10)"
                 if conflict_ok
                 else "Unavailable"
             ),
             f"Combined Risk: {combined_risk}" + (f" (score {combined_score}/10)" if combined_score is not None else ""),
-            f"Confidence: {confidence}",
+            f"Available Inputs: {available_inputs}",
+            f"Data Support: {support_summary}",
         ]
         if not conflict_ok:
             summary.append("Conflict source unavailable (GDELT cooldown or error).")
@@ -1153,7 +1154,8 @@ class MarketIntel:
             "title": "Combined Overview",
             "rows": [
                 ["Combined Risk", f"{combined_risk}" + (f" ({combined_score}/10)" if combined_score is not None else "")],
-                ["Confidence", confidence],
+                ["Available Inputs", available_inputs],
+                ["Data Support", support_summary],
                 ["News Risk", f"{news_score}/10" if news_score is not None else "Unavailable"],
                 ["Key Signals", "; ".join(fusion_signals[:5]) or "None detected"],
                 ["Key Impacts", "; ".join(fusion_impacts[:5]) or "None detected"],
@@ -1200,7 +1202,14 @@ class MarketIntel:
             "sections": sections,
             "risk_level": combined_risk,
             "risk_score": combined_score,
-            "confidence": confidence,
+            "confidence": None,
+            "support": {
+                "summary": support_summary,
+                "available_inputs": available_inputs,
+                "weather_inputs": weather_support.get("available_inputs", 0),
+                "conflict_articles": conflict_support.get("article_count", 0),
+                "news_articles": news_metrics.get("count", 0),
+            },
             "risk_series": risk_series,
             "news": {
                 "count": news_metrics.get("count", 0),

@@ -1,89 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
-
-async function stubSystemRoutes(page: Page) {
-  await page.route("**/api/health", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ status: "ok" })
-    });
-  });
-  await page.route("**/api/tools/diagnostics", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        duplicates: { accounts: { count: 0, clients: 0 } },
-        orphans: { holdings: 0, lots: 0 },
-        feeds: {
-          summary: { total: 0, configured: 0, warnings: [], health_counts: { ok: 0 } },
-          registry: { sources: [] }
-        },
-        trackers: { count: 0, warning_count: 0 },
-        clients: { clients: 0, accounts: 0, holdings: 0, lots: 0 },
-        reports: { items: 0, status: "ok" },
-        intel: { news_cache: { status: "ok", items: 0, age_hours: 0 } },
-        system: { hostname: "local", os: "TestOS", cpu_usage: "0%", mem_usage: "0%" }
-      })
-    });
-  });
-}
-
-async function stubAppRoutes(page: Page) {
-  await page.route("**/api/**", async (route) => {
-    const url = new URL(route.request().url());
-    if (url.pathname.startsWith("/api/assistant/")) {
-      return route.fallback();
-    }
-    if (url.pathname === "/api/clients") {
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ clients: [], meta: {} })
-      });
-    }
-    if (url.pathname.startsWith("/api/clients/")) {
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ client: null, meta: {} })
-      });
-    }
-    if (url.pathname === "/api/trackers/snapshot") {
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ items: [], count: 0, bounds: null, meta: {} })
-      });
-    }
-    if (url.pathname === "/api/trackers/filters") {
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ operators: [], categories: [], countries: [] })
-      });
-    }
-    if (url.pathname === "/api/intel/summary") {
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ summary: [], meta: {} })
-      });
-    }
-    if (url.pathname === "/api/intel/meta") {
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ regions: [], industries: [], sources: [] })
-      });
-    }
-    return route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ meta: {} })
-    });
-  });
-}
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 async function openAssistant(page: Page) {
   const assistantVisible = page.locator("button:visible", {
@@ -96,86 +11,58 @@ async function openAssistant(page: Page) {
   await expect(assistantVisible.first()).toBeVisible();
   await assistantVisible.first().click();
   await expect(page.getByRole("heading", { name: "AI Assistant" })).toBeVisible();
+  await expect(page.locator("div.fixed.inset-y-0.right-0.z-50")).toBeVisible();
 }
 
-async function navigateViaNav(page: Page, label: string) {
-  const link = page.getByRole("link", { name: label });
-  if ((await link.count()) > 0) {
-    await link.first().click();
-    return;
-  }
-  const toggle = page.getByRole("button", { name: "Toggle navigation" });
-  if (await toggle.count()) {
-    await toggle.first().click();
-  }
-  await page.getByRole("link", { name: label }).first().click();
+function assistantDrawer(page: Page) {
+  return page.locator("div.fixed.inset-y-0.right-0.z-50");
 }
 
-test("assistant sends context and renders response", async ({ page }) => {
-  await stubSystemRoutes(page);
-  await stubAppRoutes(page);
-  await page.addInitScript(() => {
-    localStorage.setItem("clear_api_key", "test-key");
-  });
+function assistantContextInput(drawer: Locator, label: string) {
+  return drawer
+    .locator("label", { hasText: label })
+    .locator("xpath=following-sibling::input[1]");
+}
 
+test("assistant sends real context and renders backend response", async ({ page }) => {
   let requestBody: Record<string, unknown> | null = null;
   let requestHeaders: Record<string, string> | null = null;
+
   await page.route("**/api/assistant/query", async (route) => {
     const request = route.request();
     requestBody = request.postDataJSON() as Record<string, unknown>;
     requestHeaders = request.headers();
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        answer: "Assistant response ready.",
-        confidence: "medium",
-        sources: [{ route: "/api/intel/summary", source: "intel" }],
-        warnings: ["Demo response"],
-        routing: { rule: "news", handler: "handle_news" }
-      })
-    });
+    await route.continue();
   });
 
-  await page.goto("/system");
+  await page.goto("/osint?tab=news");
   await openAssistant(page);
+  const drawer = assistantDrawer(page);
 
-  await page.getByText("Region").locator("..").locator("input").fill("EMEA");
-  await page.getByText("Industry").locator("..").locator("input").fill("Energy");
-  await page.getByPlaceholder("AAPL, MSFT").fill("AAPL, MSFT");
-  await page.getByPlaceholder("bbc.com, cnbc.com").fill("bbc.com, cnbc.com");
-  await page.getByText("Client ID").locator("..").locator("input").fill("c1");
-  await page.getByText("Account ID").locator("..").locator("input").fill("a1");
+  await assistantContextInput(drawer, "Region").fill("Global");
+  await assistantContextInput(drawer, "Industry").fill("all");
+  await assistantContextInput(drawer, "Tickers").fill("AAPL, MSFT");
+  await assistantContextInput(drawer, "Sources").fill("cnbc.com");
 
-  const questionInput = page.getByPlaceholder("Ask a question...");
-  await questionInput.fill("What changed?");
+  const questionInput = drawer.getByPlaceholder("Ask a question...");
+  await questionInput.fill("latest news");
   await questionInput.press("Enter");
 
-  await expect(page.getByText("What changed?")).toBeVisible();
-  await expect(page.getByText("Assistant response ready.")).toBeVisible();
-  await expect(page.getByText("Confidence: medium")).toBeVisible();
-  await expect(page.getByText("Routing: news (handle_news)")).toBeVisible();
-  await expect(page.getByText("Sources: /api/intel/summary")).toBeVisible();
-  await expect(page.getByText("Warnings: Demo response")).toBeVisible();
+  await expect(drawer.getByText("latest news")).toBeVisible();
+  await expect(drawer).toContainText("Routing: news (handle_news)");
+  await expect(drawer).toContainText("Sources: /api/intel/news");
 
-  expect(requestHeaders?.["x-api-key"]).toBe("test-key");
-  expect(requestBody?.question).toBe("What changed?");
+  expect(requestHeaders?.["x-api-key"]).toBeTruthy();
+  expect(requestBody?.question).toBe("latest news");
   expect(requestBody?.context).toMatchObject({
-    region: "EMEA",
-    industry: "Energy",
-    tickers: ["AAPL", "MSFT"],
-    client_id: "c1",
-    account_id: "a1"
+    region: "Global",
+    industry: "all",
+    tickers: ["AAPL", "MSFT"]
   });
-  expect(requestBody?.sources).toEqual(["bbc.com", "cnbc.com"]);
+  expect(requestBody?.sources).toEqual(["cnbc.com"]);
 });
 
 test("assistant context scope persists across pages", async ({ page }) => {
-  await stubSystemRoutes(page);
-  await stubAppRoutes(page);
-  await page.addInitScript(() => {
-    localStorage.setItem("clear_api_key", "test-key");
-  });
   await page.goto("/");
   await page.evaluate(() => {
     localStorage.setItem(
@@ -200,7 +87,6 @@ test("assistant context scope persists across pages", async ({ page }) => {
 });
 
 test("assistant surfaces auth failures", async ({ page }) => {
-  await stubSystemRoutes(page);
   await page.route("**/api/assistant/query", async (route) => {
     await route.fulfill({
       status: 401,
@@ -211,12 +97,13 @@ test("assistant surfaces auth failures", async ({ page }) => {
 
   await page.goto("/system");
   await openAssistant(page);
+  const drawer = assistantDrawer(page);
 
-  const questionInput = page.getByPlaceholder("Ask a question...");
+  const questionInput = drawer.getByPlaceholder("Ask a question...");
   await questionInput.fill("Status?");
   await questionInput.press("Enter");
 
   await expect(
-    page.getByText("Error: Could not connect to the AI assistant.")
+    drawer.getByText("Error: Could not connect to the AI assistant.")
   ).toBeVisible();
 });

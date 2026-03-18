@@ -1,10 +1,11 @@
 import { useState } from "react";
+import type { ComponentType } from "react";
 import { NavLink } from "react-router-dom";
-import { Menu, X, Bot } from "lucide-react";
+import { Menu, X, Bot, Orbit } from "lucide-react";
 
 type NavItem = {
   label: string;
-  icon: React.ComponentType<{ size?: number }>;
+  icon: ComponentType<{ size?: number }>;
   path: string;
 };
 
@@ -12,9 +13,19 @@ type TopNavProps = {
   items: NavItem[];
   onToggleContext?: () => void;
   onToggleAssistant?: () => void;
+  onToggleScene?: () => void;
+  sceneAvailable?: boolean;
+  sceneOpen?: boolean;
 };
 
-export function TopNav({ items, onToggleContext, onToggleAssistant }: TopNavProps) {
+export function TopNav({
+  items,
+  onToggleContext,
+  onToggleAssistant,
+  onToggleScene,
+  sceneAvailable = false,
+  sceneOpen = false
+}: TopNavProps) {
   const utilityPaths = new Set(["/system"]);
   const primaryItems = items.filter((item) => !utilityPaths.has(item.path));
   const utilityItems = items.filter((item) => utilityPaths.has(item.path));
@@ -60,7 +71,7 @@ export function TopNav({ items, onToggleContext, onToggleAssistant }: TopNavProp
           </div>
         </nav>
         <div className="flex items-center gap-2">
-            <div className="hidden min-[1800px]:flex items-center gap-2">
+          <div className="hidden min-[1800px]:flex items-center gap-2">
             {utilityItems.map(({ label, icon: Icon, path }) => (
               <NavLink
                 key={label}
@@ -79,6 +90,16 @@ export function TopNav({ items, onToggleContext, onToggleAssistant }: TopNavProp
               </NavLink>
             ))}
           </div>
+          {sceneAvailable ? (
+            <button
+              className="hidden lg:inline-flex rounded-full border border-emerald-400/40 bg-emerald-400/10 px-4 py-2 text-xs text-emerald-200 hover:border-emerald-300 hover:text-emerald-100"
+              type="button"
+              onClick={onToggleScene}
+            >
+              <Orbit size={15} className="mr-2" />
+              {sceneOpen ? "Close Globe" : "Open Globe"}
+            </button>
+          ) : null}
           <button
             className="hidden min-[1800px]:inline-flex rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-100 hover:border-green-500 hover:text-green-500"
             type="button"
@@ -120,6 +141,18 @@ export function TopNav({ items, onToggleContext, onToggleAssistant }: TopNavProp
               ))}
             </nav>
             <div className="border-t border-slate-700 pt-3 space-y-2">
+              {sceneAvailable ? (
+                <button
+                  className="w-full rounded-xl border border-emerald-400/40 bg-emerald-400/10 px-4 py-2 text-left text-sm text-emerald-200 hover:border-emerald-300 hover:text-emerald-100"
+                  type="button"
+                  onClick={() => {
+                    onToggleScene?.();
+                    setMobileOpen(false);
+                  }}
+                >
+                  {sceneOpen ? "Close Globe" : "Open Globe"}
+                </button>
+              ) : null}
               {utilityItems.map(({ label, icon: Icon, path }) => (
                 <NavLink
                   key={label}

@@ -72,7 +72,8 @@ class TestIntelScoring(unittest.TestCase):
         weather_stub = {
             "risk_score": 4,
             "risk_level": "Moderate",
-            "confidence": "Medium",
+            "confidence": None,
+            "support": {"summary": "3/3 weather inputs available", "available_inputs": 3},
             "signals": [],
             "impacts": [],
             "sections": [],
@@ -80,7 +81,8 @@ class TestIntelScoring(unittest.TestCase):
         conflict_stub = {
             "risk_score": 5,
             "risk_level": "Moderate",
-            "confidence": "Medium",
+            "confidence": None,
+            "support": {"summary": "9 supporting articles", "article_count": 9},
             "signals": [],
             "impacts": [],
             "sections": [],
