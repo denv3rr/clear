@@ -16,8 +16,12 @@ def test_build_tracker_scene_payload_composes_live_points_and_trails():
                 "lon": -73.78,
                 "updated_ts": 1700000100,
                 "speed_heat": 0.6,
+                "speed_vol_kts": 12.5,
+                "icao24": "abc123",
+                "callsign": "AAL120",
                 "operator": "AAL",
                 "operator_name": "American Airlines",
+                "operator_country": "United States",
                 "country": "United States",
             },
             {
@@ -29,6 +33,7 @@ def test_build_tracker_scene_payload_composes_live_points_and_trails():
                 "lon": 120.3,
                 "updated_ts": 1700000200,
                 "speed_heat": 0.3,
+                "speed_vol_kts": 4.4,
                 "operator": "Evergreen",
                 "operator_name": "Evergreen Marine",
                 "country": "Singapore",
@@ -57,6 +62,7 @@ def test_build_tracker_scene_payload_composes_live_points_and_trails():
         history_fetcher=lambda tracker_id: histories.get(tracker_id, {"history": []}),
         now=1700000400,
         trail_limit=2,
+        filters={"category": "commercial", "country": "United States", "operator": "AAL"},
     )
 
     assert scene["scene_id"] == "osint-trackers"
@@ -71,6 +77,16 @@ def test_build_tracker_scene_payload_composes_live_points_and_trails():
     assert scene["timeline"]["trail_count"] == 1
     assert scene["focus_targets"]
     assert scene["meta"]["selected_point_count"] == 2
+    assert scene["meta"]["filters"]["category"] == "commercial"
+    assert scene["layers"][0]["filters"]["operator"] == "AAL"
+    first_point = scene["layers"][0]["features"][0]["properties"]
+    assert first_point["icao24"] == "abc123"
+    assert first_point["callsign"] == "AAL120"
+    assert first_point["operator_country"] == "United States"
+    assert first_point["speed_vol_kts"] == 12.5
+    assert first_point["latitude"] == 40.64
+    assert first_point["longitude"] == -73.78
+    assert first_point["popup_coordinates"] == {"lat": 40.64, "lon": -73.78}
     assert "source warning" in scene["meta"]["warnings"]
 
 
@@ -190,6 +206,8 @@ def test_build_intel_scene_payload_uses_regional_centroids_and_provenance():
     assert scene["scene_id"] == "osint-intel"
     assert scene["layers"][0]["kind"] == "point"
     assert len(scene["layers"][0]["features"]) == len(REGIONS) - 1
+    assert "emotion" in scene["meta"]["available_lenses"]
+    assert scene["meta"]["emotion"]["supported"] is True
     assert all(
         feature["properties"]["display_scope"] == "region-centroid"
         for feature in scene["layers"][0]["features"]
@@ -209,6 +227,11 @@ def test_build_intel_scene_payload_uses_regional_centroids_and_provenance():
     assert europe["properties"]["combined_risk"]["score"] is not None
     assert europe["properties"]["conflict"]["status"] == "gdelt"
     assert europe["properties"]["presentation"]["dominant_channel"] in {"weather", "conflict", "news", "combined"}
+    assert europe["properties"]["emotion"]["count"] >= 0
+    assert "dominant" in europe["properties"]["emotion"]
+    assert "emotion_series" in europe["properties"]["news"]
+    assert "subregion_counts" in europe["properties"]["news"]
+    assert "region_counts" in europe["properties"]["news"]
 
     middle_east = next(
         feature

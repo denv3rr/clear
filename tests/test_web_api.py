@@ -348,8 +348,12 @@ def test_osint_tracker_scene_endpoint_stubbed():
                 "lon": -73.78,
                 "updated_ts": 1700000100,
                 "speed_heat": 0.6,
+                "speed_vol_kts": 13.5,
+                "icao24": "abc123",
+                "callsign": "AAL120",
                 "operator": "AAL",
                 "operator_name": "American Airlines",
+                "operator_country": "United States",
                 "country": "United States",
             }
         ],
@@ -362,18 +366,50 @@ def test_osint_tracker_scene_endpoint_stubbed():
         ],
         "summary": {"distance_km": 180.5, "duration_sec": 300, "route_hint": "JFK -> offshore"},
     }
+    filtered_snapshot = dict(snapshot)
+    filtered_snapshot["points"] = list(snapshot["points"])
     with mock.patch.object(scene_routes.GlobalTrackers, "get_snapshot") as mocked_snapshot, mock.patch.object(
-        scene_routes.GlobalTrackers, "get_history"
-    ) as mocked_history:
+        scene_routes.GlobalTrackers, "apply_filters"
+    ) as mocked_filters, mock.patch.object(scene_routes.GlobalTrackers, "get_history") as mocked_history:
         mocked_snapshot.return_value = snapshot
+        mocked_filters.return_value = filtered_snapshot
         mocked_history.return_value = history
-        resp = client.get("/api/osint/scene/trackers?mode=combined", headers=_api_headers())
+        resp = client.get(
+            "/api/osint/scene/trackers?mode=combined&category=commercial&country=United%20States&operator=AAL&bbox=30,-90,50,-60",
+            headers=_api_headers(),
+        )
     assert resp.status_code == 200
     payload = resp.json()
+    mocked_filters.assert_called_once_with(
+        snapshot,
+        category="commercial",
+        country="United States",
+        operator="AAL",
+        bbox=(30.0, -90.0, 50.0, -60.0),
+    )
     assert payload["scene_id"] == "osint-trackers"
     assert payload["layers"][0]["kind"] == "point"
     assert payload["layers"][1]["kind"] == "path"
     assert payload["meta"]["route"] == "/api/osint/scene/trackers"
+    assert payload["meta"]["filters"]["category"] == "commercial"
+    assert payload["meta"]["filters"]["operator"] == "AAL"
+    point = payload["layers"][0]["features"][0]["properties"]
+    assert point["icao24"] == "abc123"
+    assert point["callsign"] == "AAL120"
+    assert point["operator_country"] == "United States"
+    assert point["speed_vol_kts"] == 13.5
+    assert point["popup_coordinates"] == {"lat": 40.64, "lon": -73.78}
+
+
+def test_osint_tracker_scene_rejects_invalid_bbox(monkeypatch):
+    monkeypatch.setenv("CLEAR_WEB_API_KEY", "secret")
+    client = TestClient(web_app.app)
+    resp = client.get(
+        "/api/osint/scene/trackers?bbox=1,2,3",
+        headers={"X-API-Key": "secret"},
+    )
+    assert resp.status_code == 400
+    assert "bbox" in resp.json()["detail"]
 
 
 def test_osint_tracker_scene_requires_key(monkeypatch):
@@ -407,7 +443,18 @@ def test_osint_intel_scene_endpoint_stubbed():
                         "id": "region:europe",
                         "layer": "regional-intel",
                         "geometry": {"type": "Point", "coordinates": [10.0, 50.0]},
-                        "properties": {"region": "Europe"},
+                        "properties": {
+                            "region": "Europe",
+                            "emotion": {
+                                "count": 3,
+                                "dominant": "fear",
+                            },
+                            "news": {
+                                "emotion_series": [{"emotion": "fear", "count": 2}],
+                                "subregion_counts": {"Northern Europe": 1},
+                                "region_counts": {"Europe": 3},
+                            },
+                        },
                     }
                 ],
             }
@@ -415,7 +462,23 @@ def test_osint_intel_scene_endpoint_stubbed():
         "focus_targets": [
             {"id": "region:europe", "label": "Europe", "lat": 50.0, "lon": 10.0}
         ],
-        "meta": {"warnings": ["Scene warning"]},
+        "meta": {
+            "warnings": ["Scene warning"],
+            "available_lenses": ["combined", "weather", "conflict", "news", "emotion"],
+            "emotion": {
+                "supported": True,
+                "fields": [
+                    "count",
+                    "dominant",
+                    "sentiment_avg",
+                    "negative_ratio",
+                    "emotion_counts",
+                    "region_counts",
+                    "subregion_counts",
+                    "emotion_series",
+                ],
+            },
+        },
     }
     with mock.patch.object(scene_routes, "MarketIntel") as mocked_intel_cls, mock.patch.object(
         scene_routes, "build_intel_scene"
@@ -438,6 +501,10 @@ def test_osint_intel_scene_endpoint_stubbed():
     assert payload["layers"][0]["kind"] == "point"
     assert payload["meta"]["route"] == "/api/osint/scene/intel"
     assert "Scene warning" in payload["meta"]["warnings"]
+    assert "emotion" in payload["meta"]["available_lenses"]
+    assert payload["meta"]["emotion"]["supported"] is True
+    assert payload["layers"][0]["features"][0]["properties"]["emotion"]["dominant"] == "fear"
+    assert payload["layers"][0]["features"][0]["properties"]["news"]["emotion_series"]
 
 
 def test_osint_intel_scene_requires_key(monkeypatch):

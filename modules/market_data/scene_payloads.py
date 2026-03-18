@@ -531,6 +531,17 @@ def build_intel_scene(
             ),
             3,
         )
+        emotion_counts = news_metrics.get("emotion_counts", {}) or {}
+        emotion_total = sum(int(count or 0) for count in emotion_counts.values())
+        dominant_emotion = (
+            sorted(
+                emotion_counts.items(),
+                key=lambda item: int(item[1] or 0),
+                reverse=True,
+            )[0][0]
+            if emotion_counts
+            else None
+        )
         feature_id = _region_feature_id(region.name)
         geometry = {"type": "Point", "coordinates": [region.lon, region.lat]}
         features.append(
@@ -580,7 +591,10 @@ def build_intel_scene(
                         "sentiment_avg": news_metrics.get("sentiment_avg", 0.0),
                         "negative_ratio": news_metrics.get("negative_ratio", 0.0),
                         "category_counts": news_metrics.get("category_counts", {}),
-                        "emotion_counts": news_metrics.get("emotion_counts", {}),
+                        "emotion_counts": emotion_counts,
+                        "region_counts": news_metrics.get("region_counts", {}),
+                        "subregion_counts": news_metrics.get("subregion_counts", {}),
+                        "emotion_series": news_metrics.get("emotion_series", []),
                         "top_sources": sorted(
                             {str(item.get("source", "")) for item in region_news_items if item.get("source")}
                         )[:4],
@@ -589,6 +603,14 @@ def build_intel_scene(
                         "skipped_sources": skipped_sources,
                         "health": news_payload.get("health", {}),
                         "freshness": news_freshness,
+                    },
+                    "emotion": {
+                        "count": emotion_total,
+                        "dominant": dominant_emotion,
+                        "counts": emotion_counts,
+                        "sentiment_avg": news_metrics.get("sentiment_avg", 0.0),
+                        "negative_ratio": news_metrics.get("negative_ratio", 0.0),
+                        "series": news_metrics.get("emotion_series", []),
                     },
                     "presentation": {
                         "dominant_channel": dominant_channel,
@@ -703,7 +725,20 @@ def build_intel_scene(
             "cached_news": news_cache_cached,
             "stale_news": news_cache_stale,
             "skipped_sources": skipped_sources,
-            "available_lenses": ["combined", "weather", "conflict", "news"],
+            "available_lenses": ["combined", "weather", "conflict", "news", "emotion"],
+            "emotion": {
+                "supported": True,
+                "fields": [
+                    "count",
+                    "dominant",
+                    "sentiment_avg",
+                    "negative_ratio",
+                    "emotion_counts",
+                    "region_counts",
+                    "subregion_counts",
+                    "emotion_series",
+                ],
+            },
             "warnings": list(dict.fromkeys(scene_warnings)),
         },
     )
@@ -719,12 +754,14 @@ def build_tracker_scene(
     mode: Optional[str] = None,
     point_limit: int = 24,
     trail_limit: int = 8,
+    filters: Optional[Mapping[str, Any]] = None,
     now: Optional[int] = None,
 ) -> Dict[str, Any]:
     current_time = int(now if now is not None else time.time())
     warnings = list(snapshot.get("warnings", []) or [])
     points = [point for point in (snapshot.get("points", []) or []) if isinstance(point, Mapping)]
     selected_points = points[: max(0, point_limit)]
+    applied_filters = dict(filters or {})
 
     live_features: List[Dict[str, Any]] = []
     for index, point in enumerate(selected_points):
@@ -745,12 +782,22 @@ def build_tracker_scene(
                     "label": point.get("label"),
                     "kind": point.get("kind"),
                     "category": point.get("category"),
+                    "icao24": point.get("icao24"),
+                    "callsign": point.get("callsign"),
                     "operator": point.get("operator"),
                     "operator_name": point.get("operator_name"),
+                    "operator_country": point.get("operator_country"),
                     "country": point.get("country"),
                     "flight_number": point.get("flight_number"),
                     "tail_number": point.get("tail_number"),
+                    "latitude": point.get("lat"),
+                    "longitude": point.get("lon"),
+                    "popup_coordinates": {
+                        "lat": point.get("lat"),
+                        "lon": point.get("lon"),
+                    },
                     "speed_kts": point.get("speed_kts"),
+                    "speed_vol_kts": point.get("speed_vol_kts"),
                     "altitude_ft": point.get("altitude_ft"),
                     "heading_deg": point.get("heading_deg"),
                     "industry": point.get("industry"),
@@ -875,7 +922,10 @@ def build_tracker_scene(
                 {"label": "Aircraft", "value": "flight", "color": "#48f1a6"},
                 {"label": "Vessels", "value": "ship", "color": "#2bdc98"},
             ],
-            filters={"mode": snapshot.get("mode", mode or "combined")},
+            filters={
+                "mode": snapshot.get("mode", mode or "combined"),
+                **applied_filters,
+            },
             style_hints={
                 "color_by": "kind",
                 "size_by": "speed_heat",
@@ -889,6 +939,10 @@ def build_tracker_scene(
                 "source": source,
                 "count": len(live_features),
                 "warnings": warnings,
+                "filters": {
+                    "mode": snapshot.get("mode", mode or "combined"),
+                    **applied_filters,
+                },
             },
         ),
         geo_layer_payload(
@@ -934,6 +988,10 @@ def build_tracker_scene(
             "point_count": len(points),
             "selected_point_count": len(live_features),
             "selected_trail_count": len(trail_features),
+            "filters": {
+                "mode": snapshot.get("mode", mode or "combined"),
+                **applied_filters,
+            },
             "warnings": warnings,
         },
     )
