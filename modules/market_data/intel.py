@@ -2,6 +2,7 @@ import json
 import os
 import re
 import time
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
@@ -39,11 +40,11 @@ REGIONS: List[RegionSpec] = [
 REGION_CONFLICT_QUERY_TERMS: Dict[str, List[str]] = {
     "Global": [],
     "North America": ["North America", "United States", "Canada", "Mexico", "Panama Canal"],
-    "Europe": ["Europe", "Ukraine", "Russia", "Black Sea", "Poland", "Baltic"],
-    "Middle East": ["Middle East", "Iran", "Israel", "Gaza", "Lebanon", "Syria", "Yemen", "Red Sea"],
-    "Asia-Pacific": ["Asia Pacific", "China", "Taiwan", "South China Sea", "Japan", "Korea", "India", "Philippines"],
+    "Europe": ["Europe", "Ukraine", "Russia", "Black Sea", "Poland", "Baltic", "Kyiv", "Kharkiv", "Donbas", "Crimea"],
+    "Middle East": ["Middle East", "Iran", "Israel", "Gaza", "West Bank", "Lebanon", "Syria", "Yemen", "Red Sea", "Iraq", "Houthi", "Hezbollah"],
+    "Asia-Pacific": ["Asia Pacific", "China", "Taiwan", "South China Sea", "Japan", "Korea", "India", "Philippines", "Myanmar", "Burma", "junta", "People's Defense Force", "Rakhine"],
     "Latin America": ["Latin America", "Brazil", "Argentina", "Colombia", "Venezuela", "Peru", "Panama Canal"],
-    "Africa": ["Africa", "Sudan", "Ethiopia", "Egypt", "Nigeria", "Sahel", "Libya"],
+    "Africa": ["Africa", "Sudan", "South Sudan", "Ethiopia", "Egypt", "Nigeria", "Sahel", "Libya", "Somalia", "Mali", "Burkina Faso", "Niger", "Mozambique", "Congo", "DRC"],
 }
 
 
@@ -601,6 +602,18 @@ def _ticker_matches_title(
     return False
 
 
+def _text_values(value: object) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, Mapping):
+        return [str(key) for key, item_value in value.items() if item_value]
+    if isinstance(value, Iterable):
+        return [str(item) for item in value if str(item).strip()]
+    return [str(value)]
+
+
 def score_news_item(
     item: Dict[str, object],
     tickers: Optional[List[str]] = None,
@@ -614,6 +627,8 @@ def score_news_item(
     regions = item.get("regions", []) or []
     industries = item.get("industries", []) or []
     tags = item.get("tags", []) or []
+    event_tags = item.get("event_tags") or tags
+    categories = item.get("categories") or []
     published_ts = item.get("published_ts")
 
     alias_map = ticker_aliases or get_ticker_aliases()
@@ -625,6 +640,28 @@ def score_news_item(
         score += 2
     if tags:
         score += 1
+    conflict_terms = {
+        str(value).lower()
+        for values in (event_tags, categories, tags)
+        for value in _text_values(values)
+        if str(value).strip()
+    }
+    if conflict_terms.intersection(HOTSPOT_EVENT_TAGS) or "conflict" in conflict_terms:
+        score += 5
+    if any(
+        term in title_lower
+        for term in (
+            "war",
+            "airstrike",
+            "shelling",
+            "junta",
+            "missile",
+            "drone",
+            "offensive",
+            "insurgency",
+        )
+    ):
+        score += 2
     if published_ts:
         age_hours = max(0, (int(time.time()) - int(published_ts)) / 3600)
         if age_hours <= 24:
@@ -751,9 +788,17 @@ class ConflictIntel:
             "conflict",
             "war",
             "attack",
+            "airstrike",
             "missile",
             "drone",
             "strike",
+            "shelling",
+            "offensive",
+            "battle",
+            "rebel",
+            "insurgency",
+            "militia",
+            "junta",
             "protest",
             "blockade",
             "sanctions",

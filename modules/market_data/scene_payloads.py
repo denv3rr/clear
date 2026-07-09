@@ -17,6 +17,63 @@ from modules.market_data.intel import (
     _score_weather,
 )
 
+REGIONAL_INTEL_METHODOLOGY = {
+    "methodology_id": "regional_intel_v1",
+    "derived": True,
+    "geometry_truth_level": "region-centroid",
+    "units": {
+        "score": "0-10 ordinal support/severity score",
+        "presentation_intensity": "0-1 display scalar",
+        "counts": "deduped article/context observations",
+    },
+    "formulas": {
+        "combined_score": (
+            "Weighted mean over available components: weather 0.35, "
+            "conflict 0.35, news 0.30; rounded and clamped to 0-10."
+        ),
+        "presentation_intensity": (
+            "max(combined_score / 10, news_article_count / 16), "
+            "then clamped for display."
+        ),
+        "priority_sort": (
+            "max(combined_score, conflict_score, conflict article-count proxy, "
+            "conflict event-tag count) so critical conflict signals do not sink "
+            "below calmer mixed indicators."
+        ),
+    },
+    "coverage": {
+        "regions": "Configured world regions excluding Global.",
+        "geometry": "Representative region centroid only; not incident geometry.",
+    },
+    "freshness": (
+        "Weather and conflict components use route build time when fetched; "
+        "news uses RSS cache timestamp plus cached/stale flags."
+    ),
+}
+
+REGIONAL_CONFLICT_PULSE_METHODOLOGY = {
+    "methodology_id": "regional_conflict_pulse_v1",
+    "derived": True,
+    "geometry_truth_level": "region-centroid-highlight",
+    "units": {
+        "pulse_intensity": "0-1 display scalar",
+        "article_count": "supporting article/context observations",
+        "event_counts": "supporting article tag counts",
+    },
+    "count_semantics": (
+        "article_count and event_counts are supporting article/tag counts, "
+        "not resolved incidents, alerts, or exact event footprints."
+    ),
+    "formula": (
+        "max(conflict_score / 10, conflict_event_tag_count / 8), "
+        "clamped to the display pulse range."
+    ),
+    "coverage": {
+        "regions": "Configured world regions with conflict score or conflict event tags.",
+        "geometry": "Centroid highlight only; not polygon or incident geometry.",
+    },
+}
+
 
 def geo_feature(
     feature_id: str,
@@ -318,6 +375,25 @@ def _component_score(
         return 0.0
 
 
+def _conflict_priority_score(properties: Mapping[str, Any]) -> float:
+    conflict_score = _component_score(properties, ("conflict", "score"))
+    conflict_count = _component_score(properties, ("conflict", "count"))
+    news = properties.get("news", {})
+    event_counts = news.get("event_counts", {}) if isinstance(news, Mapping) else {}
+    event_score = 0.0
+    if isinstance(event_counts, Mapping):
+        for tag in CONFLICT_CATEGORIES:
+            event_score += _component_score(event_counts, (str(tag),))
+    return max(conflict_score, min(10.0, conflict_count / 2.0), min(10.0, event_score))
+
+
+def _regional_priority_score(properties: Mapping[str, Any]) -> float:
+    return max(
+        _component_score(properties, ("combined_risk", "score")),
+        _conflict_priority_score(properties),
+    )
+
+
 def _dominant_channel(
     weather_score: Optional[int],
     conflict_score: Optional[int],
@@ -336,7 +412,7 @@ def build_intel_scene(
     intel: MarketIntel,
     *,
     scene_id: str = "osint-intel",
-    title: str = "Regional OSINT Signal Scene",
+    title: str = "Regional Signals",
     source: str = "intel",
     industry_filter: str = "all",
     enabled_sources: Optional[Sequence[str]] = None,
@@ -673,7 +749,7 @@ def build_intel_scene(
                     "regional-conflict-overlays",
                     geometry,
                     properties={
-                        "label": f"{region.name} hotspot",
+                        "label": f"{region.name} conflict signal",
                         "region": region.name,
                         "kind": "impact-zone",
                         "category": conflict_level.lower(),
@@ -740,13 +816,13 @@ def build_intel_scene(
 
     features.sort(
         key=lambda feature: (
-            _component_score(feature.get("properties", {}), ("combined_risk", "score")),
+            _regional_priority_score(feature.get("properties", {})),
             _component_score(feature.get("properties", {}), ("news", "count")),
         ),
         reverse=True,
     )
     feature_rank = {
-        feature["id"]: _component_score(feature.get("properties", {}), ("combined_risk", "score"))
+        feature["id"]: _regional_priority_score(feature.get("properties", {}))
         for feature in features
     }
     focus_targets.sort(
@@ -762,6 +838,7 @@ def build_intel_scene(
         "cached_news": news_cache_cached,
         "stale_news": news_cache_stale,
         "skipped_sources": skipped_sources,
+        "methodology": REGIONAL_INTEL_METHODOLOGY,
     }
     pulse_layer_meta = {
         "source": source,
@@ -770,6 +847,7 @@ def build_intel_scene(
             "Conflict pulses are centroid highlights, not exact event polygons.",
             *list(dict.fromkeys(scene_warnings)),
         ],
+        "methodology": REGIONAL_CONFLICT_PULSE_METHODOLOGY,
     }
     timeline = {
         "mode": "regional-intel",
@@ -790,7 +868,7 @@ def build_intel_scene(
             geo_layer_payload(
                 "regional-intel",
                 "point",
-                label="Regional OSINT Signals",
+                label="Regional Signals",
                 features=features,
                 legend=[
                     {"label": "Combined", "value": "combined", "color": "#48f1a6"},
@@ -817,7 +895,7 @@ def build_intel_scene(
             geo_layer_payload(
                 "regional-conflict-overlays",
                 "pulse",
-                label="Regional Conflict Hotspots",
+                label="Regional Conflict Signals",
                 features=pulse_features,
                 filters={
                     "industry": industry_filter,
@@ -878,7 +956,7 @@ def build_tracker_scene(
     *,
     history_fetcher: Optional[Callable[[str], Mapping[str, Any]]] = None,
     scene_id: str = "osint-trackers",
-    title: str = "OSINT Tracker Scene",
+    title: str = "Trackers",
     source: str = "trackers",
     mode: Optional[str] = None,
     point_limit: int = 24,
@@ -1133,7 +1211,7 @@ def build_overview_scene(
     *,
     history_fetcher: Optional[Callable[[str], Mapping[str, Any]]] = None,
     scene_id: str = "osint-overview",
-    title: str = "OSINT Globe Overview",
+    title: str = "World",
     mode: Optional[str] = None,
     point_limit: int = 24,
     trail_limit: int = 8,
@@ -1147,7 +1225,7 @@ def build_overview_scene(
         snapshot,
         history_fetcher=history_fetcher,
         scene_id="osint-overview-trackers",
-        title="OSINT Overview Trackers",
+        title="World Trackers",
         source="trackers",
         mode=mode,
         point_limit=point_limit,
@@ -1158,7 +1236,7 @@ def build_overview_scene(
     intel_scene = build_intel_scene(
         intel,
         scene_id="osint-overview-intel",
-        title="OSINT Overview Regional Signals",
+        title="World Signals",
         source="intel",
         industry_filter=industry_filter,
         enabled_sources=enabled_sources,

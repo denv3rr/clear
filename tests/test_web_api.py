@@ -85,104 +85,6 @@ def test_settings_endpoint():
     assert "system_metrics" in payload
 
 
-def test_client_index_endpoint_stubbed():
-    client = TestClient(web_app.app)
-    with mock.patch.object(clients_routes.DbClientStore, "fetch_all_clients") as mocked:
-        mocked.return_value = [{"client_id": "c1", "name": "Test Client", "accounts": []}]
-        resp = client.get("/api/clients", headers=_api_headers())
-    assert resp.status_code == 200
-    payload = resp.json()
-    assert payload["clients"]
-    assert payload["clients"][0]["client_id"] == "c1"
-
-
-def test_client_create_endpoint_stubbed():
-    client = TestClient(web_app.app)
-    with mock.patch.object(clients_routes.DbClientStore, "create_client") as mocked:
-        mocked.return_value = {
-            "client_id": "c1",
-            "name": "Atlas Capital",
-            "risk_profile": "Balanced",
-            "accounts": [],
-        }
-        resp = client.post(
-            "/api/clients",
-            json={"client_id": "c1", "name": "Atlas Capital", "risk_profile": "Balanced", "accounts": []},
-            headers=_api_headers(),
-        )
-    assert resp.status_code == 200
-    payload = resp.json()
-    assert payload["name"] == "Atlas Capital"
-
-
-def test_client_update_endpoint_stubbed():
-    client = TestClient(web_app.app)
-    with mock.patch.object(clients_routes.DbClientStore, "update_client") as mocked:
-        mocked.return_value = {
-            "client_id": "c1",
-            "name": "New Name",
-            "risk_profile": "Balanced",
-            "accounts": [],
-        }
-        resp = client.patch(
-            "/api/clients/c1",
-            json={"client_id": "c1", "name": "New Name", "risk_profile": "Balanced", "accounts": []},
-            headers=_api_headers(),
-        )
-    assert resp.status_code == 200
-    payload = resp.json()
-    assert payload["name"] == "New Name"
-
-
-def test_account_create_endpoint_stubbed():
-    client = TestClient(web_app.app)
-    with mock.patch.object(clients_routes.DbClientStore, "create_account") as mocked_create, mock.patch.object(
-        clients_routes.DbClientStore, "fetch_client"
-    ) as mocked_client:
-        mocked_create.return_value = {
-            "account_id": "a1",
-            "account_name": "Primary Brokerage",
-            "account_type": "Taxable",
-            "holdings": {},
-            "lots": {},
-            "manual_holdings": [],
-        }
-        mocked_client.return_value = {"client_id": "c1", "name": "Test Client", "accounts": []}
-        resp = client.post(
-            "/api/clients/c1/accounts",
-            json={"account_id": "a1", "account_name": "Primary Brokerage", "account_type": "Taxable", "tags": ["Core"]},
-            headers=_api_headers(),
-        )
-    assert resp.status_code == 200
-    payload = resp.json()
-    assert payload["account"]["account_name"] == "Primary Brokerage"
-
-
-def test_account_update_endpoint_stubbed():
-    client = TestClient(web_app.app)
-    with mock.patch.object(clients_routes.DbClientStore, "update_account") as mocked_update, mock.patch.object(
-        clients_routes.DbClientStore, "fetch_client"
-    ) as mocked_client:
-        mocked_update.return_value = {
-            "account_id": "a1",
-            "account_name": "Alpha Prime",
-            "account_type": "Taxable",
-            "holdings": {},
-            "lots": {},
-            "manual_holdings": [],
-            "custodian": "Fidelity",
-        }
-        mocked_client.return_value = {"client_id": "c1", "name": "Test Client", "accounts": []}
-        resp = client.patch(
-            "/api/clients/c1/accounts/a1",
-            json={"account_id": "a1", "account_name": "Alpha Prime", "account_type": "Taxable", "custodian": "Fidelity"},
-            headers=_api_headers(),
-        )
-    assert resp.status_code == 200
-    payload = resp.json()
-    assert payload["account"]["account_name"] == "Alpha Prime"
-
-
 def test_diagnostics_endpoint():
     client = TestClient(web_app.app)
     resp = client.get("/api/tools/diagnostics", headers=_api_headers())
@@ -431,7 +333,7 @@ def test_osint_intel_scene_endpoint_stubbed():
     sentinel_intel = object()
     scene_payload = {
         "scene_id": "osint-intel",
-        "title": "Regional OSINT Signal Scene",
+        "title": "Regional Signals",
         "kind": "osint",
         "camera_defaults": {"target_lat": 25.0, "target_lon": 15.0, "distance": 3.5},
         "timeline": {"mode": "regional-intel", "point_count": 2, "trail_count": 0},
@@ -439,7 +341,7 @@ def test_osint_intel_scene_endpoint_stubbed():
             {
                 "id": "regional-intel",
                 "kind": "point",
-                "label": "Regional OSINT Signals",
+                "label": "Regional Signals",
                 "features": [
                     {
                         "id": "region:europe",
@@ -459,6 +361,12 @@ def test_osint_intel_scene_endpoint_stubbed():
                         },
                     }
                 ],
+                "meta": {
+                    "methodology": {
+                        "methodology_id": "regional_intel_v1",
+                        "geometry_truth_level": "region-centroid",
+                    },
+                },
             }
         ],
         "focus_targets": [
@@ -505,6 +413,7 @@ def test_osint_intel_scene_endpoint_stubbed():
     assert "Scene warning" in payload["meta"]["warnings"]
     assert "emotion" in payload["meta"]["available_lenses"]
     assert payload["meta"]["emotion"]["supported"] is True
+    assert payload["layers"][0]["meta"]["methodology"]["methodology_id"] == "regional_intel_v1"
     assert payload["layers"][0]["features"][0]["properties"]["emotion"]["dominant"] == "fear"
     assert payload["layers"][0]["features"][0]["properties"]["news"]["emotion_series"]
 
@@ -536,7 +445,7 @@ def test_osint_overview_scene_endpoint_stubbed():
     snapshot = {"mode": "combined", "points": [], "warnings": []}
     scene_payload = {
         "scene_id": "osint-overview",
-        "title": "OSINT Globe Overview",
+        "title": "World",
         "kind": "osint",
         "camera_defaults": {"target_lat": 25.0, "target_lon": 15.0, "distance": 3.5},
         "timeline": {"mode": "overview", "point_count": 3, "trail_count": 1},

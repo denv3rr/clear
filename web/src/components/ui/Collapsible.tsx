@@ -8,6 +8,7 @@ type CollapsibleProps = {
   onToggle: () => void;
   children: React.ReactNode;
   className?: string;
+  mountWhenOpen?: boolean;
 };
 
 export function Collapsible({
@@ -16,14 +17,18 @@ export function Collapsible({
   open,
   onToggle,
   children,
-  className = ""
+  className = "",
+  mountWhenOpen = false
 }: CollapsibleProps) {
+  const shouldRenderChildren = open || !mountWhenOpen;
+
   return (
     <div className={`glass-panel rounded-2xl ${className}`}>
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center justify-between px-5 py-4 text-left"
+        aria-expanded={open}
+        className="flex w-full items-center justify-between px-5 py-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
       >
         <div>
           <p className="text-sm font-semibold text-slate-100">{title}</p>
@@ -46,7 +51,7 @@ export function Collapsible({
         transition={{ duration: 0.3, ease: "easeInOut" }}
         className="overflow-hidden"
       >
-        <div className="px-5 pb-5">{children}</div>
+        {shouldRenderChildren ? <div className="px-5 pb-5">{children}</div> : null}
       </motion.div>
     </div>
   );

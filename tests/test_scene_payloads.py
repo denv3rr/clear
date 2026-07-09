@@ -229,6 +229,24 @@ def test_build_intel_scene_payload_uses_regional_centroids_and_provenance():
     )
     assert scene["meta"]["stale_news"] is True
     assert "News cache is stale; regional signals may lag live conditions." in scene["meta"]["warnings"]
+    regional_layer = next(layer for layer in scene["layers"] if layer["id"] == "regional-intel")
+    regional_methodology = regional_layer["meta"]["methodology"]
+    assert regional_methodology["methodology_id"] == "regional_intel_v1"
+    assert regional_methodology["derived"] is True
+    assert regional_methodology["geometry_truth_level"] == "region-centroid"
+    assert regional_methodology["units"]["score"] == "0-10 ordinal support/severity score"
+    assert "weather 0.35" in regional_methodology["formulas"]["combined_score"]
+    assert "news_article_count / 16" in regional_methodology["formulas"]["presentation_intensity"]
+    assert "critical conflict signals" in regional_methodology["formulas"]["priority_sort"]
+    assert "not incident geometry" in regional_methodology["coverage"]["geometry"]
+    assert scene["focus_targets"][0]["label"] == "Europe"
+
+    pulse_layer = next(layer for layer in scene["layers"] if layer["id"] == "regional-conflict-overlays")
+    pulse_methodology = pulse_layer["meta"]["methodology"]
+    assert pulse_methodology["methodology_id"] == "regional_conflict_pulse_v1"
+    assert pulse_methodology["geometry_truth_level"] == "region-centroid-highlight"
+    assert "not resolved incidents" in pulse_methodology["count_semantics"]
+    assert "conflict_event_tag_count / 8" in pulse_methodology["formula"]
 
     europe = next(
         feature

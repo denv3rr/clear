@@ -13,7 +13,7 @@ This document describes how to use the assistant across API, web UI, and CLI.
 - Response:
   - `answer` (string)
   - `sources` (list)
-  - `confidence` (Low/Medium/High)
+  - `confidence` (reserved compatibility field; currently `null` unless a documented scoring contract is added)
   - `warnings` (list)
   - `routing` (rule + handler, when available)
   - `meta` (route, source, timestamp, warnings)
@@ -34,4 +34,5 @@ This document describes how to use the assistant across API, web UI, and CLI.
 
 ## Constraints
 - Deterministic outputs only; no simulated math.
+- Assistant exports omit unsupported confidence labels and rely on lineage, methodology, warnings, and source timestamps for support.
 - Unsupported modes return 501 with explicit warnings.

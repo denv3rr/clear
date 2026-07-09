@@ -1,0 +1,44 @@
+type GlobeDensityItem = {
+  accent: string;
+  label: string;
+  value: number;
+};
+
+type GlobeDataDensityProps = {
+  items: GlobeDensityItem[];
+  title: string;
+};
+
+export function GlobeDataDensity({ items, title }: GlobeDataDensityProps) {
+  const maxValue = Math.max(...items.map((item) => item.value), 1);
+
+  return (
+    <div className="globe-density" aria-label={title}>
+      <div className="globe-density__header">
+        <p className="globe-panel__label">{title}</p>
+        <span>{items.reduce((total, item) => total + item.value, 0)}</span>
+      </div>
+      <div className="globe-density__stack">
+        {items.map((item) => {
+          const width = item.value > 0 ? Math.max(8, (item.value / maxValue) * 100) : 0;
+          return (
+            <div key={item.label} className="globe-density__row">
+              <span className="globe-density__label">{item.label}</span>
+              <span className="globe-density__track">
+                <span
+                  className="globe-density__bar"
+                  style={{
+                    backgroundColor: item.accent,
+                    color: item.accent,
+                    width: `${width}%`,
+                  }}
+                />
+              </span>
+              <span className="globe-density__value">{item.value}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

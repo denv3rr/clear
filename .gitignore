@@ -114,6 +114,14 @@ htmlcov/
 .tox/
 .nox/
 .hypothesis/
+.pytest-tmp/
+.tmp_pytest*/
+.codex_pytest*/
+codex_pytest*/
+codex_tmp_probe/
+tmp_pytest*/
+tmp????????/
+test_runtime/
 
 # OS generated files
 .DS_Store

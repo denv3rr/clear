@@ -2,13 +2,16 @@ import unittest
 from unittest import mock
 
 from modules.market_data.intel import (
+    REGION_CONFLICT_QUERY_TERMS,
     MarketIntel,
     _aggregate_news_metrics,
     _impact_for_conflict,
     _impact_for_weather,
+    rank_news_items,
     _risk_level,
     _score_conflict,
     _score_weather,
+    score_news_item,
 )
 
 
@@ -106,6 +109,49 @@ class TestIntelScoring(unittest.TestCase):
         self.assertEqual(metrics["count"], 0)
         self.assertEqual(metrics["series"], [])
         self.assertEqual(metrics["emotion_series"], [])
+
+    def test_conflict_query_terms_cover_reported_active_regions(self):
+        self.assertIn("Myanmar", REGION_CONFLICT_QUERY_TERMS["Asia-Pacific"])
+        self.assertIn("People's Defense Force", REGION_CONFLICT_QUERY_TERMS["Asia-Pacific"])
+        self.assertIn("Ukraine", REGION_CONFLICT_QUERY_TERMS["Europe"])
+        self.assertIn("Gaza", REGION_CONFLICT_QUERY_TERMS["Middle East"])
+        self.assertIn("Congo", REGION_CONFLICT_QUERY_TERMS["Africa"])
+
+    def test_conflict_news_ranks_ahead_of_same_region_general_news(self):
+        items = [
+            {
+                "title": "Asia-Pacific factories report stable exports",
+                "regions": ["Asia-Pacific"],
+                "industries": ["manufacturing"],
+                "tags": ["supply-chain"],
+                "categories": ["macro"],
+            },
+            {
+                "title": "Myanmar junta airstrike intensifies conflict with resistance forces",
+                "regions": ["Asia-Pacific"],
+                "industries": ["shipping"],
+                "tags": ["conflict"],
+                "event_tags": ["conflict", "airstrike"],
+                "categories": ["conflict"],
+            },
+        ]
+        ranked = rank_news_items(items, region="Asia-Pacific")
+        self.assertEqual(ranked[0]["title"], items[1]["title"])
+
+    def test_conflict_priority_accepts_single_string_categories(self):
+        score = score_news_item(
+            {
+                "title": "Myanmar junta shelling disrupts regional logistics",
+                "regions": "Asia-Pacific",
+                "industries": "shipping",
+                "categories": "conflict",
+                "event_tags": "airstrike",
+                "tags": "conflict",
+            },
+            region="Asia-Pacific",
+            industry="shipping",
+        )
+        self.assertGreaterEqual(score, 7)
 
     def test_combined_report_omits_series_without_news(self):
         intel = MarketIntel()

@@ -1,3 +1,6 @@
+import sys
+import types
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
@@ -72,3 +75,41 @@ def test_tracker_stack_fits_console_height():
     rows = fit_renderable_to_height(console, _layout, max_items=len(snapshot["points"]), min_items=1)
     lines = console.render_lines(_layout(rows), console.options)
     assert len(lines) <= console.height
+
+
+def test_live_tracker_layout_initializes_compact_state(monkeypatch):
+    feed = MarketFeed()
+    feed.console = Console(width=100, height=28, force_terminal=True)
+    snapshot = _build_snapshot(8)
+    snapshot.update({"mode": "combined", "count": len(snapshot["points"])})
+    monkeypatch.setattr(feed, "_tracker_snapshot", lambda mode, allow_refresh: snapshot)
+    monkeypatch.setattr(feed.trackers, "refresh", lambda force=False: None)
+    monkeypatch.setattr(feed.trackers, "get_snapshot", lambda mode="combined": snapshot)
+    monkeypatch.setitem(
+        sys.modules,
+        "msvcrt",
+        types.SimpleNamespace(kbhit=lambda: False, getwch=lambda: "0"),
+    )
+
+    class InitialLayoutRendered(Exception):
+        pass
+
+    class FakeLive:
+        def __init__(self, renderable, *args, **kwargs):
+            lines = feed.console.render_lines(renderable, feed.console.options)
+            assert lines
+
+        def __enter__(self):
+            raise InitialLayoutRendered()
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    import rich.live
+
+    monkeypatch.setattr(rich.live, "Live", FakeLive)
+
+    try:
+        feed.run_global_trackers()
+    except InitialLayoutRendered:
+        pass

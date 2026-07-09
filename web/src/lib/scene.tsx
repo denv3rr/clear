@@ -95,8 +95,8 @@ function appendQueryParam(params: URLSearchParams, key: string, value: string) {
 const SCENES: Record<SceneId, SceneDefinition> = {
   overview: {
     id: "overview",
-    label: "OSINT Globe Overview",
-    description: "Trackers, regional weather, conflict, news, and emotion fused into one operational globe.",
+    label: "World",
+    description: "Trackers and regional signals.",
     buildPath: (state) => {
       const params = new URLSearchParams();
       params.set("mode", state.trackerMode);
@@ -118,8 +118,8 @@ const SCENES: Record<SceneId, SceneDefinition> = {
   },
   trackers: {
     id: "trackers",
-    label: "Tracker Globe",
-    description: "Live trackers, cargo lanes, and replay trails rendered on the globe.",
+    label: "Trackers",
+    description: "Live positions and trails.",
     buildPath: (state) => {
       const params = new URLSearchParams();
       params.set("mode", state.trackerMode);
@@ -134,8 +134,8 @@ const SCENES: Record<SceneId, SceneDefinition> = {
   },
   intel: {
     id: "intel",
-    label: "Regional Intel Globe",
-    description: "Regional weather, conflict, news, and emotion pressure fused into a globe-first OSINT view.",
+    label: "Signals",
+    description: "Regional weather, conflict, news, and emotion.",
     buildPath: (state) => {
       const params = new URLSearchParams();
       params.set("industry", state.intelIndustry);

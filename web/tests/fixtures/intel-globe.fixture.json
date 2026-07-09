@@ -95,7 +95,7 @@
   "intel_meta_sha256": "2dc37c7d5e47106f1c0100c223937f7c8a39e91d3086d7962b43bf1ee61e6a10",
   "scene_payload": {
     "scene_id": "osint-intel",
-    "title": "Regional OSINT Signal Scene",
+    "title": "Regional Signals",
     "kind": "osint",
     "camera_defaults": {
       "target_lat": 17.5,
@@ -121,7 +121,7 @@
       {
         "id": "regional-intel",
         "kind": "point",
-        "label": "Regional OSINT Signals",
+        "label": "Regional Signals",
         "features": [
           {
             "id": "region:north-america",
@@ -1612,7 +1612,7 @@
       {
         "id": "regional-conflict-overlays",
         "kind": "pulse",
-        "label": "Regional Conflict Hotspots",
+        "label": "Regional Conflict Signals",
         "features": [
           {
             "id": "pulse:region:north-america",
@@ -1626,7 +1626,7 @@
             },
             "ts": 1773801506,
             "properties": {
-              "label": "North America hotspot",
+              "label": "North America conflict signal",
               "region": "North America",
               "kind": "impact-zone",
               "category": "moderate",
@@ -1691,7 +1691,7 @@
             },
             "ts": 1773801506,
             "properties": {
-              "label": "Middle East hotspot",
+              "label": "Middle East conflict signal",
               "region": "Middle East",
               "kind": "impact-zone",
               "category": "moderate",
@@ -1758,7 +1758,7 @@
             },
             "ts": 1773801506,
             "properties": {
-              "label": "Asia-Pacific hotspot",
+              "label": "Asia-Pacific conflict signal",
               "region": "Asia-Pacific",
               "kind": "impact-zone",
               "category": "moderate",

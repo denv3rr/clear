@@ -1,9 +1,10 @@
 # AI Assistant Plan (Draft)
 
 ## Current Status
-- API route `/api/assistant/query` accepts JSON payloads and returns structured responses (answer/sources/confidence/warnings/meta) from a rules-based summarizer.
+- API route `/api/assistant/query` accepts JSON payloads and returns structured responses (answer/sources/warnings/meta plus reserved nullable confidence compatibility) from a rules-based summarizer.
 - Unsupported modes or questions return explicit "not implemented" payloads with a 501 status and `meta` warnings.
 - Web chat drawer and CLI assistant module are implemented; persistence is still planned.
+- Assistant history exports strip unsupported confidence labels and preserve support through methodology, warnings, and source lineage.
 
 ## Goals
 - Provide a deterministic insight layer on top of existing analytics, news, and client data.
@@ -37,7 +38,7 @@
 - Always return structured output with:
   - `answer` (string)
   - `sources` (list of data refs + timestamps)
-  - `confidence` (Low/Medium/High based on data availability)
+  - `confidence` (`null` unless a documented model or scoring contract exists)
   - `warnings` (missing data, stale cache, or blocked sources)
 - No hallucinated numbers or placeholder examples.
 - If inputs are missing, return "Unavailable" with a reason.

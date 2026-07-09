@@ -1,6 +1,7 @@
 # Visual Modernization Plan
 
-Status: Proposed on March 17, 2026. Execution is gated by `docs/standards_remediation_plan.md`.
+Status: Proposed on March 18, 2026. Execution is gated by
+`docs/standards_remediation_plan.md`.
 
 ## Intent
 
@@ -211,6 +212,9 @@ The aesthetic should stay restrained and tactical:
 - glowing data
 - floating controls
 - no flat spreadsheet-like surfaces as the primary experience
+- conflict and critical-event states should use a red accent only when backed
+  by source payload values, and red must be paired with text, shape, elevation,
+  or counters so the UI does not rely on color alone.
 
 ## Data Work Required Before The Globe Can Be Honest
 
@@ -659,6 +663,75 @@ This is the base for the next operational phase. The detailed execution plan
 for workflow, lineage, and client/report linkage now lives in
 `docs/osint_operational_workflow_plan.md`.
 
+### Phase 1.1 Next-Phase Planning Note
+
+The next implementation batch is now explicitly planned, but not started, in
+`docs/osint_globe_phase_2_plan.md`.
+
+Its priorities are:
+
+1. close the active standards gates before adding denser visuals
+2. onboard reviewed external event/alert feeds instead of hardcoding more UI
+   keywords or inferred points
+3. promote incidents, alerts, and exposures to canonical objects
+4. expand the globe with truthful incident/weather/hazard layers
+5. add lineage-rich workflow and export behavior so the globe becomes an
+   operational surface rather than only a presentation surface
+
+### Phase 1.2 Overview-First Shell Modernization Note
+
+The next standards-safe UI tranche moved the operating shape closer to the
+globe-first direction without starting blocked Phase 2 source/layer work.
+
+What landed:
+
+- the Overview route can now open the fused OSINT overview globe directly, so
+  the globe is available from the primary command surface instead of only from
+  `/osint`
+- user-facing copy now simplifies the default fused globe to **World** while
+  keeping OSINT as the technical workspace/source term in docs and routes
+- the Overview route now opens the World globe automatically on first load and
+  the World workspace drop-down is visible by default below the client/account
+  context
+- client/account context is also summarized inside the World globe HUD so
+  portfolio scope and global signals remain part of one operating surface
+- top-level navigation was simplified by removing OSINT as a permanent global
+  nav item while preserving `/osint` as a deep-link route
+- the Dashboard now surfaces a collapsible client/account snapshot above the
+  embedded OSINT workspace, keeping client context close to the globe entry
+- the OSINT workspace was extracted into a shared lazy component and mounted on
+  Overview only when its drop-down is opened, so tracker/map code does not load
+  just because the Overview route exists
+- the globe HUD gained a compact visible-signal density strip and surface
+  peaks derived only from visible scene payload values; missing values are not
+  filled and no new geometry is invented
+- regional signal and conflict-pulse layers now carry explicit methodology
+  metadata for formulas, units, count semantics, geometry truth level, coverage,
+  and freshness assumptions before any denser globe visuals are added
+- conflict-priority styling is source-driven: regions with conflict score,
+  supporting conflict articles, or conflict event tags are promoted in sorting
+  and rendered with red accents/raised peaks; no region is forced hot without
+  payload evidence
+- precision-risky copy was softened from hotspot/risk language toward regional
+  signals and centroid highlights where the scene contract is not exact
+  incident geometry
+- feature detail rows now expose source, layer, display scope, coverage,
+  warnings, and display notes when those fields are present in the real
+  payload
+- globe controls gained `aria-pressed` and stronger focus-visible treatment,
+  and scene warnings can expand beyond the first three entries
+- Vite and the bundle guardrail now block heavy async visual domains from being
+  preloaded in `index.html`; MapLibre and Leaflet styles are injected only when
+  their lazy loaders are used
+
+What this still does not claim:
+
+- no ReliefWeb/EONET/FIRMS/NWS/USGS source adapters were started
+- no polygon, heatmap, wildfire, disaster, or incident layer was added
+- centroid pulses remain regional highlights, not exact incident geometry
+- broader Globe Phase 2 remains gated by the standards remediation evidence
+  requirements in `docs/standards_remediation_plan.md`
+
 ## Immediate Next Move
 
 With the architecture spike and hardening slice in place, the next move is:
@@ -677,3 +750,6 @@ With the architecture spike and hardening slice in place, the next move is:
 5. Keep new animation work inside the bundle guardrails and revisit async chunk
    composition before layering on denser heatmaps, particle fields, or
    additional 3D chart packages.
+
+The detailed phase sequencing, source research, and specialist plan for that
+next move now live in `docs/osint_globe_phase_2_plan.md`.
