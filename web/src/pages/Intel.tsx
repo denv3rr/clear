@@ -367,7 +367,7 @@ export default function Intel() {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div className="rounded-xl border border-slate-700 p-4">
-                <p className="text-xs font-semibold text-slate-200 mb-2">Global Risk Trend</p>
+                <p className="text-xs font-semibold text-slate-200 mb-2">Global Signal Trend</p>
                 {showTrendData ? (
                   <div className="h-40 w-full">
                     <ResponsiveContainer width="100%" height="100%">
@@ -625,7 +625,7 @@ export default function Intel() {
             </div>
 
             <div className="rounded-xl border border-slate-700 p-4">
-              <p className="text-xs font-semibold text-slate-200 mb-2">Conflict Hotspots</p>
+              <p className="text-xs font-semibold text-slate-200 mb-2">Regional Conflict Signals</p>
               {conflict?.hotspots && conflict.hotspots.length > 0 ? (
                 <div className="space-y-3 text-xs text-slate-100">
                   {conflict.hotspots.slice(0, 4).map((hotspot, index) => (
@@ -649,7 +649,7 @@ export default function Intel() {
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-slate-400">No conflict hotspots available yet.</p>
+                <p className="text-xs text-slate-400">No regional conflict signals available yet.</p>
               )}
             </div>
 

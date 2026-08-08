@@ -7,7 +7,7 @@ criteria.
 
 ## Audit Snapshot
 
-Audit date: 2026-03-17
+Audit date: 2026-03-18
 
 Closed in the current pass:
 - Removed runtime/demo mock plumbing from the web data layer and tracker stream.
@@ -31,8 +31,27 @@ Closed in the current pass:
   semantic duplicates fail closed instead of inflating downstream counts.
 - Expanded diagnostics visibility for duplicate client names and duplicate raw
   news cache entries so existing drift is detectable before it biases counts.
+- Moved the OSINT workspace into the Overview route behind a collapsible lazy
+  mount while keeping the globe as the primary entry point and preserving
+  `/osint` as a deep link.
+- Renamed the user-facing fused globe to World, auto-opens it on Overview,
+  keeps the World workspace visible by default, and embeds client/account
+  context in the globe HUD.
+- Added truthfulness-oriented globe copy and selected-feature provenance rows
+  for source, layer, display scope, coverage, warnings, and display notes when
+  present in the payload.
+- Added a compact globe signal-density strip and scene surface peaks derived
+  only from visible real payload values; no missing values, geometry, or
+  positive-path visuals are fabricated.
+- Promoted source-backed conflict signals in region sorting, red globe accents,
+  and raised peaks without hardcoding regions as hot when source evidence is
+  absent.
+- Extended frontend bundle guardrails to fail on heavy async visual
+  preloads/styles in `index.html`, and moved MapLibre/Leaflet styles behind
+  their lazy loaders.
 - Removed heuristic assistant confidence values from runtime assistant output
-  and exports.
+  and exports, including stripping old history payload labels at the export
+  normalization boundary with an explicit warning.
 - Removed heuristic confidence labels from weather/conflict/combined intel
   reports; those reports now expose support/availability instead of invented
   certainty labels.
@@ -46,11 +65,14 @@ Closed in the current pass:
   financial calculations.
 - Replaced a silent startup schema failure with explicit logging plus startup
   failure, and made `.env` load issues visible in logs.
+- Migrated client/account positive-path API evidence away from fabricated
+  `DbClientStore` success stubs and onto the isolated SQLite route tests in
+  `tests/test_web_api_clients.py`, now using a per-test temporary database.
 
 Still open:
-- Many Python tests still rely on synthetic in-memory payloads or monkeypatched
-  positive-path data instead of live local data or captured real fixtures with
-  provenance.
+- Several Python tests still rely on synthetic in-memory payloads or
+  monkeypatched positive-path data instead of live local data or captured real
+  fixtures with provenance.
 - Positive-path browser mutation tests still need an isolated real-data harness
   so we can verify destructive flows without touching local operator data.
 - Tracker globe positive-path visuals still need a reviewed capture path before
@@ -61,8 +83,11 @@ Still open:
   committed.
 - Widespread `except Exception` and bare `pass` usage still needs a structured
   fail-safe audit across `modules/`, `web_api/`, and startup code.
-- Some report/export tests still use invented `confidence` strings in fixture
-  payloads even though runtime behavior is moving away from them.
+- Some report synthesis tests still use invented `confidence` strings in
+  fixture payloads even though runtime behavior is moving away from them.
+- The next implementation phase is now defined in
+  `docs/osint_globe_phase_2_plan.md` and remains blocked until Phase 1 and
+  Phase 2 in this document are explicitly advanced with evidence.
 
 ## Specialist Roles
 

@@ -97,7 +97,7 @@ export default function News() {
     return `${merged.slice(0, 2).join(" • ")} +${merged.length - 2} more`;
   };
   const errorMessages = [
-    metaError ? `Intel metadata failed: ${metaError}` : null,
+    metaError ? `Signal metadata failed: ${metaError}` : null,
     newsError
       ? `News feed failed: ${newsError}${
           newsError.includes("401") || newsError.includes("403") ? ` (${authHint})` : ""

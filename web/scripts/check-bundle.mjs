@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const assetsDir = path.resolve("dist", "assets");
+const indexPath = path.resolve("dist", "index.html");
 
 if (!fs.existsSync(assetsDir)) {
   console.error("Bundle check: dist/assets not found. Run `npm run build` first.");
@@ -27,6 +28,8 @@ const budgets = [
   { label: "globe-vendor", pattern: /^globe-.*\.js$/, maxBytes: 1000 * 1024, failOnExceed: false },
   { label: "plotly", pattern: /^plotly-.*\.js$/, maxBytes: 5200 * 1024, failOnExceed: false },
 ];
+
+const heavyInitialAssetPattern = /\/assets\/(?:globe|maplibre|leaflet|markdown|plotly)-[^"']+\.(?:js|css)/;
 
 function formatKiB(bytes) {
   return `${(bytes / 1024).toFixed(1)} KiB`;
@@ -54,6 +57,27 @@ for (const budget of budgets) {
   if (!ok && budget.failOnExceed) {
     hasFailure = true;
   }
+}
+
+if (fs.existsSync(indexPath)) {
+  const indexHtml = fs.readFileSync(indexPath, "utf8");
+  const initialHeavyLinks = Array.from(
+    indexHtml.matchAll(/<link\b[^>]+(?:rel="modulepreload"|"modulepreload" rel=|rel="stylesheet"|"stylesheet" rel=)[^>]+>/g)
+  )
+    .map((match) => match[0])
+    .filter((tag) => heavyInitialAssetPattern.test(tag));
+
+  console.log("\nBundle check: initial heavy preload/style links");
+  if (initialHeavyLinks.length) {
+    for (const tag of initialHeavyLinks) {
+      console.log(`- fail: ${tag}`);
+    }
+    hasFailure = true;
+  } else {
+    console.log("- ok: no globe/maplibre/leaflet/markdown/plotly preload or stylesheet links in index.html");
+  }
+} else {
+  console.log("\nBundle check: index.html not found; skipping initial preload check");
 }
 
 if (hasFailure) {

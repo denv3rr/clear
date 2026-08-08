@@ -17,9 +17,10 @@ test("dashboard renders overview and OSINT callout", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "OSINT Trackers + Intel + News" })
+    page.getByRole("button", { name: /World Workspace/ })
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open OSINT" })).toBeVisible();
+  await expect(page.getByTestId("overview-open-globe")).toBeVisible();
+  await expect(page.getByTestId("globe-overlay")).toBeVisible();
 });
 
 test("clients page renders command center with real data or safe empty state", async ({ page }) => {
@@ -53,17 +54,18 @@ test("intel and news pages render real-data workspaces", async ({ page }) => {
 test("osint tabs switch", async ({ page }) => {
   await page.goto("/osint?tab=trackers");
   await expect(page.getByRole("heading", { name: "Live Trackers" })).toBeVisible();
-  await page.getByRole("button", { name: "Intel" }).click();
+  await page.getByRole("tab", { name: /Signals/ }).click();
   await expect(page.getByText("Global Impact Summary")).toBeVisible();
-  await page.getByRole("button", { name: "News" }).click();
+  await page.getByRole("tab", { name: /News/ }).click();
   await expect(page.getByText("Market Signals")).toBeVisible();
 });
 
 test("tracker globe entry opens the overview globe with layer controls", async ({ page }) => {
   await page.goto("/osint?tab=trackers");
   await page.getByTestId("osint-open-globe").click();
-  await expect(page.getByTestId("globe-overlay")).toBeVisible();
-  await expect(page.getByText("OSINT Globe Overview")).toBeVisible();
+  const overlay = page.getByTestId("globe-overlay");
+  await expect(overlay).toBeVisible();
+  await expect(overlay.getByRole("heading", { name: "World" })).toBeVisible();
   await expect(page.getByText("Scene Status")).toBeVisible();
   await expect(page.getByTestId("globe-layer-trackers")).toBeVisible();
   await expect(page.getByTestId("globe-layer-regions")).toBeVisible();
@@ -88,8 +90,8 @@ test("tracker globe entry opens the overview globe with layer controls", async (
   await expect(page.getByLabel("Show details")).toBeVisible();
   await page.getByLabel("Show details").click();
   await expect(page.getByLabel("Hide details")).toBeVisible();
-  await page.getByLabel("Close globe").click();
-  await expect(page.getByText("OSINT Globe Overview")).toHaveCount(0);
+  await page.getByLabel("Close world view").click();
+  await expect(overlay).toHaveCount(0);
 });
 
 test("intel globe overlay opens with regional scene controls", async ({ page }) => {
@@ -110,7 +112,7 @@ test("intel globe overlay opens with regional scene controls", async ({ page }) 
     page.getByText("Unavailable", { exact: true })
   ]);
   await expectAnyVisible([
-    page.getByText("Visible Conflict Overlays"),
+    page.getByText("Visible Centroid Highlights"),
     page.getByText("Unavailable", { exact: true })
   ]);
 });

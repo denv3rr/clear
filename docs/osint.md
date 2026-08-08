@@ -1,9 +1,19 @@
-# OSINT + Trackers
+# World + Trackers
 
 ## Overview
-The OSINT workspace groups trackers, intel, and news into a single surface. The
-tracker module provides live aviation and maritime activity, but remains opt-in
-and should only surface in reports when it matches account relevance tags.
+The user-facing workspace is labeled **World**. It groups trackers, regional
+signals, and news into a single surface while keeping `/osint` as the technical
+deep-link route.
+
+The World workspace is embedded on the Overview page below the top
+client/account context and is visible by default. The fused World globe opens
+automatically on the Overview page and carries client/account context inside
+the globe UI so the main page stays globe-first without separating portfolio
+scope from global signals.
+
+The tracker module provides live aviation and maritime activity, but remains
+opt-in for reports and should only surface when it matches account relevance
+tags.
 
 ## Tracker Data Sources
 - **OpenSky** (default fallback): used when no custom flight feed is configured.
@@ -37,4 +47,4 @@ The weekly brief only includes aviation/maritime notes when:
 1) Account tags match tracker relevance rules, and
 2) Cached tracker data exists for those rules.
 
-This keeps OSINT content out of unrelated portfolio reporting.
+This keeps World/OSINT content out of unrelated portfolio reporting.

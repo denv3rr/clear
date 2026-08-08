@@ -1385,6 +1385,8 @@ class MarketFeed:
 
         def _layout_for(page_size: int, offset_override: Optional[int] = None) -> Table:
             nonlocal scroll_offset
+            compact = compact_for_width(self.console.width)
+            compact_height = self.console.height < 32
             filtered = GlobalTrackers.apply_category_filter(snapshot, category_filter)
             points = filtered.get("points", [])
             if offset_override is None:
@@ -1407,8 +1409,6 @@ class MarketFeed:
                     style="yellow",
                 )
                 panel = Panel(Group(warn, panel), border_style="yellow", title="Tracker Notice")
-            compact = compact_for_width(self.console.width)
-            compact_height = self.console.height < 32
             sidebar = build_sidebar(
                 [("Trackers", {k: v for k, v in options.items() if k in ("1", "2", "3", "4", "C", "F", "A", "S", "T", "SPC", "G", "0")})],
                 show_main=True,

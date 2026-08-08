@@ -31,7 +31,7 @@ function SceneOverlayLoading() {
     <div className="globe-overlay">
       <div className="globe-overlay__backdrop" />
       <div className="globe-overlay__loading">
-        <p>Loading immersive globe...</p>
+        <p>Loading world view...</p>
       </div>
     </div>
   );
@@ -69,12 +69,13 @@ function ShellFrame({ children }: AppShellProps) {
     if (path.startsWith("/news")) return "news";
     return "unknown";
   })();
+  const sceneEnabled = entry === "dashboard" || entry === "osint";
 
   useEffect(() => {
-    if (entry !== "osint" && isOpen) {
+    if (!sceneEnabled && isOpen) {
       closeScene();
     }
-  }, [closeScene, entry, isOpen]);
+  }, [closeScene, isOpen, sceneEnabled]);
 
   const healthMessages: string[] = [];
   if (healthError) {
@@ -90,8 +91,8 @@ function ShellFrame({ children }: AppShellProps) {
         items={navItems}
         onToggleContext={() => setContextOpen((prev) => !prev)}
         onToggleAssistant={() => setAssistantOpen((prev) => !prev)}
-        onToggleScene={() => toggleScene(entry === "osint" ? "overview" : undefined)}
-        sceneAvailable={entry === "osint"}
+        onToggleScene={() => toggleScene(sceneEnabled ? "overview" : undefined)}
+        sceneAvailable={sceneEnabled}
         sceneOpen={isOpen}
       />
       <div className="flex min-h-screen min-w-0">

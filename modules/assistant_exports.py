@@ -3,6 +3,10 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, Iterable, List, Optional
 
+UNSUPPORTED_CONFIDENCE_WARNING = (
+    "Assistant confidence labels are omitted until a documented scoring contract exists."
+)
+
 
 def _as_list(value: Any) -> List[Any]:
     if value is None:
@@ -27,14 +31,12 @@ def _normalize_source(source: Dict[str, Any]) -> Dict[str, Any]:
 def normalize_assistant_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     question = str(entry.get("question") or "").strip()
     answer = str(entry.get("answer") or "").strip() or "No response available."
-    confidence_raw = entry.get("confidence")
-    confidence = None
-    if confidence_raw is not None:
-        normalized_confidence = str(confidence_raw).strip()
-        confidence = normalized_confidence or None
     warnings = [
         str(item) for item in _as_list(entry.get("warnings")) if str(item).strip()
     ]
+    confidence_raw = entry.get("confidence")
+    if confidence_raw is not None and str(confidence_raw).strip():
+        warnings.append(UNSUPPORTED_CONFIDENCE_WARNING)
     sources = [
         _normalize_source(source)
         for source in _as_list(entry.get("sources"))
@@ -45,7 +47,7 @@ def normalize_assistant_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "question": question,
         "answer": answer,
-        "confidence": confidence,
+        "confidence": None,
         "warnings": warnings,
         "sources": sources,
     }
@@ -120,8 +122,6 @@ def render_assistant_export_markdown(export_payload: Dict[str, Any]) -> str:
         lines.append("")
         lines.append(f"### Question: {entry.get('question', '')}")
         lines.append(f"Answer: {entry.get('answer', '')}")
-        if entry.get("confidence"):
-            lines.append(f"Confidence: {entry.get('confidence', '')}")
         warnings = entry.get("warnings") or []
         if warnings:
             lines.append(f"Warnings: {', '.join(warnings)}")

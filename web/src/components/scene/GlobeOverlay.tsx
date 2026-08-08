@@ -26,10 +26,12 @@ import {
   useSceneController
 } from "../../lib/scene";
 import { useReducedMotionPreference } from "../../lib/useReducedMotion";
+import { GlobeDataDensity } from "./GlobeDataDensity";
 
 type SceneFeature = {
   id: string;
   layer: string;
+  source?: string;
   geometry: {
     type: "Point" | "LineString" | "Polygon" | "MultiPolygon";
     coordinates: number[] | number[][] | number[][][] | number[][][][];
@@ -111,6 +113,18 @@ type IntelMeta = {
   sources: string[];
 };
 
+type ClientSummary = {
+  client_id: string;
+  name: string;
+  risk_profile?: string;
+  accounts_count?: number;
+  holdings_count?: number;
+};
+
+type ClientIndex = {
+  clients?: ClientSummary[];
+};
+
 type TrackerPresentationPresetId =
   | "operations-overview"
   | "air-picture"
@@ -165,10 +179,10 @@ const INTEL_PRESENTATION_PRESETS: Array<{
   id: IntelPresentationPresetId;
   label: string;
 }> = [
-  { id: "global-risk", label: "Global Risk" },
+  { id: "global-risk", label: "Global Signals" },
   { id: "weather-watch", label: "Weather Watch" },
-  { id: "conflict-watch", label: "Conflict Watch" },
-  { id: "news-pressure", label: "News Pressure" },
+  { id: "conflict-watch", label: "Conflict Signals" },
+  { id: "news-pressure", label: "News Signals" },
   { id: "emotion-watch", label: "Emotion Watch" }
 ];
 
@@ -316,6 +330,26 @@ function formatStringList(values: unknown, limit = 4) {
   return entries.slice(0, limit).join(", ");
 }
 
+function formatOptionalText(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) return "n/a";
+  return value.trim();
+}
+
+function formatFeatureSource(feature: SceneFeature) {
+  if (typeof feature.source === "string" && feature.source.trim()) {
+    return formatDisplayLabel(feature.source);
+  }
+  return "n/a";
+}
+
+function formatCoverage(record: Record<string, unknown> | null) {
+  if (!record) return "n/a";
+  const entries = Object.entries(record)
+    .filter(([, value]) => typeof value === "boolean")
+    .map(([key, value]) => `${formatDisplayLabel(key)} ${value ? "available" : "unavailable"}`);
+  return entries.length ? entries.join(" • ") : "n/a";
+}
+
 function formatTopCountList(record: Record<string, unknown> | null, limit = 4) {
   return getTopEntries(record, limit)
     .map(([label, count]) => `${formatDisplayLabel(label)} (${Math.round(Number(count))})`)
@@ -381,6 +415,43 @@ function getFeatureLensScore(feature: SceneFeature, lens: IntelSceneLens): numbe
   return getNumericValue(asRecord(properties[lens])?.score);
 }
 
+function getConflictPriority(feature: SceneFeature) {
+  const properties = asRecord(feature.properties);
+  const conflict = asRecord(properties?.conflict);
+  const news = asRecord(properties?.news);
+  const conflictScore = getNumericValue(conflict?.score);
+  const articleCount = getNumericValue(conflict?.count);
+  const eventCounts = {
+    ...(asRecord(news?.event_counts) || {}),
+    ...(asRecord(conflict?.event_counts) || {}),
+  };
+  const conflictEventCount = [
+    "conflict",
+    "war",
+    "attack",
+    "strike",
+    "missile",
+    "drone",
+    "shelling",
+    "military",
+    "protest",
+  ].reduce((total, key) => total + (getNumericValue(eventCounts[key]) || 0), 0);
+  const priority = Math.max(
+    conflictScore !== null ? conflictScore / 10 : 0,
+    articleCount !== null ? articleCount / 20 : 0,
+    conflictEventCount / 8
+  );
+  return {
+    active: Boolean(
+      (conflictScore !== null && conflictScore >= 3) ||
+      (articleCount !== null && articleCount > 0) ||
+      conflictEventCount > 0
+    ),
+    priority: Math.max(0, Math.min(1, priority)),
+    score: conflictScore,
+  };
+}
+
 function getFeaturePresentation(feature: SceneFeature) {
   return asRecord(asRecord(feature.properties)?.presentation);
 }
@@ -419,14 +490,37 @@ function getFeatureIntensity(
   if (sceneId === "intel" || (sceneId === "overview" && isIntelFeature(feature))) {
     const score = getFeatureLensScore(feature, intelLens);
     const presentationIntensity = getNumericValue(getFeaturePresentation(feature)?.intensity);
+    const conflictPriority = getConflictPriority(feature);
     if (intelLens === "emotion") {
       return Math.max(0.26, Math.min(1, presentationIntensity ?? 0.58));
     }
     const rawValue = score !== null ? score / 10 : presentationIntensity;
-    return Math.max(0.26, Math.min(1, rawValue ?? 0.58));
+    return Math.max(
+      0.26,
+      Math.min(1, Math.max(rawValue ?? 0.58, conflictPriority.priority))
+    );
   }
   const speedHeat = getNumericValue(properties?.speed_heat);
   return Math.max(0.25, Math.min(1, speedHeat ?? 0.55));
+}
+
+function getFeaturePeakRawValue(
+  feature: SceneFeature,
+  sceneId: SceneId,
+  intelLens: IntelSceneLens
+) {
+  const properties = asRecord(feature.properties);
+  if (sceneId === "intel" || (sceneId === "overview" && isIntelFeature(feature))) {
+    if (intelLens === "emotion") {
+      return getEmotionObservationCount(feature) || null;
+    }
+    const lensScore = getFeatureLensScore(feature, intelLens);
+    const conflictScore = getConflictPriority(feature).score;
+    const peakScore = Math.max(lensScore || 0, conflictScore || 0);
+    return peakScore > 0 ? peakScore : null;
+  }
+  const speedHeat = getNumericValue(properties?.speed_heat);
+  return speedHeat !== null && speedHeat > 0 ? speedHeat : null;
 }
 
 function getFeatureAccent(
@@ -438,11 +532,12 @@ function getFeatureAccent(
   if (sceneId === "intel" || (sceneId === "overview" && isIntelFeature(feature))) {
     const channel = intelLens === "combined" ? getFeatureDominantChannel(feature) : intelLens;
     if (channel === "weather") return "#75d7ff";
-    if (channel === "conflict") return "#ff8b73";
+    if (channel === "conflict") return "#ff3b4f";
     if (channel === "news") return "#ffd166";
     if (channel === "emotion") return getEmotionAccent(getDominantEmotion(feature));
+    if (getConflictPriority(feature).active) return "#ff3b4f";
     const riskScore = getFeatureLensScore(feature, "combined") ?? 0;
-    return riskScore >= 7 ? "#ff9e73" : "#48f1a6";
+    return riskScore >= 7 ? "#ff5c6a" : "#48f1a6";
   }
   if (String(properties?.kind || "") === "ship") {
     const category = String(properties?.category || "").toLowerCase();
@@ -616,7 +711,7 @@ async function buildFallbackTrackerScene(mode: TrackerSceneMode): Promise<SceneP
   }>(`/api/trackers/snapshot?mode=${mode}`);
   return {
     scene_id: "osint-trackers-fallback",
-    title: "OSINT Tracker Scene",
+    title: "Trackers",
     kind: "osint",
     camera_defaults: {
       target_lat: 12,
@@ -994,7 +1089,7 @@ function LivePoint({
   intelLens: IntelSceneLens;
   onSelect: (id: string) => void;
   reducedMotion: boolean;
-  sceneId: "trackers" | "intel";
+  sceneId: SceneId;
   selected: boolean;
 }) {
   const markerRef = useRef<Mesh | null>(null);
@@ -1077,6 +1172,58 @@ function LivePoint({
   );
 }
 
+function EvidencePeak({
+  accentColor,
+  feature,
+  onSelect,
+  peakScale,
+  selected
+}: {
+  accentColor: string;
+  feature: SceneFeature;
+  onSelect: (id: string) => void;
+  peakScale: number;
+  selected: boolean;
+}) {
+  const coords = Array.isArray(feature.geometry.coordinates)
+    ? (feature.geometry.coordinates as number[])
+    : [];
+  const normal = useMemo(() => {
+    if (coords.length < 2) return new THREE.Vector3(0, 1, 0);
+    return latLonToVector(coords[1], coords[0], GLOBE_RADIUS, 0).normalize();
+  }, [coords]);
+  const height = 0.055 + peakScale * 0.16 + (selected ? 0.035 : 0);
+  const position = useMemo(() => {
+    if (coords.length < 2) return new THREE.Vector3(0, 0, 0);
+    return latLonToVector(coords[1], coords[0], GLOBE_RADIUS, 0.052 + height / 2);
+  }, [coords, height]);
+  const quaternion = useMemo(
+    () => new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal),
+    [normal]
+  );
+
+  if (coords.length < 2) return null;
+
+  return (
+    <mesh
+      position={position}
+      quaternion={quaternion}
+      onClick={(event) => {
+        event.stopPropagation();
+        onSelect(feature.id);
+      }}
+    >
+      <coneGeometry args={[0.011 + peakScale * 0.018, height, 8, 1]} />
+      <meshBasicMaterial
+        color={accentColor}
+        transparent
+        opacity={selected ? 0.72 : 0.42}
+        depthWrite={false}
+      />
+    </mesh>
+  );
+}
+
 function GlobeScene({
   cameraPreset,
   contextTexture,
@@ -1123,6 +1270,24 @@ function GlobeScene({
   const pulseFeatures = showIntelHotspots
     ? pulseLayers.flatMap((layer) => layer.features || [])
     : [];
+  const peakFeatures = useMemo(() => {
+    const values = liveFeatures
+      .map((feature) => ({
+        feature,
+        rawValue: getFeaturePeakRawValue(feature, sceneId, intelLens)
+      }))
+      .filter((entry): entry is { feature: SceneFeature; rawValue: number } =>
+        typeof entry.rawValue === "number" && Number.isFinite(entry.rawValue) && entry.rawValue > 0
+      );
+    const maxRawValue = Math.max(...values.map((entry) => entry.rawValue), 1);
+    return values
+      .map((entry) => ({
+        feature: entry.feature,
+        peakScale: Math.max(0.18, Math.min(1, entry.rawValue / maxRawValue))
+      }))
+      .sort((left, right) => right.peakScale - left.peakScale)
+      .slice(0, reducedMotion ? 24 : 42);
+  }, [intelLens, liveFeatures, reducedMotion, sceneId]);
   const activeQuality = reducedMotion ? 0.5 : qualityFactor;
   const starsCount = reducedMotion ? 450 : Math.round(1200 + activeQuality * 2200);
   const bloomIntensity = reducedMotion ? 0.25 : 0.35 + activeQuality * 0.55;
@@ -1207,6 +1372,18 @@ function GlobeScene({
             : null}
         </group>
         <group>
+          {peakFeatures.map(({ feature, peakScale }) => (
+            <EvidencePeak
+              key={`peak-${feature.id}`}
+              accentColor={getFeatureAccent(feature, sceneId, intelLens)}
+              feature={feature}
+              onSelect={onSelect}
+              peakScale={peakScale}
+              selected={feature.id === selectedId}
+            />
+          ))}
+        </group>
+        <group>
           {liveFeatures.map((feature) => (
             <LivePoint
               key={feature.id}
@@ -1270,6 +1447,7 @@ export function GlobeOverlay() {
   const [geography, setGeography] = useState<GlobeGeographyData | null>(null);
   const [geographyError, setGeographyError] = useState<string | null>(null);
   const [qualityFactor, setQualityFactor] = useState(reducedMotion ? 0.5 : 0.82);
+  const [warningsOpen, setWarningsOpen] = useState(false);
   const [trackerOperatorDraft, setTrackerOperatorDraft] = useState(sceneState.trackerOperator);
   const sceneId = activeScene?.id || "overview";
   const hasTrackerFallback = activeScene?.fallbackStrategy === "trackerSnapshot";
@@ -1283,6 +1461,14 @@ export function GlobeOverlay() {
   const { data: intelMeta, error: intelMetaError } = useApi<IntelMeta>("/api/intel/meta", {
     enabled: isOpen && (sceneId === "intel" || sceneId === "overview"),
     interval: isOpen && (sceneId === "intel" || sceneId === "overview") ? 600000 : 0
+  });
+  const {
+    data: clientIndex,
+    error: clientContextError,
+    warnings: clientContextWarnings
+  } = useApi<ClientIndex>("/api/clients", {
+    enabled: isOpen && sceneId === "overview",
+    interval: isOpen && sceneId === "overview" ? 60000 : 0
   });
 
   useEffect(() => {
@@ -1325,6 +1511,7 @@ export function GlobeOverlay() {
     setFallbackScene(null);
     setFallbackError(null);
     setSelectedId(null);
+    setWarningsOpen(false);
   }, [activeScene?.id]);
 
   useEffect(() => {
@@ -1395,7 +1582,13 @@ export function GlobeOverlay() {
     new Set([
       ...(geographyError ? [`Geography overlay unavailable: ${geographyError}`] : []),
       ...(intelMetaError && (sceneId === "intel" || sceneId === "overview")
-        ? [`Intel metadata unavailable: ${intelMetaError}`]
+        ? [`Signal metadata unavailable: ${intelMetaError}`]
+        : []),
+      ...(clientContextError && sceneId === "overview"
+        ? [`Client context unavailable: ${clientContextError}`]
+        : []),
+      ...(sceneId === "overview"
+        ? clientContextWarnings.map((warning) => `Client context: ${warning}`)
         : []),
       ...(error ? [error] : []),
       ...(fallbackError ? [fallbackError] : []),
@@ -1533,6 +1726,14 @@ export function GlobeOverlay() {
       "Freshness",
       formatAge(selectedFeature.freshness?.age_sec, selectedFeature.freshness?.state)
     );
+    addRow("Source", formatFeatureSource(selectedFeature));
+    addRow("Layer", formatDisplayLabel(selectedFeature.layer));
+    addRow("Display Scope", formatDisplayLabel(properties?.display_scope || properties?.scope_kind));
+    addRow("Coverage", formatCoverage(asRecord(properties?.coverage)));
+    addRow("Feature Warnings", formatStringList(selectedFeature.warnings));
+
+    const provenance = asRecord(properties?.provenance);
+    addRow("Display Note", formatOptionalText(provenance?.display_note || properties?.display_note));
 
     if (selectedIntelFeature) {
       const combined = asRecord(properties?.combined_risk);
@@ -1545,7 +1746,7 @@ export function GlobeOverlay() {
       const conflictScore = getNumericValue(conflict?.score);
 
       addRow(
-        "Combined Risk",
+        "Combined Signal",
         combinedScore !== null
           ? `${Math.round(combinedScore)}/10 • ${formatDisplayLabel(combined?.level)}`
           : formatDisplayLabel(combined?.level)
@@ -1691,8 +1892,8 @@ export function GlobeOverlay() {
           { label: "Live Trackers", value: `${visibleTrackerPointFeatures.length}` },
           { label: "Visible Regions", value: `${visibleIntelPointFeatures.length}` },
           { label: "Replay Trails", value: `${visiblePathFeatures.length}` },
-          { label: "Conflict Hotspots", value: `${visiblePulseFeatures.length}` },
-          { label: "Elevated Regions", value: `${intelHighRiskCount}` },
+          { label: "Centroid Highlights", value: `${visiblePulseFeatures.length}` },
+          { label: "Elevated Signals", value: `${intelHighRiskCount}` },
           { label: "Top Tracker Categories", value: topValues(categoryCounts) },
           { label: "Top Operators", value: topValues(operatorCounts) },
           { label: "Regional Channels", value: topValues(overviewChannelCounts) },
@@ -1767,8 +1968,8 @@ export function GlobeOverlay() {
 
     return [
       { label: "Visible Regions", value: `${visibleIntelPointFeatures.length}` },
-      { label: "Visible Conflict Overlays", value: `${visiblePulseFeatures.length}` },
-      { label: "Elevated Regions", value: `${intelHighRiskCount}` },
+      { label: "Visible Centroid Highlights", value: `${visiblePulseFeatures.length}` },
+      { label: "Elevated Signals", value: `${intelHighRiskCount}` },
       { label: "Headlines Across Nodes", value: `${headlineCount}` },
       { label: "Dominant Channels", value: topValues(channelCounts) },
       { label: "Top Context Tags", value: topValues(eventCounts) },
@@ -1877,15 +2078,8 @@ export function GlobeOverlay() {
   }, [scene?.meta?.available_lenses]);
 
   const geographySourceCopy = useMemo(() => {
-    if (!geography) return "Loading Natural Earth land, coastline, and country context...";
-    const details = [
-      `${geography.source.land_polygon_count} land polygons`,
-      geography.source.country_feature_count
-        ? `${geography.source.country_feature_count} country features`
-        : null,
-      `${geography.source.coastline_count} coast lines`,
-    ].filter(Boolean);
-    return `${geography.source.name} ${geography.source.dataset} • ${details.join(" • ")} • de facto admin boundaries`;
+    if (!geography) return "Base map loading";
+    return `Base: ${geography.source.name} ${geography.source.dataset} / de facto admin context`;
   }, [geography]);
 
   const sceneHasIntel = sceneId === "intel" || sceneId === "overview";
@@ -1893,6 +2087,44 @@ export function GlobeOverlay() {
   const selectedFeatureIsIntel = Boolean(
     selectedFeature && (sceneId === "intel" || (sceneId === "overview" && isIntelFeature(selectedFeature)))
   );
+  const densityItems = [
+    ...(sceneHasTrackers
+      ? [
+          { label: "Trackers", value: visibleTrackerPointFeatures.length, accent: "#7dffd3" },
+          { label: "Trails", value: visiblePathFeatures.length, accent: "#48f1a6" },
+        ]
+      : []),
+    ...(sceneHasIntel
+      ? [
+          { label: "Regions", value: visibleIntelPointFeatures.length, accent: "#75d7ff" },
+          { label: "Pulses", value: visiblePulseFeatures.length, accent: "#ff8b73" },
+        ]
+      : []),
+  ];
+  const clientRows = clientIndex?.clients || [];
+  const clientContext = useMemo(() => {
+    const accountCount = clientRows.reduce(
+      (total, client) => total + (client.accounts_count || 0),
+      0
+    );
+    const holdingsCount = clientRows.reduce(
+      (total, client) => total + (client.holdings_count || 0),
+      0
+    );
+    const topClients = [...clientRows]
+      .sort(
+        (left, right) =>
+          (right.accounts_count || 0) - (left.accounts_count || 0) ||
+          left.name.localeCompare(right.name)
+      )
+      .slice(0, 3);
+    return {
+      accountCount,
+      clientCount: clientRows.length,
+      holdingsCount,
+      topClients,
+    };
+  }, [clientRows]);
 
   if (!isOpen || !activeScene) return null;
 
@@ -1932,22 +2164,22 @@ export function GlobeOverlay() {
             <p>Scene unavailable.</p>
             <p className="globe-overlay__status-copy">
               {hasTrackerFallback
-                ? "The immersive globe could not load from the primary scene route or the tracker snapshot fallback."
-                : "The immersive globe could not load from the primary regional scene route."}
+                ? "The world view could not load from the primary scene route or the tracker snapshot fallback."
+                : "The world view could not load from the primary regional scene route."}
             </p>
             <div className="globe-overlay__actions">
               <button type="button" onClick={refresh} className="globe-action-button">
                 Retry Scene
               </button>
               <button type="button" onClick={closeScene} className="globe-action-button">
-                Close Globe
+                Close World
               </button>
             </div>
           </div>
         ) : (
           <div className="globe-overlay__loading">
             <Orbit size={26} className="animate-spin text-emerald-300" />
-            <p>Loading immersive globe...</p>
+            <p>Loading world view...</p>
           </div>
         )}
       </div>
@@ -1957,7 +2189,7 @@ export function GlobeOverlay() {
           <div className="globe-panel__header">
             <div>
               <p className="tag text-[11px] uppercase tracking-[0.22em] text-emerald-300/90">
-                OSINT Globe
+                World
               </p>
               <h2 className="globe-panel__title">
                 {scene?.title || activeScene.label}
@@ -1967,7 +2199,7 @@ export function GlobeOverlay() {
               type="button"
               onClick={closeScene}
               className="globe-icon-button"
-              aria-label="Close globe"
+              aria-label="Close world view"
             >
               <X size={16} />
             </button>
@@ -1976,14 +2208,15 @@ export function GlobeOverlay() {
           <p className="globe-panel__label">Scene View</p>
           <div className="globe-toggle-group">
             {[
-              { id: "overview" as SceneId, label: "Overview" },
+              { id: "overview" as SceneId, label: "World" },
               { id: "trackers" as SceneId, label: "Trackers" },
-              { id: "intel" as SceneId, label: "Intel" },
+              { id: "intel" as SceneId, label: "Signals" },
             ].map((option) => (
               <button
                 key={option.id}
                 type="button"
                 data-testid={`globe-scene-${option.id}`}
+                aria-pressed={option.id === sceneId}
                 onClick={() => {
                   openScene(option.id);
                   setCameraPreset("free");
@@ -2022,7 +2255,7 @@ export function GlobeOverlay() {
             {sceneId === "overview" ? (
               <span className="globe-badge">
                 <Route size={12} />
-                {visiblePulseFeatures.length} hotspots
+                {visiblePulseFeatures.length} centroid pulses
               </span>
             ) : null}
             <span className="globe-badge">
@@ -2032,7 +2265,47 @@ export function GlobeOverlay() {
             </span>
             <span className="globe-badge">{getQualityLabel(qualityFactor, reducedMotion)}</span>
           </div>
+          {densityItems.length ? (
+            <GlobeDataDensity
+              title="Visible Signal Density"
+              items={densityItems}
+            />
+          ) : null}
         </div>
+
+        {sceneId === "overview" ? (
+          <div className="globe-panel globe-panel--compact globe-client-context">
+            <div className="globe-panel__header">
+              <div>
+                <p className="globe-panel__label">Client Context</p>
+                <p className="globe-panel__metric">
+                  {clientContext.clientCount} clients / {clientContext.accountCount} accounts
+                </p>
+              </div>
+              <span className="globe-badge">{clientContext.holdingsCount} holdings</span>
+            </div>
+            <div className="globe-client-context__grid">
+              {clientContext.topClients.length ? (
+                clientContext.topClients.map((client) => (
+                  <a
+                    key={client.client_id}
+                    href={`/clients?client=${encodeURIComponent(client.client_id)}`}
+                    className="globe-client-context__row"
+                  >
+                    <span>{client.name}</span>
+                    <small>
+                      {client.accounts_count || 0} accounts / {client.risk_profile || "Unprofiled"}
+                    </small>
+                  </a>
+                ))
+              ) : (
+                <p className="globe-panel__copy globe-panel__copy--subtle">
+                  No client workspaces available yet.
+                </p>
+              )}
+            </div>
+          </div>
+        ) : null}
 
         <div className="globe-panel globe-panel--compact">
           {sceneHasTrackers ? (
@@ -2044,6 +2317,7 @@ export function GlobeOverlay() {
                     key={option.id}
                     type="button"
                     data-testid={`globe-mode-${option.id}`}
+                    aria-pressed={option.id === sceneState.trackerMode}
                     onClick={() => {
                       setTrackerMode(option.id);
                       setCameraPreset("free");
@@ -2070,6 +2344,7 @@ export function GlobeOverlay() {
                     key={option.id}
                     type="button"
                     data-testid={`globe-lens-${option.id}`}
+                    aria-pressed={option.id === sceneState.intelLens}
                     onClick={() => {
                       setIntelLens(option.id);
                       setCameraPreset("free");
@@ -2093,6 +2368,7 @@ export function GlobeOverlay() {
                 key={option.id}
                 type="button"
                 data-testid={`globe-preset-${option.id}`}
+                aria-pressed={option.id === sceneState.cameraPreset}
                 onClick={() => setCameraPreset(option.id)}
                 className={
                   option.id === sceneState.cameraPreset
@@ -2110,9 +2386,6 @@ export function GlobeOverlay() {
           <div className="globe-panel__header">
             <div>
               <p className="globe-panel__label">Visible Layers</p>
-              <p className="globe-panel__copy">
-                Keep the overview honest by deciding exactly which domains stay on the canvas while you orbit.
-              </p>
             </div>
           </div>
           <div className="globe-toggle-group">
@@ -2120,6 +2393,7 @@ export function GlobeOverlay() {
               <button
                 type="button"
                 data-testid="globe-layer-trackers"
+                aria-pressed={sceneState.showTrackerPoints}
                 onClick={() => setOverlayVisibility("showTrackerPoints", !sceneState.showTrackerPoints)}
                 className={
                   sceneState.showTrackerPoints
@@ -2134,6 +2408,7 @@ export function GlobeOverlay() {
               <button
                 type="button"
                 data-testid="globe-layer-trails"
+                aria-pressed={sceneState.showTrackerTrails}
                 onClick={() => setOverlayVisibility("showTrackerTrails", !sceneState.showTrackerTrails)}
                 className={
                   sceneState.showTrackerTrails
@@ -2148,6 +2423,7 @@ export function GlobeOverlay() {
               <button
                 type="button"
                 data-testid="globe-layer-regions"
+                aria-pressed={sceneState.showIntelRegions}
                 onClick={() => setOverlayVisibility("showIntelRegions", !sceneState.showIntelRegions)}
                 className={
                   sceneState.showIntelRegions
@@ -2162,6 +2438,7 @@ export function GlobeOverlay() {
               <button
                 type="button"
                 data-testid="globe-layer-hotspots"
+                aria-pressed={sceneState.showIntelHotspots}
                 onClick={() => setOverlayVisibility("showIntelHotspots", !sceneState.showIntelHotspots)}
                 className={
                   sceneState.showIntelHotspots
@@ -2169,7 +2446,7 @@ export function GlobeOverlay() {
                     : "globe-toggle"
                 }
               >
-                Conflict Pulses ({pulseFeatures.length})
+                Centroid Pulses ({pulseFeatures.length})
               </button>
             ) : null}
           </div>
@@ -2188,13 +2465,6 @@ export function GlobeOverlay() {
           <div className="globe-panel__header">
             <div>
               <p className="globe-panel__label">Filters</p>
-              <p className="globe-panel__copy">
-                {sceneId === "overview"
-                  ? "Refine the fused globe with both live tracker metadata and regional upstream intel filters."
-                  : sceneId === "intel"
-                    ? "Refine regional emotion, news, conflict, and weather coverage with real upstream filters."
-                    : "Narrow the live globe with real tracker metadata before selecting a focus target."}
-              </p>
             </div>
           </div>
           {sceneHasIntel ? (
@@ -2224,6 +2494,7 @@ export function GlobeOverlay() {
                   <button
                     key={category}
                     type="button"
+                    aria-pressed={sceneState.intelCategories.includes(category)}
                     onClick={() => {
                       toggleIntelCategory(category);
                       setCameraPreset("free");
@@ -2244,6 +2515,7 @@ export function GlobeOverlay() {
                   <button
                     key={source}
                     type="button"
+                    aria-pressed={sceneState.intelSources.includes(source)}
                     onClick={() => {
                       toggleIntelSource(source);
                       setCameraPreset("free");
@@ -2266,6 +2538,7 @@ export function GlobeOverlay() {
               <div className="globe-toggle-group">
                 <button
                   type="button"
+                  aria-pressed={sceneState.trackerCategory === "all"}
                   onClick={() => {
                     setTrackerCategory("all");
                     setCameraPreset("free");
@@ -2282,6 +2555,7 @@ export function GlobeOverlay() {
                   <button
                     key={category}
                     type="button"
+                    aria-pressed={sceneState.trackerCategory === category}
                     onClick={() => {
                       setTrackerCategory(category);
                       setCameraPreset("free");
@@ -2371,7 +2645,7 @@ export function GlobeOverlay() {
                 }}
                 className="globe-action-button"
               >
-                Clear Intel Filters
+                Clear Signal Filters
               </button>
             ) : null}
           </div>
@@ -2387,27 +2661,33 @@ export function GlobeOverlay() {
                 ? "Unavailable"
                 : formatTimestamp(scene?.meta?.timestamp)}
           </p>
-          <p className="globe-panel__copy">
-            {sceneUnavailable
-              ? "The immersive scene could not be recovered. Retry or close the overlay."
-              : error && fallbackScene
-                ? "Primary scene route unavailable. Snapshot fallback active."
-                : reducedMotion
-                  ? "Reduced-motion mode is active for accessibility and stable visual review."
-                  : sceneId === "overview"
-                    ? "Tracker movement and regional signals are fused on one globe with adaptive quality controls."
-                    : sceneId === "intel"
-                    ? "Regional signal scene active with adaptive quality controls."
-                    : "Immersive overlay active with adaptive quality controls."}
-          </p>
+          {sceneUnavailable || (error && fallbackScene) || reducedMotion ? (
+            <p className="globe-panel__copy">
+              {sceneUnavailable
+                ? "Scene unavailable."
+                : error && fallbackScene
+                  ? "Snapshot fallback active."
+                  : "Reduced motion active."}
+            </p>
+          ) : null}
           {warnings.length ? (
             <div className="globe-warning-list">
-              {warnings.slice(0, 3).map((warning) => (
+              {warnings.slice(0, warningsOpen ? warnings.length : 3).map((warning) => (
                 <p key={warning} className="globe-warning">
                   <AlertTriangle size={12} />
                   {warning}
                 </p>
               ))}
+              {warnings.length > 3 ? (
+                <button
+                  type="button"
+                  className="globe-warning-toggle"
+                  aria-expanded={warningsOpen}
+                  onClick={() => setWarningsOpen((current) => !current)}
+                >
+                  {warningsOpen ? "Show fewer warnings" : `Show ${warnings.length - 3} more warnings`}
+                </button>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -2424,11 +2704,6 @@ export function GlobeOverlay() {
           <div className="globe-panel__header">
             <div>
               <p className="globe-panel__label">Detail Panel</p>
-              <p className="globe-panel__copy">
-                {sceneState.detailsVisible
-                  ? "Collapse the focus panel stack when you want a cleaner full-screen view."
-                  : "Expand the focus panel stack to inspect selected nodes and aggregates."}
-              </p>
             </div>
             <button
               type="button"
@@ -2454,13 +2729,6 @@ export function GlobeOverlay() {
                   : sceneId === "intel"
                     ? "Regional Nodes"
                     : "Focus Targets"}
-              </p>
-              <p className="globe-panel__copy">
-                {sceneId === "overview"
-                  ? "Pivot across live trackers and regional signals without leaving free orbit."
-                  : sceneId === "intel"
-                    ? "Pivot across regions and compare weather, conflict, and news pressure."
-                    : "Rotate freely or follow a live signal."}
               </p>
             </div>
           </div>
@@ -2586,13 +2854,6 @@ export function GlobeOverlay() {
 
         <div className="globe-panel globe-panel--compact">
           <p className="globe-panel__label">Visible Aggregate</p>
-          <p className="globe-panel__copy">
-            {sceneId === "overview"
-              ? "Roll-ups reflect the currently visible fused tracker, hotspot, and regional signal layers."
-              : sceneId === "intel"
-                ? "Roll-ups reflect only the currently visible regional nodes under the active lens and filters."
-                : "Roll-ups reflect only the currently visible live tracker points and replay trails."}
-          </p>
           <div className="globe-detail-grid">
             {aggregateRows.map((row) => (
               <div key={`${row.label}-${row.value}`} className="globe-detail-row">

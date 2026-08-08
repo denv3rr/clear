@@ -40,16 +40,16 @@ export function TopNav({
             aria-label="Toggle navigation"
             aria-expanded={mobileOpen}
             onClick={() => setMobileOpen((prev) => !prev)}
-            className="min-[1800px]:hidden rounded-full border border-slate-700 p-2 text-slate-100 hover:border-green-500 hover:text-green-500"
+            className="rounded-full border border-slate-700 p-2 text-slate-100 hover:border-green-500 hover:text-green-500 lg:hidden"
           >
             {mobileOpen ? <X size={18} /> : <Menu size={18} />}
           </button>
           <span className="text-lg font-semibold tracking-tight">[ CLEAR ]</span>
           <span className="hidden text-xs text-slate-500 md:inline">
-            Markets • Risk • OSINT
+            Markets • Risk • World
           </span>
         </div>
-        <nav className="hidden min-[1800px]:flex flex-1 min-w-0">
+        <nav className="hidden flex-1 min-w-0 lg:flex">
           <div className="flex gap-2 py-1">
             {primaryItems.map(({ label, icon: Icon, path }) => (
               <NavLink
@@ -71,7 +71,7 @@ export function TopNav({
           </div>
         </nav>
         <div className="flex items-center gap-2">
-          <div className="hidden min-[1800px]:flex items-center gap-2">
+          <div className="hidden items-center gap-2 lg:flex">
             {utilityItems.map(({ label, icon: Icon, path }) => (
               <NavLink
                 key={label}
@@ -97,11 +97,11 @@ export function TopNav({
               onClick={onToggleScene}
             >
               <Orbit size={15} className="mr-2" />
-              {sceneOpen ? "Close Globe" : "Open Globe"}
+              {sceneOpen ? "Close World" : "Open World"}
             </button>
           ) : null}
           <button
-            className="hidden min-[1800px]:inline-flex rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-100 hover:border-green-500 hover:text-green-500"
+            className="hidden rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-100 hover:border-green-500 hover:text-green-500 lg:inline-flex"
             type="button"
             onClick={onToggleAssistant}
           >
@@ -109,7 +109,7 @@ export function TopNav({
             Assistant
           </button>
           <button
-            className="hidden min-[1800px]:inline-flex rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-100 hover:border-green-500 hover:text-green-500"
+            className="hidden rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-100 hover:border-green-500 hover:text-green-500 lg:inline-flex"
             type="button"
             onClick={onToggleContext}
           >
@@ -118,7 +118,7 @@ export function TopNav({
         </div>
       </div>
       {mobileOpen ? (
-        <div className="min-[1800px]:hidden border-t border-slate-700 bg-slate-950/95">
+        <div className="border-t border-slate-700 bg-slate-950/95 lg:hidden">
           <div className="px-6 py-4 space-y-4">
             <nav className="space-y-2">
               {primaryItems.map(({ label, icon: Icon, path }) => (
@@ -150,7 +150,7 @@ export function TopNav({
                     setMobileOpen(false);
                   }}
                 >
-                  {sceneOpen ? "Close Globe" : "Open Globe"}
+                  {sceneOpen ? "Close World" : "Open World"}
                 </button>
               ) : null}
               {utilityItems.map(({ label, icon: Icon, path }) => (

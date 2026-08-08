@@ -65,7 +65,9 @@ def check_and_install_packages():
     pkg_map = {
         "python-dotenv": "dotenv",
         "finnhub-python": "finnhub",
-        "psutil": "psutil" 
+        "psutil": "psutil",
+        "PySide6-WebEngine": "PySide6.QtWebEngineWidgets",
+        "SQLAlchemy": "sqlalchemy",
     }
 
     for pkg in packages:
@@ -231,6 +233,8 @@ def _is_iso_timestamp(value: str) -> bool:
 def _validate_clients_json() -> None:
     clients_path = os.path.join(os.getcwd(), "data", "clients.json")
     if not os.path.exists(clients_path):
+        return
+    if os.path.getsize(clients_path) == 0:
         return
     try:
         with open(clients_path, "r", encoding="utf-8") as f:

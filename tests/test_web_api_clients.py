@@ -1,4 +1,6 @@
-import os
+import re
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -9,33 +11,62 @@ from core import models
 from web_api.app import app
 from web_api.routes.clients import get_db
 
-DATABASE_URL = "sqlite:///./test.db"
 
-engine = create_engine(
-    DATABASE_URL, connect_args={"check_same_thread": False}
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+TEST_RUNTIME_DIR = Path(__file__).resolve().parents[1] / "test_runtime" / "web_api_clients"
+
+
+def _isolated_db_path(request, filename: str) -> Path:
+    TEST_RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    case_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", request.node.nodeid)
+    case_dir = TEST_RUNTIME_DIR / case_name
+    case_dir.mkdir(parents=True, exist_ok=True)
+    db_path = case_dir / filename
+    for suffix in ("", "-journal", "-shm", "-wal"):
+        candidate = Path(f"{db_path}{suffix}")
+        if candidate.exists():
+            candidate.unlink()
+    return db_path
+
+
+def _cleanup_sqlite_files(db_path: Path) -> None:
+    for suffix in ("", "-journal", "-shm", "-wal"):
+        candidate = Path(f"{db_path}{suffix}")
+        if candidate.exists():
+            candidate.unlink()
+    try:
+        db_path.parent.rmdir()
+    except OSError:
+        pass
+
 
 @pytest.fixture()
-def session():
+def session(request):
+    db_path = _isolated_db_path(request, "clients.db")
+    engine = create_engine(
+        f"sqlite:///{db_path}", connect_args={"check_same_thread": False}
+    )
+    testing_session_local = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
-    db = TestingSessionLocal()
+    db = testing_session_local()
     try:
         yield db
     finally:
         db.close()
+        Base.metadata.drop_all(bind=engine)
+        engine.dispose()
+        _cleanup_sqlite_files(db_path)
 
 @pytest.fixture()
-def client(session):
+def client(session, monkeypatch):
     def override_get_db():
-        try:
-            yield session
-        finally:
-            session.close()
+        yield session
     app.dependency_overrides[get_db] = override_get_db
-    os.environ["CLEAR_WEB_API_KEY"] = "test_key"
-    yield TestClient(app, headers={"X-API-Key": "test_key"})
+    monkeypatch.setenv("CLEAR_WEB_API_KEY", "test_key")
+    try:
+        yield TestClient(app, headers={"X-API-Key": "test_key"})
+    finally:
+        app.dependency_overrides.pop(get_db, None)
 
 def test_create_client(client):
     response = client.post(

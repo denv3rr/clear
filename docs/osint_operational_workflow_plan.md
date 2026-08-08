@@ -1,6 +1,8 @@
 # OSINT Operational Workflow Plan
 
-Status: Active on March 17, 2026. This plan extends `docs/visual_modernization_plan.md` and is gated by `docs/us_gov_standards.md` plus `docs/standards_remediation_plan.md`.
+Status: Active on March 18, 2026. This plan extends
+`docs/visual_modernization_plan.md` and is gated by
+`docs/us_gov_standards.md` plus `docs/standards_remediation_plan.md`.
 
 ## Purpose
 
@@ -18,10 +20,23 @@ This is an inference from Palantir's public docs, not a claim that Clear should 
 ## What Landed In The Current Pass
 
 - Added a fused overview scene at `/api/osint/scene/overview` so trackers and regional intel can coexist on the same globe contract.
-- Added a scene switcher in the globe overlay so operators can move between `Overview`, `Trackers`, and `Intel` without leaving the immersive surface.
-- Made the OSINT workspace launch the fused `Overview` globe by default so the product opens on the operational canvas instead of a tracker-only subview.
+- Added a scene switcher in the globe overlay so operators can move between `World`, `Trackers`, and `Signals` without leaving the immersive surface.
+- Made the Overview page launch the fused `World` globe by default so the product opens on the operational canvas instead of a tracker-only subview.
 - Added first-class layer visibility controls for tracker points, tracker trails, regional signals, and conflict pulses, with persisted operator state and a reset path.
 - Added a toggleable right-side detail stack and reduced panel/tooltip opacity so the globe can stay presentation-first when needed.
+- Moved the primary OSINT workspace into the Overview page below the existing
+  overview panels, with the workspace visible by default so operators can keep
+  the globe and client/account context together while still expanding trackers,
+  signals, and news in place.
+- Added client/account summary context into the World globe HUD and promoted
+  source-backed conflict signals in sorting, red accent styling, and raised
+  peaks without hardcoding any region as active conflict.
+- Enabled the fused overview globe from the Overview route and simplified the
+  top navigation so OSINT is no longer a permanent top-level menu item; the
+  `/osint` route remains available as a deep link.
+- Added payload-derived signal-density strips, selected-feature provenance
+  rows, expandable warnings, and safer centroid-highlight terminology in the
+  globe overlay.
 - Fixed collector-boundary duplicate news handling by deduping across feed/source overlaps using canonical URL first and content fallback second, while preserving a `sources` list for provenance.
 - Fixed client/account write-path duplicate drift by adding normalized client/account keys, store-level duplicate rejection, API `409` responses, and stronger duplicate tests.
 - Expanded diagnostics to surface duplicate client names and duplicate raw news cache entries, and routed report/news reads through the same deduped cache loader.
@@ -130,6 +145,24 @@ Accessibility and motion engineer
 
 4. Client/workspace linkage
 - The fused globe does not yet attach incident or route impact directly to client/account exposure views.
+
+## Next Phase Planning Note
+
+The detailed next-phase handoff now lives in
+`docs/osint_globe_phase_2_plan.md`.
+
+That document is the current source of truth for:
+
+- reviewed public source onboarding priorities
+- canonical incident/exposure/workflow object design
+- specialist roles and contract-based branch shapes
+- Palantir-inspired modularization ideas grounded in public architecture docs
+- the exact sequence for turning the current tracker-plus-regional globe into a
+  richer operational surface without inventing geometry or math
+
+Do not start that phase from this file alone. Use this file for the long-range
+workflow direction and `docs/osint_globe_phase_2_plan.md` for the next batch's
+execution detail.
 
 ## Execution Phases
 

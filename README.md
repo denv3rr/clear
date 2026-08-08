@@ -19,7 +19,8 @@ python clearctl.py stop
 - Stores client, account, holding, and lot data in SQLite, with JSON kept for
   import/export.
 - Exposes the same analytics through the CLI, FastAPI routes, and the web UI.
-- Runs OSINT workflows for trackers, news, and regional intel.
+- Runs OSINT workflows for trackers, news, and regional intel from the Overview
+  page, with `/osint` retained as a deep link.
 - Supports reports and exports with shared view-models and provenance metadata.
 - Builds toward a globe-first presentation layer, but only behind the active
   standards gate.
@@ -108,6 +109,10 @@ Browser-test policy:
 | GDELT | Conflict/news signal input |
 | RSS feeds | Cached headlines for market and OSINT workflows |
 
+Next-phase reviewed source intake is tracked in
+[docs/feed_registry.md](docs/feed_registry.md) and
+[docs/osint_globe_phase_2_plan.md](docs/osint_globe_phase_2_plan.md).
+
 ## Methods Snapshot
 
 The core deterministic formulas are implemented in
@@ -138,6 +143,7 @@ lives in the Python test suite rather than in the README.
 | [docs/us_gov_standards.md](docs/us_gov_standards.md) | Mandatory standards baseline |
 | [docs/standards_remediation_plan.md](docs/standards_remediation_plan.md) | Active standards gate and phase plan |
 | [docs/visual_modernization_plan.md](docs/visual_modernization_plan.md) | Globe-first UX roadmap |
+| [docs/osint_globe_phase_2_plan.md](docs/osint_globe_phase_2_plan.md) | Detailed next-phase OSINT/globe execution plan |
 | [docs/osint.md](docs/osint.md) | OSINT workspace and feed notes |
 | [docs/assistant_usage.md](docs/assistant_usage.md) | Assistant usage across CLI/API/web |
 | [docs/launchers.md](docs/launchers.md) | Startup and shutdown behavior |

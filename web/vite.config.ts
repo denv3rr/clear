@@ -5,6 +5,14 @@ export default defineConfig({
   base: process.env.VITE_BASE || "/",
   plugins: [react()],
   build: {
+    modulePreload: {
+      resolveDependencies(_filename, deps) {
+        return deps.filter((dep) => {
+          const normalized = dep.replace(/\\/g, "/");
+          return !/(^|\/)(globe|maplibre|leaflet|markdown|plotly)-/.test(normalized);
+        });
+      }
+    },
     rollupOptions: {
       output: {
         manualChunks(id) {
