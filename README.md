@@ -1,6 +1,6 @@
 # Clear
 
-Clear is a local-first portfolio, analytics, and OSINT platform with shared
+Clear is a local portfolio, analytics, and OSINT platform with shared
 CLI, API, and web surfaces. It combines client/account data, deterministic
 financial calculations, global tracker feeds, news/intel summaries, and an
 immersive globe foundation that is now gated by the repo's standards plan.
