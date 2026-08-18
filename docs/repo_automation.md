@@ -53,6 +53,11 @@ browsers and a live local stack.
 
 ## CodeQL
 
+CI Python skips `PySide6` / `PySide6-WebEngine` because those desktop
+wheels are not needed for pytest and are not reliably available on
+`ubuntu-latest`. The web job runs `npm run build` before the bundle
+budget check.
+
 `.github/workflows/codeql.yml` analyzes `python` and
 `javascript-typescript` on push/PR to `main`, weekly, and on
 `workflow_dispatch`. It writes `security-events` only.

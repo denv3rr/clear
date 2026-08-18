@@ -6,6 +6,7 @@ import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { KpiCard } from "../components/ui/KpiCard";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { Surface3D } from "../components/ui/Surface3D";
+import { Modal } from "../components/ui/Modal";
 import { apiGet, apiPatch, apiPost, useApi } from "../lib/api";
 
 type ClientSummary = {
@@ -194,6 +195,7 @@ export default function Clients() {
   const [accountEditOpen, setAccountEditOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [formSaving, setFormSaving] = useState(false);
+  const [lotPendingRemove, setLotPendingRemove] = useState<{ ticker: string; index: number } | null>(null);
   const [clientForm, setClientForm] = useState({
     name: "",
     risk_profile: "",
@@ -623,16 +625,25 @@ export default function Clients() {
     }
   };
 
-  const handleRemoveLot = async (ticker: string, index: number) => {
-    if (!selectedAccountDetail) return;
+  const handleRemoveLot = (ticker: string, index: number) => {
+    setLotPendingRemove({ ticker, index });
+  };
+
+  const confirmRemoveLot = async () => {
+    if (!selectedAccountDetail || !lotPendingRemove) return;
     const nextLots = cloneAccountLots(selectedAccountDetail.lots);
-    const remaining = (nextLots[ticker] || []).filter((_, lotIndex) => lotIndex !== index);
+    const remaining = (nextLots[lotPendingRemove.ticker] || []).filter(
+      (_, lotIndex) => lotIndex !== lotPendingRemove.index
+    );
     if (remaining.length) {
-      nextLots[ticker] = remaining;
+      nextLots[lotPendingRemove.ticker] = remaining;
     } else {
-      delete nextLots[ticker];
+      delete nextLots[lotPendingRemove.ticker];
     }
-    await persistAccountLots(nextLots);
+    const saved = await persistAccountLots(nextLots);
+    if (saved) {
+      setLotPendingRemove(null);
+    }
   };
 
   return (
@@ -646,6 +657,40 @@ export default function Clients() {
             : `${summary.clients} clients`
         }
       />
+      <Modal
+        open={Boolean(lotPendingRemove)}
+        title="Remove lot"
+        description="This deletes the lot and recomputes the account holding quantity from the remaining lots."
+        onClose={() => (formSaving ? null : setLotPendingRemove(null))}
+        footer={
+          <>
+            <button
+              type="button"
+              disabled={formSaving}
+              onClick={() => setLotPendingRemove(null)}
+              className="rounded-full border border-slate-700/70 px-3 py-1 text-[11px] text-slate-300 hover:border-slate-500 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={formSaving}
+              onClick={() => {
+                void confirmRemoveLot();
+              }}
+              className="rounded-full border border-amber-400/60 bg-amber-500/10 px-3 py-1 text-[11px] text-amber-200 hover:border-amber-300 disabled:opacity-50"
+            >
+              {formSaving ? "Removing..." : "Remove lot"}
+            </button>
+          </>
+        }
+      >
+        <p className="text-xs text-slate-300">
+          {lotPendingRemove
+            ? `Remove ${lotPendingRemove.ticker} lot ${lotPendingRemove.index + 1}? This cannot be undone.`
+            : "Select a lot to remove."}
+        </p>
+      </Modal>
       <ErrorBanner messages={errorMessages} onRetry={refreshIndex} />
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6">
         <div className="space-y-3 text-sm text-slate-300">

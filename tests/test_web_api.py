@@ -514,6 +514,37 @@ def test_osint_overview_scene_endpoint_stubbed():
     assert payload["focus_targets"][0]["domain"] == "intel"
 
 
+def test_osint_overview_scene_survives_intel_failure():
+    client = TestClient(web_app.app)
+    snapshot = {"mode": "combined", "points": [], "warnings": []}
+    tracker_scene = {
+        "scene_id": "osint-overview",
+        "title": "World",
+        "kind": "osint",
+        "camera_defaults": {"target_lat": 0.0, "target_lon": 0.0, "distance": 3.5},
+        "timeline": {"mode": "trackers", "point_count": 0, "trail_count": 0},
+        "layers": [{"id": "live-trackers", "kind": "point", "features": []}],
+        "focus_targets": [],
+        "meta": {"warnings": []},
+    }
+    with mock.patch.object(scene_routes.GlobalTrackers, "get_snapshot") as mocked_snapshot, mock.patch.object(
+        scene_routes.GlobalTrackers, "apply_filters"
+    ) as mocked_filters, mock.patch.object(
+        scene_routes, "MarketIntel"
+    ) as mocked_intel_cls, mock.patch.object(
+        scene_routes, "build_tracker_scene"
+    ) as mocked_tracker_builder:
+        mocked_snapshot.return_value = snapshot
+        mocked_filters.return_value = snapshot
+        mocked_intel_cls.side_effect = RuntimeError("intel feed timeout")
+        mocked_tracker_builder.return_value = tracker_scene
+        resp = client.get("/api/osint/scene/overview?mode=combined", headers=_api_headers())
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["scene_id"] == "osint-overview"
+    assert any("Regional signals unavailable" in item for item in payload["meta"]["warnings"])
+
+
 def test_osint_overview_scene_requires_key(monkeypatch):
     monkeypatch.setenv("CLEAR_WEB_API_KEY", "secret")
     client = TestClient(web_app.app)

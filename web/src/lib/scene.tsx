@@ -114,7 +114,7 @@ const SCENES: Record<SceneId, SceneDefinition> = {
       }
       return `/api/osint/scene/overview?${params.toString()}`;
     },
-    fallbackStrategy: "none",
+    fallbackStrategy: "trackerSnapshot",
   },
   trackers: {
     id: "trackers",

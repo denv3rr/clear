@@ -2183,9 +2183,11 @@ export function GlobeOverlay() {
             <AlertTriangle size={26} className="text-amber-300" />
             <p>Scene unavailable.</p>
             <p className="globe-overlay__status-copy">
-              {hasTrackerFallback
-                ? "The world view could not load from the primary scene route or the tracker snapshot fallback."
-                : "The world view could not load from the primary regional scene route."}
+              {error || fallbackError || (
+                hasTrackerFallback
+                  ? "The world view could not load from the primary scene route or the tracker snapshot fallback."
+                  : "The world view could not load from the primary regional scene route."
+              )}
             </p>
             <div className="globe-overlay__actions">
               <button type="button" onClick={refresh} className="globe-action-button">
@@ -2441,7 +2443,7 @@ export function GlobeOverlay() {
           </div>
         </div>
 
-        <div className="globe-panel globe-panel--compact" id="globe-filter-drawer">
+        <div className="globe-panel globe-panel--compact">
           <div className="globe-panel__header">
             <div>
               <p className="globe-panel__label">Filters</p>
@@ -2455,7 +2457,7 @@ export function GlobeOverlay() {
               type="button"
               className={filtersOpen ? "globe-toggle globe-toggle--active" : "globe-toggle"}
               aria-expanded={filtersOpen}
-              aria-controls="globe-filter-drawer"
+              aria-controls="globe-filter-content"
               onClick={() => setFiltersOpen((current) => !current)}
             >
               {filtersOpen ? "Hide Filters" : "Show Filters"}
@@ -2617,7 +2619,7 @@ export function GlobeOverlay() {
             </>
           ) : null}
           {filtersOpen ? (
-            <div id="globe-filter-drawer" className="globe-overlay__actions">
+            <div id="globe-filter-content" className="globe-overlay__actions">
               {sceneHasTrackers ? (
                 <button
                   type="button"

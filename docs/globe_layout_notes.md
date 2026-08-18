@@ -78,6 +78,9 @@ the globe scene and overlay CSS remains the motion contract.
 - Client context moved from the left wall into the details drawer so the
   globe stays readable.
 - No new data layers or fabricated geometry.
+- World overview now uses the real tracker snapshot as a fallback when the
+  fused regional route fails, and the overlay shows the actual API error
+  instead of a generic regional-route sentence.
 
 ### `GlobeDataDensity.tsx`
 - Rows are a labeled list with `aria-label` values.
