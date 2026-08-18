@@ -1,9 +1,10 @@
 # Clear
 
-Clear is a local portfolio, analytics, and OSINT platform with shared
+Clear is a local-first portfolio, analytics, and OSINT platform with shared
 CLI, API, and web surfaces. It combines client/account data, deterministic
-financial calculations, global tracker feeds, news/intel summaries, and an
-immersive globe foundation that is now gated by the repo's standards plan.
+financial calculations, global tracker feeds, news/intel summaries, and a
+standards-gated globe foundation. The globe is a real immersive viewer, not a
+finished operational surface.
 
 ## Quick Start
 
@@ -123,11 +124,12 @@ The core deterministic formulas are implemented in
 | Annualization factor | `A = seconds_per_year / mean(delta_t)` or `252` fallback | Uses timestamp spacing when available. | [calculations.py](modules/client_mgr/calculations.py) |
 | Mean annual return | `mean(r) * A` | Used in core and risk metrics. | [calculations.py](modules/client_mgr/calculations.py) |
 | Annualized volatility | `std(r, ddof=1) * sqrt(A)` | Sample standard deviation. | [Investor.gov Sharpe ratio overview](https://www.investor.gov/introduction-investing/investing-basics/terms-and-definitions/sharpe-ratio) |
-| Sharpe ratio | `((mean(r) - r_f / A) / std(r)) * sqrt(A)` | Lightweight summary paths may use `r_f = 0`. | [Investor.gov Sharpe ratio overview](https://www.investor.gov/introduction-investing/investing-basics/terms-and-definitions/sharpe-ratio) |
-| Beta | `cov(r_p, r_m) / var(r_m)` | Uses aligned return series. | [Sharpe 1964 CAPM paper](https://doi.org/10.2307/2977928) |
-| Max drawdown | `min((V_t - peak(V_t)) / peak(V_t))` | Computed from cumulative returns. | [calculations.py](modules/client_mgr/calculations.py) |
-| Historical VaR / CVaR | `quantile(r, 1-q)` and `mean(r <= VaR_q)` | Empirical tail metrics. | [Investor.gov VaR bulletin](https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-bulletins/understanding-value-risk) |
-| EWMA volatility | `var_t = lambda * var_{t-1} + (1-lambda) * r_t^2` | `lambda` defaults to `0.94`. | [1996 RiskMetrics Technical Document](https://www.msci.com/research-and-insights/paper/1996-riskmetrics-technical-document) |
+| Sharpe ratio | `((mean(r) - r_f / A) / std(r)) * sqrt(A)` | Sample std (`ddof=1`). Lightweight paths may use `r_f = 0`. | [Investor.gov Sharpe ratio overview](https://www.investor.gov/introduction-investing/investing-basics/terms-and-definitions/sharpe-ratio) |
+| Sortino ratio | `(mean(r) - r_f / A) / downside_dev * sqrt(A)` | `downside_dev = sqrt(mean(min(r - r_f/A, 0)^2))` over all periods. | [calculations.py](modules/client_mgr/calculations.py) |
+| Beta | `cov(r_p, r_m, ddof=1) / var(r_m, ddof=1)` | Aligned series only. Missing market variance is unavailable, not 1.0. | [Sharpe 1964 CAPM paper](https://doi.org/10.2307/2977928) |
+| Max drawdown | `min((V_t - peak(V_t)) / peak(V_t))` | Empty series is unavailable, not zero. | [calculations.py](modules/client_mgr/calculations.py) |
+| Historical VaR / CVaR | `quantile(r, 1-q)` and `mean(r <= VaR_q)` | Left-tail *returns*, not positive losses. | [Investor.gov VaR bulletin](https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-bulletins/understanding-value-risk) |
+| EWMA volatility | `var_t = λ var_{t-1} + (1-λ) r_t^2` | `λ = 0.94`. Multi-step forecast is `σ * sqrt(h)`. | [1996 RiskMetrics Technical Document](https://www.msci.com/research-and-insights/paper/1996-riskmetrics-technical-document) |
 
 Additional deterministic methods in the same module include Black-Scholes,
 Shannon entropy, permutation entropy, Hurst exponent, FFT spectrum, CUSUM
@@ -143,10 +145,14 @@ lives in the Python test suite rather than in the README.
 | [docs/us_gov_standards.md](docs/us_gov_standards.md) | Mandatory standards baseline |
 | [docs/standards_remediation_plan.md](docs/standards_remediation_plan.md) | Active standards gate and phase plan |
 | [docs/visual_modernization_plan.md](docs/visual_modernization_plan.md) | Globe-first UX roadmap |
+| [docs/globe_layout_notes.md](docs/globe_layout_notes.md) | Researched HUD layout applied to the World globe |
 | [docs/osint_globe_phase_2_plan.md](docs/osint_globe_phase_2_plan.md) | Detailed next-phase OSINT/globe execution plan |
 | [docs/osint.md](docs/osint.md) | OSINT workspace and feed notes |
 | [docs/assistant_usage.md](docs/assistant_usage.md) | Assistant usage across CLI/API/web |
 | [docs/launchers.md](docs/launchers.md) | Startup and shutdown behavior |
+| [docs/methods.md](docs/methods.md) | Shared deterministic formula sheet |
+| [docs/security_verification.md](docs/security_verification.md) | Isolated security suite scope and Dependabot remediations |
+| [docs/repo_automation.md](docs/repo_automation.md) | Dependabot, CI, CodeQL, and branch protection |
 
 ## Sources
 

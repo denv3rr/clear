@@ -9,11 +9,15 @@
 - `docs/diagnostics.md` — diagnostics sources, registry health, and consistency checks.
 - `docs/feed_registry.md` — feed registry sources and health semantics.
 - `docs/geospatial_source_audit.md` — reviewed geospatial source decisions and limits for globe polygons, wildfire overlays, and alert geometry.
+- `docs/globe_layout_notes.md` — researched HUD/layout notes applied to the World globe (no new layers).
 - `docs/launchers.md` — launcher behavior and startup/shutdown guarantees.
+- `docs/methods.md` — deterministic formula sheet for risk, Sortino, EWMA, Hurst, and Markov stay-probability.
 - `docs/osint.md` — OSINT workspace, tracker configuration, and relevance tags.
 - `docs/osint_globe_phase_2_plan.md` — detailed next-phase plan for source onboarding, incident resolution, workflow actions, and third-party-ready globe modularization.
 - `docs/osint_operational_workflow_plan.md` — phased operational-workflow plan for the fused globe, ontology-style object model, workflow actions, and client/report linkage.
 - `docs/platform_services.md` — service templates for running the API in the background.
+- `docs/repo_automation.md` — Dependabot, CI, CodeQL, branch protection, and Security tab usage for a personal public repo.
 - `docs/standards_remediation_plan.md` — active standards-enforcement plan that gates future visual and UI phases.
+- `docs/security_verification.md` — defensive security methodology, NIST mapping, and the 36 Dependabot remediations. Not a formal pentest.
 - `docs/us_gov_standards.md` — mandatory U.S. government standards baseline for data, safety, security, accessibility, and performance.
 - `docs/visual_modernization_plan.md` — globe-first UX, scene architecture, and visual modernization roadmap.
