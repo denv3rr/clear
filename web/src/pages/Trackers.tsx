@@ -20,6 +20,24 @@ import {
 } from "../lib/mapDiagnostics";
 
 const MAP_STATE_KEY = "clear_tracker_map_state";
+const LEAFLET_POINT_CAP = 240;
+
+function formatLeafletTooltip(point: {
+  id?: string;
+  kind?: string;
+  label?: string;
+  category?: string;
+  operator?: string | null;
+  operator_name?: string | null;
+}) {
+  const label = point.label || point.id || "Tracker";
+  const kind = String(point.kind || "signal").toUpperCase();
+  const category = point.category || "unknown";
+  const operator = point.operator_name || point.operator;
+  return operator
+    ? `${label} • ${kind} • ${category} • ${operator}`
+    : `${label} • ${kind} • ${category}`;
+}
 
 type MapState = {
   center: [number, number];
@@ -196,6 +214,30 @@ export function TrackersPanel() {
     mode,
     enabled: streamEnabled
   });
+  const streamStatus = paused
+    ? {
+        state: "paused" as const,
+        title: "Stream disabled",
+        detail: "Tracking is paused. Resume trackers to reconnect the live feed."
+      }
+    : serverFiltersActive
+      ? {
+          state: "filters" as const,
+          title: "Stream disabled",
+          detail:
+            "Server filters are active. Category, country, or operator filters use snapshot polling instead of the live stream."
+        }
+      : connected
+        ? {
+            state: "live" as const,
+            title: "Live stream connected",
+            detail: "Receiving tracker updates over the WebSocket feed."
+          }
+        : {
+            state: "offline" as const,
+            title: "Streaming offline",
+            detail: "Polling snapshots until the live stream reconnects."
+          };
   const snapshotPath = useMemo(() => {
     const params = new URLSearchParams();
     params.set("mode", mode);
@@ -1147,16 +1189,28 @@ export function TrackersPanel() {
     const points = mapFilteredPoints.filter(
       (point) => Number.isFinite(point.lat) && Number.isFinite(point.lon)
     );
-    points.slice(0, 200).forEach((point) => {
+    points.slice(0, LEAFLET_POINT_CAP).forEach((point) => {
       const color = point.kind === "ship" ? "#8892a0" : "#48f1a6";
-      leaflet.circleMarker([point.lat as number, point.lon as number], {
+      const marker = leaflet.circleMarker([point.lat as number, point.lon as number], {
         radius: 4.5,
         color,
         weight: 1.2,
         opacity: 0.9,
         fillColor: color,
         fillOpacity: 0.75
-      }).addTo(layer);
+      });
+      marker.bindTooltip(formatLeafletTooltip(point), {
+        direction: "top",
+        opacity: 0.92,
+        sticky: true
+      });
+      marker.on("click", () => {
+        const id = point.id;
+        if (!id) return;
+        setSelectedId(id);
+        setFeedOpen(true);
+      });
+      marker.addTo(layer);
     });
     if (points.length && !mapLock && !mapFollow && !mapAutoFitRef.current) {
       const bounds = leaflet.latLngBounds(
@@ -1267,6 +1321,20 @@ export function TrackersPanel() {
       <div className="mt-4">
         <ErrorBanner messages={errorMessages} onRetry={refreshPoll} />
       </div>
+      {streamStatus.state === "paused" || streamStatus.state === "filters" ? (
+        <div
+          className="mt-4 rounded-xl border border-amber-400/30 px-4 py-3 text-xs text-amber-200"
+          data-testid="tracker-stream-status"
+          role="status"
+        >
+          <p className="font-semibold">{streamStatus.title}</p>
+          <p className="mt-1 text-slate-300">{streamStatus.detail}</p>
+        </div>
+      ) : (
+        <div className="sr-only" data-testid="tracker-stream-status" role="status">
+          {streamStatus.title}. {streamStatus.detail}
+        </div>
+      )}
       <div className="mt-6 space-y-4 text-sm text-slate-300">
         <Collapsible
           title="Global Risk Signals"
@@ -1298,13 +1366,7 @@ export function TrackersPanel() {
             <div className="rounded-xl border border-slate-700 p-4">
               <p className="text-xs font-semibold text-slate-200 mb-2">System Status</p>
               <p className="text-sm text-green-300">
-                {connected
-                  ? "Live stream connected"
-                  : paused
-                    ? "Tracking paused."
-                    : streamEnabled
-                      ? "Streaming offline - polling snapshots"
-                      : "Streaming paused (filters active). Polling snapshots."}
+                {streamStatus.title}. {streamStatus.detail}
               </p>
               {(data?.warnings || []).length > 0 ? (
                 <div className="mt-3 space-y-1 text-xs text-amber-300">
@@ -1340,9 +1402,18 @@ export function TrackersPanel() {
               </div>
             ) : null}
             <div className="absolute bottom-3 left-3 z-10 rounded-lg border border-green-400/20 bg-slate-950/80 px-3 py-2 text-xs text-green-300">
-              {mapFilteredPoints.length
-                ? `${mapFilteredPoints.length} live entities`
-                : "Awaiting live feed"}
+              <p>
+                {mapFilteredPoints.length
+                  ? `${mapFilteredPoints.length} live entities`
+                  : "Awaiting live feed"}
+              </p>
+              <p
+                className={
+                  streamStatus.state === "live" ? "mt-1 text-green-200" : "mt-1 text-amber-200"
+                }
+              >
+                {streamStatus.title}
+              </p>
             </div>
             <div className="absolute bottom-3 right-3 z-10 rounded-lg border border-slate-700 bg-slate-950/80 px-3 py-2 text-[11px] text-slate-300">
               <p>{mapFallback ? leafletStatus : mapStatus}</p>

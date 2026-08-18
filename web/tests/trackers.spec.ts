@@ -34,3 +34,21 @@ test("tracker map focus and filters respond", async ({ page }) => {
   await historyButton.click();
   await expect(historyButton).not.toHaveText(initialHistoryText || "");
 });
+
+test("tracker stream status explains server filters", async ({ page }) => {
+  await page.goto("/osint?tab=trackers");
+  const status = page.getByTestId("tracker-stream-status");
+  await page.getByLabel("Country").fill("United States");
+  await expect(status).toBeVisible();
+  await expect(status).toContainText("Stream disabled");
+  await expect(status).toContainText("Server filters are active");
+});
+
+test("tracker stream status explains pause", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("clear_tracker_paused", "true");
+  });
+  await page.goto("/osint?tab=trackers");
+  await expect(page.getByTestId("tracker-stream-status")).toContainText("Stream disabled");
+  await expect(page.getByTestId("tracker-stream-status")).toContainText("Tracking is paused");
+});

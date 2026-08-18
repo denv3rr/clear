@@ -1448,6 +1448,7 @@ export function GlobeOverlay() {
   const [geographyError, setGeographyError] = useState<string | null>(null);
   const [qualityFactor, setQualityFactor] = useState(reducedMotion ? 0.5 : 0.82);
   const [warningsOpen, setWarningsOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [trackerOperatorDraft, setTrackerOperatorDraft] = useState(sceneState.trackerOperator);
   const sceneId = activeScene?.id || "overview";
   const hasTrackerFallback = activeScene?.fallbackStrategy === "trackerSnapshot";
@@ -1512,6 +1513,7 @@ export function GlobeOverlay() {
     setFallbackError(null);
     setSelectedId(null);
     setWarningsOpen(false);
+    setFiltersOpen(false);
   }, [activeScene?.id]);
 
   useEffect(() => {
@@ -1703,6 +1705,25 @@ export function GlobeOverlay() {
       .slice(0, 4);
   }, [trackerPointFeatures]);
 
+  const selectedProvenanceRows = useMemo(() => {
+    const rows: Array<{ label: string; value: string }> = [];
+    if (!selectedFeature) return rows;
+
+    const properties = asRecord(selectedFeature.properties);
+    const provenance = asRecord(properties?.provenance);
+    const addRow = (label: string, value: string) => {
+      rows.push({ label, value: value && value !== "n/a" ? value : "n/a" });
+    };
+
+    addRow("Source", formatFeatureSource(selectedFeature));
+    addRow("Layer", formatDisplayLabel(selectedFeature.layer));
+    addRow("Display Scope", formatDisplayLabel(properties?.display_scope || properties?.scope_kind));
+    addRow("Coverage", formatCoverage(asRecord(properties?.coverage)));
+    addRow("Feature Warnings", formatStringList(selectedFeature.warnings));
+    addRow("Display Note", formatOptionalText(provenance?.display_note || properties?.display_note));
+    return rows;
+  }, [selectedFeature]);
+
   const selectedDetailRows = useMemo(() => {
     const rows: Array<{ label: string; value: string }> = [];
     if (!selectedFeature) return rows;
@@ -1726,14 +1747,6 @@ export function GlobeOverlay() {
       "Freshness",
       formatAge(selectedFeature.freshness?.age_sec, selectedFeature.freshness?.state)
     );
-    addRow("Source", formatFeatureSource(selectedFeature));
-    addRow("Layer", formatDisplayLabel(selectedFeature.layer));
-    addRow("Display Scope", formatDisplayLabel(properties?.display_scope || properties?.scope_kind));
-    addRow("Coverage", formatCoverage(asRecord(properties?.coverage)));
-    addRow("Feature Warnings", formatStringList(selectedFeature.warnings));
-
-    const provenance = asRecord(properties?.provenance);
-    addRow("Display Note", formatOptionalText(provenance?.display_note || properties?.display_note));
 
     if (selectedIntelFeature) {
       const combined = asRecord(properties?.combined_risk);
@@ -2084,6 +2097,13 @@ export function GlobeOverlay() {
 
   const sceneHasIntel = sceneId === "intel" || sceneId === "overview";
   const sceneHasTrackers = sceneId === "trackers" || sceneId === "overview";
+  const activeFilterCount =
+    (sceneHasTrackers && sceneState.trackerCategory !== "all" ? 1 : 0) +
+    (sceneHasTrackers && sceneState.trackerCountry.trim() ? 1 : 0) +
+    (sceneHasTrackers && sceneState.trackerOperator.trim() ? 1 : 0) +
+    (sceneHasIntel && sceneState.intelIndustry !== "all" ? 1 : 0) +
+    (sceneHasIntel ? sceneState.intelCategories.length : 0) +
+    (sceneHasIntel ? sceneState.intelSources.length : 0);
   const selectedFeatureIsIntel = Boolean(
     selectedFeature && (sceneId === "intel" || (sceneId === "overview" && isIntelFeature(selectedFeature)))
   );
@@ -2184,8 +2204,8 @@ export function GlobeOverlay() {
         )}
       </div>
 
-      <div className="globe-hud globe-hud--left">
-        <div className="globe-panel">
+      <div className="globe-hud globe-hud--left max-h-screen overflow-y-auto">
+        <div className="globe-panel globe-panel--compact">
           <div className="globe-panel__header">
             <div>
               <p className="tag text-[11px] uppercase tracking-[0.22em] text-emerald-300/90">
@@ -2204,7 +2224,6 @@ export function GlobeOverlay() {
               <X size={16} />
             </button>
           </div>
-          <p className="globe-panel__copy">{activeScene.description}</p>
           <p className="globe-panel__label">Scene View</p>
           <div className="globe-toggle-group">
             {[
@@ -2273,41 +2292,81 @@ export function GlobeOverlay() {
           ) : null}
         </div>
 
-        {sceneId === "overview" ? (
-          <div className="globe-panel globe-panel--compact globe-client-context">
-            <div className="globe-panel__header">
-              <div>
-                <p className="globe-panel__label">Client Context</p>
-                <p className="globe-panel__metric">
-                  {clientContext.clientCount} clients / {clientContext.accountCount} accounts
-                </p>
-              </div>
-              <span className="globe-badge">{clientContext.holdingsCount} holdings</span>
-            </div>
-            <div className="globe-client-context__grid">
-              {clientContext.topClients.length ? (
-                clientContext.topClients.map((client) => (
-                  <a
-                    key={client.client_id}
-                    href={`/clients?client=${encodeURIComponent(client.client_id)}`}
-                    className="globe-client-context__row"
-                  >
-                    <span>{client.name}</span>
-                    <small>
-                      {client.accounts_count || 0} accounts / {client.risk_profile || "Unprofiled"}
-                    </small>
-                  </a>
-                ))
-              ) : (
-                <p className="globe-panel__copy globe-panel__copy--subtle">
-                  No client workspaces available yet.
-                </p>
-              )}
-            </div>
-          </div>
-        ) : null}
-
         <div className="globe-panel globe-panel--compact">
+          <div className="globe-panel__header">
+            <div>
+              <p className="globe-panel__label">Layers</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => resetOverlayVisibility()}
+              className="globe-action-button globe-action-button--inline"
+            >
+              Reset Layer View
+            </button>
+          </div>
+          <div className="globe-toggle-group">
+            {sceneHasTrackers ? (
+              <button
+                type="button"
+                data-testid="globe-layer-trackers"
+                aria-pressed={sceneState.showTrackerPoints}
+                onClick={() => setOverlayVisibility("showTrackerPoints", !sceneState.showTrackerPoints)}
+                className={
+                  sceneState.showTrackerPoints
+                    ? "globe-toggle globe-toggle--active"
+                    : "globe-toggle"
+                }
+              >
+                Trackers ({trackerPointFeatures.length})
+              </button>
+            ) : null}
+            {sceneHasTrackers ? (
+              <button
+                type="button"
+                data-testid="globe-layer-trails"
+                aria-pressed={sceneState.showTrackerTrails}
+                onClick={() => setOverlayVisibility("showTrackerTrails", !sceneState.showTrackerTrails)}
+                className={
+                  sceneState.showTrackerTrails
+                    ? "globe-toggle globe-toggle--active"
+                    : "globe-toggle"
+                }
+              >
+                Trails ({pathFeatures.length})
+              </button>
+            ) : null}
+            {sceneHasIntel ? (
+              <button
+                type="button"
+                data-testid="globe-layer-regions"
+                aria-pressed={sceneState.showIntelRegions}
+                onClick={() => setOverlayVisibility("showIntelRegions", !sceneState.showIntelRegions)}
+                className={
+                  sceneState.showIntelRegions
+                    ? "globe-toggle globe-toggle--active"
+                    : "globe-toggle"
+                }
+              >
+                Regional Signals ({intelPointFeatures.length})
+              </button>
+            ) : null}
+            {sceneHasIntel ? (
+              <button
+                type="button"
+                data-testid="globe-layer-hotspots"
+                aria-pressed={sceneState.showIntelHotspots}
+                onClick={() => setOverlayVisibility("showIntelHotspots", !sceneState.showIntelHotspots)}
+                className={
+                  sceneState.showIntelHotspots
+                    ? "globe-toggle globe-toggle--active"
+                    : "globe-toggle"
+                }
+              >
+                Centroid Pulses ({pulseFeatures.length})
+              </button>
+            ) : null}
+          </div>
           {sceneHasTrackers ? (
             <>
               <p className="globe-panel__label">Tracker Scope</p>
@@ -2382,92 +2441,27 @@ export function GlobeOverlay() {
           </div>
         </div>
 
-        <div className="globe-panel globe-panel--compact">
-          <div className="globe-panel__header">
-            <div>
-              <p className="globe-panel__label">Visible Layers</p>
-            </div>
-          </div>
-          <div className="globe-toggle-group">
-            {sceneHasTrackers ? (
-              <button
-                type="button"
-                data-testid="globe-layer-trackers"
-                aria-pressed={sceneState.showTrackerPoints}
-                onClick={() => setOverlayVisibility("showTrackerPoints", !sceneState.showTrackerPoints)}
-                className={
-                  sceneState.showTrackerPoints
-                    ? "globe-toggle globe-toggle--active"
-                    : "globe-toggle"
-                }
-              >
-                Trackers ({trackerPointFeatures.length})
-              </button>
-            ) : null}
-            {sceneHasTrackers ? (
-              <button
-                type="button"
-                data-testid="globe-layer-trails"
-                aria-pressed={sceneState.showTrackerTrails}
-                onClick={() => setOverlayVisibility("showTrackerTrails", !sceneState.showTrackerTrails)}
-                className={
-                  sceneState.showTrackerTrails
-                    ? "globe-toggle globe-toggle--active"
-                    : "globe-toggle"
-                }
-              >
-                Trails ({pathFeatures.length})
-              </button>
-            ) : null}
-            {sceneHasIntel ? (
-              <button
-                type="button"
-                data-testid="globe-layer-regions"
-                aria-pressed={sceneState.showIntelRegions}
-                onClick={() => setOverlayVisibility("showIntelRegions", !sceneState.showIntelRegions)}
-                className={
-                  sceneState.showIntelRegions
-                    ? "globe-toggle globe-toggle--active"
-                    : "globe-toggle"
-                }
-              >
-                Regional Signals ({intelPointFeatures.length})
-              </button>
-            ) : null}
-            {sceneHasIntel ? (
-              <button
-                type="button"
-                data-testid="globe-layer-hotspots"
-                aria-pressed={sceneState.showIntelHotspots}
-                onClick={() => setOverlayVisibility("showIntelHotspots", !sceneState.showIntelHotspots)}
-                className={
-                  sceneState.showIntelHotspots
-                    ? "globe-toggle globe-toggle--active"
-                    : "globe-toggle"
-                }
-              >
-                Centroid Pulses ({pulseFeatures.length})
-              </button>
-            ) : null}
-          </div>
-          <div className="globe-overlay__actions">
-            <button
-              type="button"
-              onClick={() => resetOverlayVisibility()}
-              className="globe-action-button"
-            >
-              Reset Layer View
-            </button>
-          </div>
-        </div>
-
-        <div className="globe-panel globe-panel--compact">
+        <div className="globe-panel globe-panel--compact" id="globe-filter-drawer">
           <div className="globe-panel__header">
             <div>
               <p className="globe-panel__label">Filters</p>
+              <p className="globe-panel__copy globe-panel__copy--subtle">
+                {activeFilterCount
+                  ? `${activeFilterCount} active ${activeFilterCount === 1 ? "filter" : "filters"}`
+                  : "No extra filters"}
+              </p>
             </div>
+            <button
+              type="button"
+              className={filtersOpen ? "globe-toggle globe-toggle--active" : "globe-toggle"}
+              aria-expanded={filtersOpen}
+              aria-controls="globe-filter-drawer"
+              onClick={() => setFiltersOpen((current) => !current)}
+            >
+              {filtersOpen ? "Hide Filters" : "Show Filters"}
+            </button>
           </div>
-          {sceneHasIntel ? (
+          {filtersOpen && sceneHasIntel ? (
             <>
               <label className="globe-field">
                 <span className="globe-panel__label">Industry</span>
@@ -2532,7 +2526,7 @@ export function GlobeOverlay() {
               </div>
             </>
           ) : null}
-          {sceneHasTrackers ? (
+          {filtersOpen && sceneHasTrackers ? (
             <>
               <p className="globe-panel__label">Category</p>
               <div className="globe-toggle-group">
@@ -2622,34 +2616,35 @@ export function GlobeOverlay() {
               ) : null}
             </>
           ) : null}
-          <div className="globe-overlay__actions">
-            {sceneHasTrackers ? (
-              <button
-                type="button"
-                onClick={() => {
-                  clearTrackerFilters();
-                  setTrackerOperatorDraft("");
-                  setCameraPreset("free");
-                }}
-                className="globe-action-button"
-              >
-                Clear Tracker Filters
-              </button>
-            ) : null}
-            {sceneHasIntel ? (
-              <button
-                type="button"
-                onClick={() => {
-                  clearIntelFilters();
-                  setCameraPreset("free");
-                }}
-                className="globe-action-button"
-              >
-                Clear Signal Filters
-              </button>
-            ) : null}
-          </div>
-          <p className="globe-panel__copy globe-panel__copy--subtle">{geographySourceCopy}</p>
+          {filtersOpen ? (
+            <div id="globe-filter-drawer" className="globe-overlay__actions">
+              {sceneHasTrackers ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearTrackerFilters();
+                    setTrackerOperatorDraft("");
+                    setCameraPreset("free");
+                  }}
+                  className="globe-action-button"
+                >
+                  Clear Tracker Filters
+                </button>
+              ) : null}
+              {sceneHasIntel ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearIntelFilters();
+                    setCameraPreset("free");
+                  }}
+                  className="globe-action-button"
+                >
+                  Clear Signal Filters
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div className="globe-panel globe-panel--compact">
@@ -2661,6 +2656,7 @@ export function GlobeOverlay() {
                 ? "Unavailable"
                 : formatTimestamp(scene?.meta?.timestamp)}
           </p>
+          <p className="globe-panel__copy globe-panel__copy--subtle">{geographySourceCopy}</p>
           {sceneUnavailable || (error && fallbackScene) || reducedMotion ? (
             <p className="globe-panel__copy">
               {sceneUnavailable
@@ -2696,7 +2692,7 @@ export function GlobeOverlay() {
       <div
         className={
           sceneState.detailsVisible
-            ? "globe-hud globe-hud--right"
+            ? "globe-hud globe-hud--right max-h-screen overflow-y-auto"
             : "globe-hud globe-hud--right globe-hud--right-collapsed"
         }
       >
@@ -2755,7 +2751,7 @@ export function GlobeOverlay() {
           </div>
         </div>
 
-        <div className="globe-panel globe-panel--compact">
+        <div className="globe-panel globe-panel--compact" data-testid="globe-inspector">
           <p className="globe-panel__label">
             {sceneId === "overview"
               ? "Selected Focus"
@@ -2773,15 +2769,31 @@ export function GlobeOverlay() {
                 ? `${String(selectedFocus.kind || "signal").toUpperCase()} • ${selectedFocus.category || "unknown"}`
                 : "Choose a focus target to inspect the live layer."}
           </p>
+          {selectedProvenanceRows.length ? (
+            <>
+              <p className="globe-panel__label">Provenance</p>
+              <div className="globe-detail-grid">
+                {selectedProvenanceRows.map((row) => (
+                  <div key={`${row.label}-${row.value}`} className="globe-detail-row">
+                    <span className="globe-detail-row__label">{row.label}</span>
+                    <span className="globe-detail-row__value">{row.value}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : null}
           {selectedDetailRows.length ? (
-            <div className="globe-detail-grid">
-              {selectedDetailRows.map((row) => (
-                <div key={`${row.label}-${row.value}`} className="globe-detail-row">
-                  <span className="globe-detail-row__label">{row.label}</span>
-                  <span className="globe-detail-row__value">{row.value}</span>
-                </div>
-              ))}
-            </div>
+            <>
+              <p className="globe-panel__label">Signal Detail</p>
+              <div className="globe-detail-grid">
+                {selectedDetailRows.map((row) => (
+                  <div key={`${row.label}-${row.value}`} className="globe-detail-row">
+                    <span className="globe-detail-row__label">{row.label}</span>
+                    <span className="globe-detail-row__value">{row.value}</span>
+                  </div>
+                ))}
+              </div>
+            </>
           ) : null}
           {selectedFeatureIsIntel && selectedEmotionMix.length ? (
             <div className="mt-4 space-y-3">
@@ -2871,6 +2883,7 @@ export function GlobeOverlay() {
                     <span
                       className="globe-legend__swatch"
                       style={{ backgroundColor: entry.color }}
+                      aria-hidden="true"
                     />
                     <span>{entry.label}</span>
                   </span>
@@ -2879,6 +2892,39 @@ export function GlobeOverlay() {
             </>
           ) : null}
         </div>
+        {sceneId === "overview" ? (
+          <div className="globe-panel globe-panel--compact globe-client-context">
+            <div className="globe-panel__header">
+              <div>
+                <p className="globe-panel__label">Client Context</p>
+                <p className="globe-panel__metric">
+                  {clientContext.clientCount} clients / {clientContext.accountCount} accounts
+                </p>
+              </div>
+              <span className="globe-badge">{clientContext.holdingsCount} holdings</span>
+            </div>
+            <div className="globe-client-context__grid">
+              {clientContext.topClients.length ? (
+                clientContext.topClients.map((client) => (
+                  <a
+                    key={client.client_id}
+                    href={`/clients?client=${encodeURIComponent(client.client_id)}`}
+                    className="globe-client-context__row"
+                  >
+                    <span>{client.name}</span>
+                    <small>
+                      {client.accounts_count || 0} accounts / {client.risk_profile || "Unprofiled"}
+                    </small>
+                  </a>
+                ))
+              ) : (
+                <p className="globe-panel__copy globe-panel__copy--subtle">
+                  No client workspaces available yet.
+                </p>
+              )}
+            </div>
+          </div>
+        ) : null}
           </>
         ) : null}
       </div>
