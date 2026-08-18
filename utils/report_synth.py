@@ -311,9 +311,12 @@ def _rule_based_synthesis(context: ReportContext, analysis: Dict[str, object]) -
     outlook = (
         f"{context.report_type.title()} outlook for {context.region} "
         f"with {context.industry} exposure remains {risk.lower()} risk. "
-        f"Confidence is {confidence.lower()} with monitoring focus on "
+        f"Monitoring focus is on "
         f"{', '.join(signals[:3]) if signals else 'macro and supply signals'}."
     )
+    support = str(confidence).strip()
+    if support and support.lower() not in {"unknown", "none", "null"}:
+        outlook += f" Incoming data-support label is {support.lower()}."
 
     notes = [
         f"Risk posture: {risk} (score {context.risk_score or 'n/a'}).",

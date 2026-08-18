@@ -8,24 +8,22 @@ import pandas as pd
 
 
 def annualization_factor_from_index(returns: pd.Series) -> float:
-    try:
-        idx = returns.index
-        if not isinstance(idx, pd.DatetimeIndex) or len(idx) < 2:
-            return 252.0
-        deltas = idx.to_series().diff().dropna().dt.total_seconds()
-        deltas = deltas[deltas > 0]
-        if deltas.empty:
-            return 252.0
-        avg_delta = float(deltas.mean())
-        seconds_per_year = 365.25 * 24 * 60 * 60
-        return seconds_per_year / avg_delta
-    except Exception:
+    idx = getattr(returns, "index", None)
+    if not isinstance(idx, pd.DatetimeIndex) or len(idx) < 2:
         return 252.0
+    deltas = idx.to_series().diff().dropna().dt.total_seconds()
+    deltas = deltas[deltas > 0]
+    if deltas.empty:
+        return 252.0
+    avg_delta = float(deltas.mean())
+    seconds_per_year = 365.25 * 24 * 60 * 60
+    return seconds_per_year / avg_delta
 
 
 def compute_core_metrics(
     returns: pd.Series,
     benchmark_returns: Optional[pd.Series] = None,
+    risk_free_annual: float = 0.0,
 ) -> Dict[str, Any]:
     """Centralized math engine for chart-ready summary metrics."""
     if returns.empty:
@@ -34,21 +32,26 @@ def compute_core_metrics(
     ann_factor = annualization_factor_from_index(returns)
     std_dev = returns.std(ddof=1)
     vol = std_dev * np.sqrt(ann_factor)
-    sharpe = (returns.mean() / std_dev) * np.sqrt(ann_factor) if std_dev != 0 else 0.0
+    rf_period = float(risk_free_annual) / ann_factor if ann_factor else 0.0
+    sharpe = (
+        ((returns.mean() - rf_period) / std_dev) * np.sqrt(ann_factor)
+        if std_dev != 0
+        else None
+    )
 
     metrics = {
         "volatility_annual": float(vol),
-        "sharpe": float(sharpe),
+        "sharpe": float(sharpe) if sharpe is not None else None,
         "mean_return": float(returns.mean() * ann_factor),
+        "risk_free_annual": float(risk_free_annual),
     }
 
     if benchmark_returns is not None and not benchmark_returns.empty:
         combined = pd.concat([returns, benchmark_returns], axis=1).dropna()
         if len(combined) > 5:
-            cov = np.cov(combined.iloc[:, 0], combined.iloc[:, 1])[0, 1]
-            mkt_var = np.var(combined.iloc[:, 1])
-            beta = cov / mkt_var if mkt_var != 0 else 1.0
-            metrics["beta"] = float(beta)
+            cov = float(np.cov(combined.iloc[:, 0], combined.iloc[:, 1], ddof=1)[0, 1])
+            mkt_var = float(np.var(combined.iloc[:, 1], ddof=1))
+            metrics["beta"] = float(cov / mkt_var) if mkt_var != 0 else None
 
     return metrics
 
@@ -77,21 +80,33 @@ def black_scholes_price(
     return float(call_price), float(put_price)
 
 
-def calculate_max_drawdown(returns: pd.Series) -> float:
+def calculate_max_drawdown(returns: pd.Series) -> Optional[float]:
     if returns.empty:
-        return 0.0
+        return None
     cumulative_returns = (1 + returns).cumprod()
     peak = cumulative_returns.expanding(min_periods=1).max()
     drawdown = (cumulative_returns - peak) / peak
-    return drawdown.min()
+    return float(drawdown.min())
 
 
-def calculate_var_cvar(returns: pd.Series, confidence_level: float) -> Tuple[float, float]:
+def calculate_var_cvar(
+    returns: pd.Series, confidence_level: float
+) -> Tuple[Optional[float], Optional[float]]:
     if returns.empty:
-        return 0.0, 0.0
+        return None, None
     var = returns.quantile(1 - confidence_level)
-    cvar = returns[returns <= var].mean()
-    return float(var), float(cvar)
+    tail = returns[returns <= var]
+    if tail.empty:
+        return float(var), None
+    return float(var), float(tail.mean())
+
+
+def downside_deviation(returns: pd.Series, threshold: float) -> Optional[float]:
+    """Root-mean-square of min(r - threshold, 0) over all observations."""
+    if returns.empty:
+        return None
+    excess = np.minimum(np.asarray(returns, dtype=float) - float(threshold), 0.0)
+    return float(np.sqrt(np.mean(np.square(excess))))
 
 
 def shannon_entropy(returns: pd.Series, bins: int = 12) -> float:
@@ -131,9 +146,9 @@ def permutation_entropy(values: List[float], order: int = 3, delay: int = 1) -> 
     return max(0.0, min(1.0, entropy / max_entropy))
 
 
-def hurst_exponent(values: List[float]) -> float:
+def hurst_exponent(values: List[float]) -> Optional[float]:
     if not values or len(values) < 100:
-        return 0.5
+        return None
 
     series = np.array(values, dtype=float)
     n_min = 10
@@ -162,9 +177,9 @@ def hurst_exponent(values: List[float]) -> float:
         return 0.5
 
     slope = np.polyfit(np.log(lags_used), np.log(rs_values), 1)[0]
-    hurst = float(slope - 0.06)
+    hurst = float(slope)
     if math.isnan(hurst) or math.isinf(hurst):
-        return 0.5
+        return None
     return max(0.0, min(1.0, hurst))
 
 
@@ -231,14 +246,13 @@ def ewma_vol_forecast(returns: pd.Series, lam: float = 0.94, steps: int = 6) -> 
     values = np.array(returns, dtype=float)
     if len(values) < 2:
         return []
-    var = np.var(values, ddof=1)
+    var = float(np.var(values, ddof=1))
     for r in values:
         var = lam * var + (1.0 - lam) * (r ** 2)
-    forecast = []
-    for _ in range(steps):
-        var = lam * var
-        forecast.append(math.sqrt(var))
-    return forecast
+    sigma = math.sqrt(max(var, 0.0))
+    # One-step forecast is current EWMA sigma. Multi-step uses sqrt(h) scaling
+    # with that sigma held constant (RiskMetrics random-walk variance).
+    return [sigma * math.sqrt(horizon) for horizon in range(1, max(1, int(steps)) + 1)]
 
 
 def compute_capm_metrics_from_returns(
@@ -292,9 +306,10 @@ def compute_capm_metrics_from_returns(
     sharpe = ((avg_p - rf_daily) / std_p * (ann_factor ** 0.5)) if std_p > 0 else None
     vol_annual = std_p * (ann_factor ** 0.5)
 
-    neg = p[p < rf_daily]
-    downside_std = float(np.std(neg, ddof=1)) if len(neg) > 1 else None
-    downside_vol_annual = downside_std * (ann_factor ** 0.5) if downside_std else None
+    downside_std = downside_deviation(joined["p"], rf_daily)
+    downside_vol_annual = (
+        downside_std * (ann_factor ** 0.5) if downside_std else None
+    )
 
     sortino = None
     if downside_std and downside_std > 0:
@@ -334,6 +349,27 @@ def compute_risk_metrics(
     benchmark_returns: Optional[pd.Series],
     risk_free_annual: float,
 ) -> Dict[str, Any]:
+    empty = {
+        "mean_annual": None,
+        "vol_annual": None,
+        "sharpe": None,
+        "sortino": None,
+        "max_drawdown": None,
+        "var_95": None,
+        "cvar_95": None,
+        "var_99": None,
+        "cvar_99": None,
+        "beta": None,
+        "alpha_annual": None,
+        "r_squared": None,
+        "tracking_error": None,
+        "information_ratio": None,
+        "treynor": None,
+        "m_squared": None,
+    }
+    if returns is None or returns.empty:
+        return empty
+
     ann_factor = annualization_factor_from_index(returns)
     rf_daily = risk_free_annual / ann_factor
     avg_daily = float(returns.mean())
@@ -346,8 +382,7 @@ def compute_risk_metrics(
     if std_daily > 0:
         sharpe = (avg_daily - rf_daily) / std_daily * (ann_factor ** 0.5)
 
-    downside = returns[returns < rf_daily]
-    downside_std = float(downside.std(ddof=1)) if len(downside) > 1 else 0.0
+    downside_std = downside_deviation(returns, rf_daily) or 0.0
     sortino = None
     if downside_std > 0:
         sortino = (avg_daily - rf_daily) / downside_std * (ann_factor ** 0.5)
@@ -367,27 +402,32 @@ def compute_risk_metrics(
     if benchmark_returns is not None and not benchmark_returns.empty:
         aligned = pd.concat([returns, benchmark_returns], axis=1).dropna()
         if not aligned.empty and len(aligned) > 10:
-            p = aligned.iloc[:, 0].values
-            m = aligned.iloc[:, 1].values
-            var_m = float(np.var(m, ddof=1))
-            cov_pm = float(np.cov(p, m, ddof=1)[0][1])
+            p = aligned.iloc[:, 0]
+            m = aligned.iloc[:, 1]
+            var_m = float(np.var(m.to_numpy(), ddof=1))
+            cov_pm = float(np.cov(p.to_numpy(), m.to_numpy(), ddof=1)[0][1])
             beta = (cov_pm / var_m) if var_m > 0 else None
 
-            avg_m = float(np.mean(m))
-            alpha_annual = (avg_daily - (rf_daily + (beta or 0.0) * (avg_m - rf_daily))) * ann_factor
+            avg_p = float(p.mean())
+            avg_m = float(m.mean())
+            alpha_annual = (avg_p - (rf_daily + (beta or 0.0) * (avg_m - rf_daily))) * ann_factor
 
-            corr = float(np.corrcoef(p, m)[0][1])
+            corr = float(np.corrcoef(p.to_numpy(), m.to_numpy())[0][1])
             r_squared = corr * corr
 
-            active_return = returns - benchmark_returns
-            tracking_error = active_return.std() * (ann_factor ** 0.5)
+            active_return = p - m
+            tracking_error = float(active_return.std(ddof=1)) * (ann_factor ** 0.5)
             if tracking_error > 0:
-                information_ratio = (returns.mean() - benchmark_returns.mean()) * ann_factor / tracking_error
+                information_ratio = float(active_return.mean()) * ann_factor / tracking_error
 
             if beta is not None and beta != 0:
                 treynor = (mean_annual - risk_free_annual) / beta
 
-            m_squared = risk_free_annual + sharpe * (benchmark_returns.std()) * (ann_factor ** 0.5) if sharpe is not None else None
+            if sharpe is not None:
+                m_squared = (
+                    risk_free_annual
+                    + sharpe * float(m.std(ddof=1)) * (ann_factor ** 0.5)
+                )
 
     return {
         "mean_annual": mean_annual,

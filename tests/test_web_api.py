@@ -1,3 +1,12 @@
+"""Web API contract-shape and negative-path tests.
+
+Functions named *_stubbed monkeypatch route internals to prove response
+shape and filter wiring. They are not positive-path evidence under
+docs/us_gov_standards.md. Isolated real-data coverage lives in
+tests/test_web_api_clients.py, tests/test_web_api_maintenance.py, and
+tests/test_security.py.
+"""
+
 import os
 from unittest import mock
 
