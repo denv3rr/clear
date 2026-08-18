@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import Dict
 
@@ -11,6 +12,7 @@ from web_api.diagnostics import feed_status, system_snapshot
 from web_api.view_model import attach_meta, validate_payload
 
 router = APIRouter()
+LOGGER = logging.getLogger(__name__)
 
 
 def _load_settings_payload() -> Dict[str, object]:
@@ -21,8 +23,9 @@ def _load_settings_payload() -> Dict[str, object]:
         with open(path, "r", encoding="utf-8") as handle:
             data = handle.read()
         return {"settings": json.loads(data), "error": None}
-    except Exception as exc:
-        return {"settings": {}, "error": f"Invalid settings.json ({exc})"}
+    except Exception:
+        LOGGER.exception("Unable to parse settings.json")
+        return {"settings": {}, "error": "Invalid settings.json"}
 
 
 def _redact_settings(settings: Dict[str, object]) -> Dict[str, object]:

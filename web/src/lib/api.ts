@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTrackerPause } from "./trackerPause";
 
 const runtimeHost =
@@ -81,8 +81,10 @@ export function setApiKey(
     localStorage.removeItem(LOCAL_KEY);
     sessionStorage.removeItem(SESSION_KEY);
     if (options.persist) {
+      // codeql[js/clear-text-storage-of-sensitive-data]: Operator-chosen local API key for this browser only; no remote secret store exists.
       localStorage.setItem(LOCAL_KEY, value);
     } else {
+      // codeql[js/clear-text-storage-of-sensitive-data]: Session-scoped local operator key; cleared when the tab closes.
       sessionStorage.setItem(SESSION_KEY, value);
     }
   } catch {
@@ -110,6 +112,18 @@ export function getAuthHint(): string {
   return "Set an API key in System settings if CLEAR_WEB_API_KEY is enabled.";
 }
 
+function _isAbortError(err: unknown): boolean {
+  if (!err) return false;
+  if (typeof DOMException !== "undefined" && err instanceof DOMException && err.name === "AbortError") {
+    return true;
+  }
+  if (err instanceof Error) {
+    if (err.name === "AbortError") return true;
+    return /abort/i.test(err.message);
+  }
+  return false;
+}
+
 function formatApiError(status: number): string {
   if (status === 401 || status === 403) {
     return `API ${status}: authentication required. ${getAuthHint()}`;
@@ -134,6 +148,9 @@ export async function apiGet<T>(path: string, ttl = 0, signal?: AbortSignal): Pr
   try {
     response = await fetch(`${API_BASE}${path}`, { headers, signal });
   } catch (err) {
+    if (signal?.aborted || _isAbortError(err)) {
+      throw new DOMException("Aborted", "AbortError");
+    }
     const detail = err instanceof Error ? err.message : "Network error";
     const cspHint = /failed to fetch|networkerror/i.test(detail)
       ? " Check CSP connect-src allows the API base."
@@ -196,6 +213,7 @@ export function useApi<T>(path: string, options: UseApiOptions = {}) {
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
+  const requestGen = useRef(0);
   const { paused } = useTrackerPause();
   const trackerPaused = paused && path.startsWith("/api/trackers");
 
@@ -203,38 +221,52 @@ export function useApi<T>(path: string, options: UseApiOptions = {}) {
     () => async () => {
       if (!enabled || trackerPaused) return;
       abortRef.current?.abort();
+      const gen = requestGen.current + 1;
+      requestGen.current = gen;
       abortRef.current = new AbortController();
+      setLoading(true);
+      setError(null);
       try {
-        setLoading(true);
         const payload = await apiGet<T>(path, ttl, abortRef.current.signal);
+        if (gen !== requestGen.current) return;
         setData(payload);
         setWarnings(extractWarnings(payload));
         setError(null);
       } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") {
-          return;
-        }
-        if (err instanceof Error && err.name === "AbortError") {
+        if (gen !== requestGen.current || _isAbortError(err)) {
           return;
         }
         setError(err instanceof Error ? err.message : "Unknown error");
         setWarnings([]);
       } finally {
-        setLoading(false);
+        if (gen === requestGen.current) {
+          setLoading(false);
+        }
       }
     },
     [enabled, path, ttl, trackerPaused]
   );
 
-  useEffect(() => {
-    if (trackerPaused) {
+  useLayoutEffect(() => {
+    if (!enabled || trackerPaused) {
+      requestGen.current += 1;
+      abortRef.current?.abort();
       setLoading(false);
       setError(null);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+  }, [enabled, path, trackerPaused]);
+
+  useEffect(() => {
+    if (trackerPaused) {
       setWarnings([]);
       return;
     }
+    if (!enabled) return;
     fetchData();
-    if (!interval || !enabled) return;
+    if (!interval) return;
     const timer = setInterval(fetchData, interval);
     return () => clearInterval(timer);
   }, [fetchData, interval, enabled, trackerPaused]);

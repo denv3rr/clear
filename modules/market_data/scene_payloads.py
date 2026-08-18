@@ -16,6 +16,7 @@ from modules.market_data.intel import (
     _score_conflict,
     _score_weather,
 )
+from modules.market_data.theaters import headlines_from_items, match_theaters
 
 REGIONAL_INTEL_METHODOLOGY = {
     "methodology_id": "regional_intel_v1",
@@ -73,6 +74,86 @@ REGIONAL_CONFLICT_PULSE_METHODOLOGY = {
         "geometry": "Centroid highlight only; not polygon or incident geometry.",
     },
 }
+
+SIGNAL_HIGHLIGHT_METHODOLOGY = {
+    "methodology_id": "regional_signal_highlight_v1",
+    "derived": True,
+    "geometry_truth_level": "theater-or-region-centroid-highlight",
+    "units": {
+        "pulse_intensity": "0-1 display scalar",
+        "article_count": "supporting article/context observations",
+    },
+    "count_semantics": (
+        "Counts are supporting articles or sample observations, not resolved "
+        "incidents, weather fields, or legal boundaries."
+    ),
+    "formula": (
+        "Weather highlights use the region's representative sample point. "
+        "News, emotion, and conflict highlights move to a reviewed theater "
+        "centroid when article text matches that theater; otherwise they stay "
+        "on the parent region centroid."
+    ),
+    "coverage": {
+        "geometry": "Centroid highlight only; not a heatmap grid or incident polygon.",
+    },
+}
+
+
+def _signal_pulse_feature(
+    *,
+    feature_id: str,
+    channel: str,
+    label: str,
+    region: str,
+    theater: Optional[str],
+    lat: float,
+    lon: float,
+    target_id: str,
+    intensity: float,
+    headlines: Sequence[Mapping[str, Any]],
+    extra: Optional[Mapping[str, Any]] = None,
+    source: str,
+    ts: Optional[int],
+    freshness: Optional[Mapping[str, Any]],
+    display_note: str,
+) -> Dict[str, Any]:
+    properties: Dict[str, Any] = {
+        "label": label,
+        "region": region,
+        "theater": theater,
+        "kind": "signal-highlight",
+        "channel": channel,
+        "category": channel,
+        "display_scope": "theater-centroid-highlight" if theater else "region-centroid-highlight",
+        "scope_kind": "centroid-highlight",
+        "target_id": target_id,
+        "headlines": list(headlines),
+        "presentation": {
+            "pulse_intensity": max(0.26, min(1.0, float(intensity))),
+            "channel": channel,
+        },
+        "brief": {
+            "channel": channel,
+            "headlines": list(headlines),
+            "geometry_note": display_note,
+        },
+        "provenance": {
+            "display_note": display_note,
+        },
+    }
+    if extra:
+        properties.update(dict(extra))
+    return geo_feature(
+        feature_id,
+        "regional-signal-overlays" if channel != "conflict" else "regional-conflict-overlays",
+        {"type": "Point", "coordinates": [lon, lat]},
+        properties=properties,
+        source=source,
+        ts=ts,
+        confidence=None,
+        freshness=freshness,
+        warnings=[display_note],
+    )
 
 
 def geo_feature(
@@ -504,7 +585,7 @@ def build_intel_scene(
         }
         if weather_raw.get("error"):
             weather_status = "unavailable"
-            feature_warnings.append(str(weather_raw.get("error")))
+            feature_warnings.append("Weather sample unavailable for this region.")
         else:
             weather_score, weather_signals = _score_weather(
                 weather_raw.get("temp_c"),
@@ -557,7 +638,7 @@ def build_intel_scene(
             conflict_impacts = _impact_for_conflict(conflict_themes)
             conflict_status = "rss_fallback" if conflict_raw.get("cooldown") else "news_fallback"
             conflict_source_count = len(conflict_items)
-            feature_warnings.append(str(conflict_raw.get("error")))
+            feature_warnings.append("Structured conflict feed unavailable; using news tags only.")
             conflict_freshness = dict(news_freshness)
         else:
             for row in conflict_raw.get("articles", []) or []:
@@ -711,6 +792,7 @@ def build_intel_scene(
                         "skipped_sources": skipped_sources,
                         "health": news_payload.get("health", {}),
                         "freshness": news_freshness,
+                        "headlines": headlines_from_items(region_news_items),
                     },
                     "emotion": {
                         "count": emotion_total,
@@ -742,63 +824,150 @@ def build_intel_scene(
                 warnings=feature_warnings,
             )
         )
-        if conflict_score or any(int(event_counts.get(tag) or 0) > 0 for tag in CONFLICT_CATEGORIES):
+        theater_texts = [
+            str(item.get("title") or "")
+            for item in region_news_items
+        ]
+        theater_texts.extend(
+            str(row.get("title") or row.get("themes") or "")
+            for row in (conflict_raw.get("articles") or [])
+            if isinstance(row, Mapping)
+        )
+        matched_theaters = match_theaters(theater_texts, parent_region=region.name)
+        region_headlines = headlines_from_items(region_news_items)
+        conflict_intensity = max(
+            float(conflict_score or 0) / 10.0,
+            sum(int(event_counts.get(tag) or 0) for tag in CONFLICT_CATEGORIES) / 8.0,
+        )
+        news_count = int(news_metrics.get("count", 0) or 0)
+        emotion_count = int(sum(int(count or 0) for count in emotion_counts.values()))
+
+        if weather_score is not None:
             pulse_features.append(
-                geo_feature(
-                    f"pulse:{feature_id}",
-                    "regional-conflict-overlays",
-                    geometry,
-                    properties={
-                        "label": f"{region.name} conflict signal",
-                        "region": region.name,
-                        "kind": "impact-zone",
-                        "category": conflict_level.lower(),
-                        "display_scope": "region-centroid-highlight",
-                        "scope_kind": "centroid-highlight",
-                        "conflict_score": conflict_score,
-                        "article_count": conflict_source_count,
-                        "event_counts": event_counts,
-                        "impact_counts": impact_counts,
-                        "affected_markets": sorted(
-                            impact_counts,
-                            key=lambda key: (-int(impact_counts.get(key) or 0), key),
-                        ),
-                        "top_event_tags": [
-                            key
-                            for key, _value in sorted(
-                                event_counts.items(),
-                                key=lambda item: (-int(item[1] or 0), item[0]),
-                            )[:4]
-                        ],
-                        "presentation": {
-                            "pulse_intensity": max(
-                                0.26,
-                                min(
-                                    1.0,
-                                    max(
-                                        float(conflict_score or 0) / 10.0,
-                                        sum(int(event_counts.get(tag) or 0) for tag in CONFLICT_CATEGORIES) / 8.0,
-                                    ),
-                                ),
-                            ),
-                            "top_signal": top_signal,
-                        },
-                        "provenance": {
-                            "conflict_status": conflict_status,
-                            "news_cached": news_cache_cached,
-                            "news_stale": news_cache_stale,
-                            "display_note": "Centroid pulse is a reviewed regional highlight, not incident geometry.",
-                        },
+                _signal_pulse_feature(
+                    feature_id=f"pulse:weather:{feature_id}",
+                    channel="weather",
+                    label=f"{region.name} weather sample",
+                    region=region.name,
+                    theater=None,
+                    lat=region.lat,
+                    lon=region.lon,
+                    target_id=feature_id,
+                    intensity=float(weather_score or 0) / 10.0,
+                    headlines=region_headlines,
+                    extra={
+                        "weather_score": weather_score,
+                        "signals": weather_signals,
+                        "impacts": weather_impacts,
                     },
                     source=source,
                     ts=current_time,
-                    confidence=None,
-                    freshness=feature_freshness,
-                    warnings=[
-                        "Pulse overlay is a centroid highlight for regional impact, not a polygon or exact incident footprint.",
-                    ],
+                    freshness=weather_freshness,
+                    display_note=(
+                        "Weather highlight is the region's representative sample point, "
+                        "not a forecast field or alert polygon."
+                    ),
                 )
             )
+
+        if news_count > 0:
+            news_targets = matched_theaters or [None]
+            for theater in news_targets:
+                pulse_features.append(
+                    _signal_pulse_feature(
+                        feature_id=f"pulse:news:{theater.theater_id if theater else feature_id}",
+                        channel="news",
+                        label=f"{(theater.label if theater else region.name)} news pressure",
+                        region=region.name,
+                        theater=theater.label if theater else None,
+                        lat=theater.lat if theater else region.lat,
+                        lon=theater.lon if theater else region.lon,
+                        target_id=feature_id,
+                        intensity=min(1.0, news_count / 16.0),
+                        headlines=region_headlines,
+                        extra={"article_count": news_count, "risk_score": news_score},
+                        source=source,
+                        ts=current_time,
+                        freshness=news_freshness,
+                        display_note=(
+                            theater.geometry_note
+                            if theater
+                            else "News highlight is a regional centroid, not article geocoding."
+                        ),
+                    )
+                )
+
+        if emotion_count > 0:
+            pulse_features.append(
+                _signal_pulse_feature(
+                    feature_id=f"pulse:emotion:{feature_id}",
+                    channel="emotion",
+                    label=f"{region.name} emotion observations",
+                    region=region.name,
+                    theater=None,
+                    lat=region.lat,
+                    lon=region.lon,
+                    target_id=feature_id,
+                    intensity=min(1.0, emotion_count / 12.0),
+                    headlines=region_headlines,
+                    extra={
+                        "emotion_count": emotion_count,
+                        "dominant": dominant_emotion,
+                    },
+                    source=source,
+                    ts=current_time,
+                    freshness=news_freshness,
+                    display_note=(
+                        "Emotion highlight is derived from article language at the "
+                        "region centroid, not a surveyed population map."
+                    ),
+                )
+            )
+
+        if conflict_score or any(int(event_counts.get(tag) or 0) > 0 for tag in CONFLICT_CATEGORIES):
+            conflict_targets = matched_theaters or [None]
+            for theater in conflict_targets:
+                pulse_features.append(
+                    _signal_pulse_feature(
+                        feature_id=f"pulse:conflict:{theater.theater_id if theater else feature_id}",
+                        channel="conflict",
+                        label=f"{(theater.label if theater else region.name)} conflict signal",
+                        region=region.name,
+                        theater=theater.label if theater else None,
+                        lat=theater.lat if theater else region.lat,
+                        lon=theater.lon if theater else region.lon,
+                        target_id=feature_id,
+                        intensity=conflict_intensity,
+                        headlines=region_headlines,
+                        extra={
+                            "conflict_score": conflict_score,
+                            "article_count": conflict_source_count,
+                            "event_counts": event_counts,
+                            "impact_counts": impact_counts,
+                            "affected_markets": sorted(
+                                impact_counts,
+                                key=lambda key: (-int(impact_counts.get(key) or 0), key),
+                            ),
+                            "top_event_tags": [
+                                key
+                                for key, _value in sorted(
+                                    event_counts.items(),
+                                    key=lambda item: (-int(item[1] or 0), item[0]),
+                                )[:4]
+                            ],
+                            "signals": conflict_signals,
+                            "impacts": conflict_impacts,
+                        },
+                        source=source,
+                        ts=current_time,
+                        freshness=feature_freshness,
+                        display_note=(
+                            theater.geometry_note
+                            if theater
+                            else "Centroid pulse is a reviewed regional highlight, not incident geometry."
+                        ),
+                    )
+                )
         focus_targets.append(
             {
                 "id": feature_id,
@@ -840,14 +1009,32 @@ def build_intel_scene(
         "skipped_sources": skipped_sources,
         "methodology": REGIONAL_INTEL_METHODOLOGY,
     }
+    conflict_pulses = [
+        feature
+        for feature in pulse_features
+        if (feature.get("properties") or {}).get("channel") == "conflict"
+    ]
+    signal_pulses = [
+        feature
+        for feature in pulse_features
+        if (feature.get("properties") or {}).get("channel") != "conflict"
+    ]
     pulse_layer_meta = {
         "source": source,
-        "count": len(pulse_features),
+        "count": len(conflict_pulses),
         "warnings": [
             "Conflict pulses are centroid highlights, not exact event polygons.",
             *list(dict.fromkeys(scene_warnings)),
         ],
         "methodology": REGIONAL_CONFLICT_PULSE_METHODOLOGY,
+    }
+    signal_layer_meta = {
+        "source": source,
+        "count": len(signal_pulses),
+        "warnings": [
+            "Weather, news, and emotion highlights are centroid samples, not heat grids.",
+        ],
+        "methodology": SIGNAL_HIGHLIGHT_METHODOLOGY,
     }
     timeline = {
         "mode": "regional-intel",
@@ -896,7 +1083,7 @@ def build_intel_scene(
                 "regional-conflict-overlays",
                 "pulse",
                 label="Regional Conflict Signals",
-                features=pulse_features,
+                features=conflict_pulses,
                 filters={
                     "industry": industry_filter,
                     "categories": category_list,
@@ -916,6 +1103,30 @@ def build_intel_scene(
                 },
                 meta=pulse_layer_meta,
             ),
+            geo_layer_payload(
+                "regional-signal-overlays",
+                "pulse",
+                label="Regional Weather, News, and Emotion Highlights",
+                features=signal_pulses,
+                filters={
+                    "industry": industry_filter,
+                    "categories": category_list,
+                    "sources": source_list,
+                },
+                style_hints={
+                    "fill": "#75d7ff",
+                    "stroke": "#ffd166",
+                    "min_opacity": 0.12,
+                    "max_opacity": 0.28,
+                    "pulse_period_ms": 4800,
+                    "blend_mode": "screen",
+                },
+                time_bounds={
+                    "start_ts": timeline["start_ts"],
+                    "end_ts": timeline["end_ts"],
+                },
+                meta=signal_layer_meta,
+            ),
         ],
         focus_targets=focus_targets[:6],
         bounds=bounds,
@@ -930,7 +1141,7 @@ def build_intel_scene(
             "stale_news": news_cache_stale,
             "skipped_sources": skipped_sources,
             "available_lenses": ["combined", "weather", "conflict", "news", "emotion"],
-            "available_overlays": ["regional-conflict-overlays"],
+            "available_overlays": ["regional-conflict-overlays", "regional-signal-overlays"],
             "emotion": {
                 "supported": True,
                 "fields": [
@@ -1313,7 +1524,7 @@ def build_overview_scene(
             "trail_count": trail_count,
             "hotspot_count": hotspot_count,
             "available_lenses": ["combined", "weather", "conflict", "news", "emotion"],
-            "available_overlays": ["regional-conflict-overlays"],
+            "available_overlays": ["regional-conflict-overlays", "regional-signal-overlays"],
             "warnings": warnings,
         },
     )
