@@ -13,7 +13,11 @@ from sqlalchemy.orm import Session
 from core.db_management import create_db_and_tables
 from core.database import SessionLocal
 from core import models
+from modules.client_mgr.holdings import normalize_ticker
 from modules.client_mgr.schema import Client, Account, ClientPatch, AccountPatch
+
+# Canonical lots and holding quantities live on Account.lots / Account.holdings_map JSON.
+# Relational Holding/Lot tables are unused leftovers and are not written by this store.
 
 
 CLIENTS_JSON_PATH = os.path.join("data", "clients.json")
@@ -60,31 +64,6 @@ def _normalize_text(value: Any) -> str:
     return " ".join(str(value or "").split()).strip().casefold()
 
 
-def _canonicalize_value(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {
-            str(key): _canonicalize_value(val)
-            for key, val in sorted(value.items(), key=lambda item: str(item[0]))
-        }
-    if isinstance(value, list):
-        normalized = [_canonicalize_value(item) for item in value]
-        return sorted(
-            normalized,
-            key=lambda item: json.dumps(item, sort_keys=True, separators=(",", ":")),
-        )
-    if isinstance(value, str):
-        return _normalize_text(value)
-    return value
-
-
-def _canonical_json(value: Any) -> str:
-    return json.dumps(
-        _canonicalize_value(value),
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-
-
 def _client_name_key(name: Any) -> str:
     return _normalize_text(name)
 
@@ -111,12 +90,90 @@ def _account_identity_key(account: Any) -> str:
     return "|".join(parts)
 
 
-def _account_fingerprint(account: models.Account) -> str:
-    pydantic_account = Account.model_validate(account)
-    payload = pydantic_account.model_dump(
-        exclude={"account_id", "current_value", "active_interval", "extra"}
-    )
-    return _canonical_json(payload)
+def _lot_entry_payload(lot: Any) -> Optional[Dict[str, Any]]:
+    if hasattr(lot, "model_dump"):
+        payload = lot.model_dump()
+        return payload if isinstance(payload, dict) else None
+    if isinstance(lot, dict):
+        return dict(lot)
+    return None
+
+
+def _lots_storage_from_payload(lots: Any) -> Dict[str, List[Dict[str, Any]]]:
+    stored: Dict[str, List[Dict[str, Any]]] = {}
+    if not isinstance(lots, dict):
+        return stored
+    for raw_ticker, lot_list in lots.items():
+        ticker = normalize_ticker(str(raw_ticker))
+        if not ticker:
+            continue
+        entries = stored.setdefault(ticker, [])
+        if not isinstance(lot_list, list):
+            continue
+        for lot in lot_list:
+            payload = _lot_entry_payload(lot)
+            if payload:
+                entries.append(payload)
+    return {ticker: entries for ticker, entries in stored.items() if entries}
+
+
+def _holdings_from_lots(lots: Any) -> Dict[str, float]:
+    holdings: Dict[str, float] = {}
+    stored = lots if isinstance(lots, dict) else {}
+    for raw_ticker, lot_list in stored.items():
+        ticker = normalize_ticker(str(raw_ticker))
+        if not ticker:
+            continue
+        total_qty = 0.0
+        has_lot = False
+        if isinstance(lot_list, list):
+            for lot in lot_list:
+                if not isinstance(lot, dict):
+                    continue
+                has_lot = True
+                try:
+                    total_qty += float(lot.get("qty", 0.0) or 0.0)
+                except (TypeError, ValueError):
+                    continue
+        if has_lot:
+            holdings[ticker] = holdings.get(ticker, 0.0) + total_qty
+    return holdings
+
+
+def _holdings_qty_by_ticker(holdings: Any) -> Dict[str, float]:
+    totals: Dict[str, float] = {}
+    if not isinstance(holdings, dict):
+        return totals
+    for raw_ticker, qty in holdings.items():
+        ticker = normalize_ticker(str(raw_ticker))
+        if not ticker:
+            continue
+        try:
+            totals[ticker] = totals.get(ticker, 0.0) + float(qty or 0.0)
+        except (TypeError, ValueError):
+            continue
+    return totals
+
+
+def canonical_lots_integrity_counts(accounts: List[Any]) -> Dict[str, int]:
+    missing_lots = 0
+    qty_mismatch = 0
+    for account in accounts:
+        holdings_raw = _account_field(account, "holdings_map", "holdings")
+        lots_raw = _account_field(account, "lots")
+        holding_qty = _holdings_qty_by_ticker(holdings_raw)
+        lot_qty = _holdings_from_lots(lots_raw)
+        for ticker in holding_qty:
+            if ticker not in lot_qty:
+                missing_lots += 1
+        for ticker, lot_total in lot_qty.items():
+            holding_total = holding_qty.get(ticker)
+            if holding_total is None or abs(holding_total - lot_total) > 1e-9:
+                qty_mismatch += 1
+    return {
+        "canonical_holdings_missing_lots": missing_lots,
+        "canonical_lots_qty_mismatch": qty_mismatch,
+    }
 
 
 @contextmanager
@@ -127,9 +184,9 @@ def _session_scope(db: Optional[Session] = None):
     session = SessionLocal()
     try:
         yield session
-        # session.commit()
+        session.commit()
     except Exception:
-        # session.rollback()
+        session.rollback()
         raise
     finally:
         session.close()
@@ -450,10 +507,8 @@ class DbClientStore:
             if validated_payload.holdings is not None:
                 account.holdings_map = validated_payload.holdings
             if validated_payload.lots is not None:
-                account.lots = {
-                    k: [lot.model_dump() for lot in v]
-                    for k, v in validated_payload.lots.items()
-                }
+                account.lots = _lots_storage_from_payload(validated_payload.lots)
+                account.holdings_map = _holdings_from_lots(account.lots)
             if validated_payload.manual_holdings is not None:
                 account.manual_holdings = validated_payload.manual_holdings
             if validated_payload.extra is not None:
@@ -465,13 +520,14 @@ class DbClientStore:
     def find_duplicate_accounts(self) -> Dict[str, Any]:
         self.ensure_schema()
         with _session_scope(self._db) as db:
+            self._ensure_identifiers(db)
             duplicates: List[Dict[str, Any]] = []
             total_duplicates = 0
             client_count = 0
             for client in db.query(models.Client).all():
                 groups: Dict[str, List[models.Account]] = {}
                 for account in client.accounts:
-                    key = _account_fingerprint(account)
+                    key = _account_identity_key(account)
                     groups.setdefault(key, []).append(account)
                 has_duplicates = False
                 for accounts in groups.values():
@@ -545,12 +601,13 @@ class DbClientStore:
     def remove_duplicate_accounts(self) -> Dict[str, Any]:
         self.ensure_schema()
         with _session_scope(self._db) as db:
+            self._ensure_identifiers(db)
             removed = 0
             client_count = 0
             for client in db.query(models.Client).all():
                 groups: Dict[str, List[models.Account]] = {}
                 for account in client.accounts:
-                    key = _account_fingerprint(account)
+                    key = _account_identity_key(account)
                     groups.setdefault(key, []).append(account)
                 removed_for_client = False
                 for accounts in groups.values():
@@ -566,10 +623,7 @@ class DbClientStore:
                     client_count += 1
             if removed:
                 db.commit()
-            remaining_store = self
-            if self._db is not None:
-                remaining_store = DbClientStore()
-            remaining = remaining_store.find_duplicate_accounts()
+            remaining = self.find_duplicate_accounts()
             return {
                 "removed": removed,
                 "clients": client_count,

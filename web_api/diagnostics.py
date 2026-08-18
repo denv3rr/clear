@@ -8,7 +8,7 @@ from typing import Dict, List, Optional
 from modules.client_mgr.data_handler import DataHandler
 from core.database import SessionLocal
 from core import models
-from modules.client_store import DbClientStore
+from modules.client_store import DbClientStore, canonical_lots_integrity_counts
 from modules.market_data.collectors import load_cached_news
 from modules.market_data.registry import build_feed_registry, summarize_feed_registry
 from modules.market_data.trackers import GlobalTrackers
@@ -148,9 +148,18 @@ def orphaned_counts() -> Dict[str, int]:
         lots_query = db.query(models.Lot)
         if holding_ids:
             lots_query = lots_query.filter(~models.Lot.holding_id.in_(holding_ids))
+        # holdings/lots remain relational leftover counts. Canonical lots live on Account JSON.
+        accounts = db.query(models.Account).all()
+        canonical = canonical_lots_integrity_counts(accounts)
         return {
             "holdings": int(holdings_query.count()),
             "lots": int(lots_query.count()),
+            "canonical_holdings_missing_lots": int(
+                canonical.get("canonical_holdings_missing_lots", 0) or 0
+            ),
+            "canonical_lots_qty_mismatch": int(
+                canonical.get("canonical_lots_qty_mismatch", 0) or 0
+            ),
         }
     finally:
         db.close()

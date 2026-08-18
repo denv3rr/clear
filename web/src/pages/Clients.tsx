@@ -21,6 +21,14 @@ type ClientIndex = {
   clients: ClientSummary[];
 };
 
+type LotEntry = {
+  qty: number;
+  basis: number;
+  timestamp: string;
+  source?: string;
+  kind?: string;
+};
+
 type AccountDetail = {
   account_id: string;
   account_name: string;
@@ -29,6 +37,7 @@ type AccountDetail = {
   manual_value: number;
   tags: string[];
   holdings: Record<string, number>;
+  lots?: Record<string, LotEntry[]>;
   manual_holdings: { name?: string; total_value?: number }[];
   tax_settings: Record<string, string | number | boolean>;
   custodian?: string | null;
@@ -170,8 +179,16 @@ export default function Clients() {
   const [distributionOpen, setDistributionOpen] = useState(true);
   const [patternOpen, setPatternOpen] = useState(true);
   const [holdingsOpen, setHoldingsOpen] = useState(true);
+  const [lotsOpen, setLotsOpen] = useState(true);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(true);
   const [manualOpen, setManualOpen] = useState(true);
+  const [dashboardEpoch, setDashboardEpoch] = useState(0);
+  const [lotForm, setLotForm] = useState({
+    ticker: "",
+    qty: "",
+    basis: "",
+    timestamp: ""
+  });
   const [formMode, setFormMode] = useState<"create" | "edit" | null>(null);
   const [accountFormOpen, setAccountFormOpen] = useState(false);
   const [accountEditOpen, setAccountEditOpen] = useState(false);
@@ -251,6 +268,7 @@ export default function Clients() {
     if (selectedAccount === "portfolio") {
       setAccountEditOpen(false);
     }
+    setLotForm({ ticker: "", qty: "", basis: "", timestamp: "" });
   }, [selectedAccount]);
 
   useEffect(() => {
@@ -270,7 +288,7 @@ export default function Clients() {
         setDashboard(null);
         setDashboardError(err instanceof Error ? err.message : "Dashboard failed.");
       });
-  }, [selectedId, selectedAccount, interval]);
+  }, [selectedId, selectedAccount, interval, dashboardEpoch]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -327,6 +345,26 @@ export default function Clients() {
     }
     return entries.map(([key, value]) => [key, String(value)]);
   }, [detail]);
+
+  const selectedAccountDetail = useMemo(() => {
+    if (!detail?.accounts?.length || selectedAccount === "portfolio") return null;
+    return detail.accounts.find((account) => account.account_id === selectedAccount) || null;
+  }, [detail, selectedAccount]);
+
+  const lotRows = useMemo(() => {
+    const lots = selectedAccountDetail?.lots || {};
+    const rows: Array<LotEntry & { ticker: string; index: number }> = [];
+    Object.entries(lots).forEach(([ticker, entries]) => {
+      (entries || []).forEach((lot, index) => {
+        rows.push({ ticker, index, ...lot });
+      });
+    });
+    return rows.sort((left, right) => {
+      const tickerOrder = left.ticker.localeCompare(right.ticker);
+      if (tickerOrder !== 0) return tickerOrder;
+      return String(left.timestamp || "").localeCompare(String(right.timestamp || ""));
+    });
+  }, [selectedAccountDetail]);
 
   const accountRows = useMemo(() => {
     if (!detail?.accounts?.length) return [];
@@ -524,6 +562,77 @@ export default function Clients() {
     } finally {
       setFormSaving(false);
     }
+  };
+
+  const cloneAccountLots = (lots: AccountDetail["lots"]): Record<string, LotEntry[]> => {
+    const next: Record<string, LotEntry[]> = {};
+    Object.entries(lots || {}).forEach(([ticker, entries]) => {
+      next[ticker] = (entries || []).map((lot) => ({
+        qty: lot.qty,
+        basis: lot.basis,
+        timestamp: lot.timestamp,
+        ...(lot.source ? { source: lot.source } : {}),
+        ...(lot.kind ? { kind: lot.kind } : {})
+      }));
+    });
+    return next;
+  };
+
+  const persistAccountLots = async (lots: Record<string, LotEntry[]>): Promise<boolean> => {
+    if (!selectedId || selectedAccount === "portfolio") return false;
+    setFormSaving(true);
+    setFormError(null);
+    try {
+      const updated = await apiPatch<AccountWriteResponse>(
+        `/api/clients/${encodeURIComponent(selectedId)}/accounts/${encodeURIComponent(selectedAccount)}`,
+        { lots }
+      );
+      setDetail(updated.client);
+      setDashboardEpoch((value) => value + 1);
+      await refreshIndex();
+      return true;
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to update lots.");
+      return false;
+    } finally {
+      setFormSaving(false);
+    }
+  };
+
+  const handleAddLot = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!selectedAccountDetail) return;
+    const ticker = lotForm.ticker.trim().toUpperCase();
+    const qty = Number(lotForm.qty);
+    const basis = Number(lotForm.basis);
+    const timestamp = lotForm.timestamp.trim();
+    if (!ticker || !timestamp || !Number.isFinite(qty) || !Number.isFinite(basis)) {
+      setFormError("Lot requires ticker, quantity, basis, and date.");
+      return;
+    }
+    const nextLots = cloneAccountLots(selectedAccountDetail.lots);
+    const existingKey =
+      Object.keys(nextLots).find((key) => key.toUpperCase() === ticker) || ticker;
+    nextLots[existingKey] = [
+      ...(nextLots[existingKey] || []),
+      { qty, basis, timestamp }
+    ];
+    const saved = await persistAccountLots(nextLots);
+    if (saved) {
+      setLotForm({ ticker: "", qty: "", basis: "", timestamp: "" });
+    }
+  };
+
+  const handleRemoveLot = async (ticker: string, index: number) => {
+    if (!selectedAccountDetail) return;
+    const nextLots = cloneAccountLots(selectedAccountDetail.lots);
+    const remaining = (nextLots[ticker] || []).filter((_, lotIndex) => lotIndex !== index);
+    if (remaining.length) {
+      nextLots[ticker] = remaining;
+    } else {
+      delete nextLots[ticker];
+    }
+    await persistAccountLots(nextLots);
   };
 
   return (
@@ -1420,6 +1529,124 @@ export default function Clients() {
               ))}
             </div>
               </Collapsible>
+
+              {selectedAccount !== "portfolio" ? (
+              <Collapsible
+                title="Lots"
+                meta={
+                  selectedAccountDetail
+                    ? `${lotRows.length} lot${lotRows.length === 1 ? "" : "s"}`
+                    : "Select an account"
+                }
+                open={lotsOpen}
+                onToggle={() => setLotsOpen((prev) => !prev)}
+              >
+            {selectedAccountDetail ? (
+              <div className="space-y-4">
+                {lotRows.length ? (
+                  <div className="space-y-3">
+                    {lotRows.map((lot) => (
+                      <div
+                        key={`${lot.ticker}-${lot.index}-${lot.timestamp}`}
+                        className="rounded-xl border border-slate-700 p-4 text-xs text-slate-100"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-slate-100 font-medium">{lot.ticker}</p>
+                          <button
+                            type="button"
+                            disabled={formSaving}
+                            onClick={() => handleRemoveLot(lot.ticker, lot.index)}
+                            className="rounded-full border border-slate-700 px-3 py-1 text-[11px] text-slate-100 hover:text-green-500"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 text-slate-100">
+                          <span>Qty {Number(lot.qty).toFixed(2)}</span>
+                          <span>Basis {Number(lot.basis).toFixed(2)}</span>
+                          <span>{lot.timestamp || "No timestamp"}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400">No lots recorded for this account.</p>
+                )}
+                <form className="rounded-xl border border-slate-700 p-4 space-y-4" onSubmit={handleAddLot}>
+                  <p className="text-xs font-semibold text-slate-200">Add Lot</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs text-slate-400" htmlFor="lot-ticker">
+                        Ticker
+                      </label>
+                      <input
+                        id="lot-ticker"
+                        value={lotForm.ticker}
+                        onChange={(event) => setLotForm({ ...lotForm, ticker: event.target.value })}
+                        className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400" htmlFor="lot-qty">
+                        Quantity
+                      </label>
+                      <input
+                        id="lot-qty"
+                        type="number"
+                        step="any"
+                        value={lotForm.qty}
+                        onChange={(event) => setLotForm({ ...lotForm, qty: event.target.value })}
+                        className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400" htmlFor="lot-basis">
+                        Basis
+                      </label>
+                      <input
+                        id="lot-basis"
+                        type="number"
+                        step="any"
+                        value={lotForm.basis}
+                        onChange={(event) => setLotForm({ ...lotForm, basis: event.target.value })}
+                        className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400" htmlFor="lot-timestamp">
+                        Date
+                      </label>
+                      <input
+                        id="lot-timestamp"
+                        type="date"
+                        value={lotForm.timestamp}
+                        onChange={(event) =>
+                          setLotForm({ ...lotForm, timestamp: event.target.value })
+                        }
+                        className="mt-2 w-full rounded-xl bg-ink-950/60 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-end">
+                    <button
+                      type="submit"
+                      disabled={formSaving || !selectedAccountDetail}
+                      className="rounded-full border border-emerald-400/70 px-4 py-1 text-xs text-emerald-200"
+                    >
+                      {formSaving ? "Saving..." : "Add Lot"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400">Select an account to manage lots.</p>
+            )}
+              </Collapsible>
+              ) : null}
 
               <Collapsible
                 title="Diagnostics"
