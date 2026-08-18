@@ -52,7 +52,10 @@ class RegimeRenderer:
         left.add_row("Model", snapshot["model"])
         left.add_row("Horizon", snapshot["horizon"])
         left.add_row("Current Regime", snapshot["current_regime"])
-        left.add_row("Confidence", RegimeRenderer._fmt_pct(snapshot["confidence"]))
+        left.add_row(
+            "Stay probability",
+            RegimeRenderer._fmt_pct(snapshot.get("stay_probability", snapshot.get("confidence"))),
+        )
         left.add_row("Stability", RegimeRenderer._fmt_pct(snapshot["stability"]))
         if "samples" in snapshot:
             left.add_row("Samples", str(snapshot.get("samples")))

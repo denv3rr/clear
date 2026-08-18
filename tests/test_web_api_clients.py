@@ -303,3 +303,52 @@ def test_update_account_rejects_duplicate_identity(client):
     assert response.status_code == 409
     detail = response.json()["detail"]
     assert detail["existing_account_id"] == "acct-1"
+
+
+def test_update_account_lots_round_trip(client):
+    client_id = "lot_patch_client"
+    create_client = client.post(
+        "/api/clients",
+        json={"client_id": client_id, "name": "Lot Patch Client", "accounts": []},
+    )
+    assert create_client.status_code == 200
+    create_account = client.post(
+        f"/api/clients/{client_id}/accounts",
+        json={
+            "account_id": "acct-lots",
+            "account_name": "Brokerage",
+            "account_type": "Taxable",
+            "holdings": {"AAPL": 1.0},
+            "lots": {
+                "AAPL": [{"qty": 1.0, "basis": 100.0, "timestamp": "2024-01-01T00:00:00"}]
+            },
+        },
+    )
+    assert create_account.status_code == 200
+
+    response = client.patch(
+        f"/api/clients/{client_id}/accounts/acct-lots",
+        json={
+            "lots": {
+                "aapl": [
+                    {"qty": 1.0, "basis": 100.0, "timestamp": "2024-01-01T00:00:00"},
+                    {"qty": 2.0, "basis": 110.0, "timestamp": "2024-06-01"},
+                ]
+            }
+        },
+    )
+    assert response.status_code == 200
+    account = response.json()["account"]
+    assert "AAPL" in account["lots"]
+    assert "aapl" not in account["lots"]
+    assert len(account["lots"]["AAPL"]) == 2
+    assert account["lots"]["AAPL"][1]["timestamp"] == "2024-06-01T00:00:00"
+    assert account["holdings"]["AAPL"] == 3.0
+
+    detail = client.get(f"/api/clients/{client_id}")
+    assert detail.status_code == 200
+    stored = next(
+        item for item in detail.json()["accounts"] if item["account_id"] == "acct-lots"
+    )
+    assert stored["lots"]["AAPL"][0]["qty"] == 1.0
+    assert stored["holdings"]["AAPL"] == 3.0

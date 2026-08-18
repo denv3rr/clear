@@ -732,6 +732,28 @@ What this still does not claim:
 - broader Globe Phase 2 remains gated by the standards remediation evidence
   requirements in `docs/standards_remediation_plan.md`
 
+### Phase 5 HUD Layout Note
+
+This is a layout/HUD pass, not source-layer expansion. Research applied from
+the Stripe globe writeup (globe as canvas; conceal details for discovery),
+Three.js DOM HUD / FUI corner clusters, and WCAG 2.2 SC 1.4.1 (color is not
+the only signal).
+
+What landed:
+
+- Globe overlay HUD is now a compact left command corner plus a right details
+  drawer instead of a wall of cards over the planet.
+- Layer chips stay grouped in one Layers cluster; extra filters sit behind a
+  Show Filters control.
+- Selected-feature inspector shows a scannable provenance stack (source,
+  layer, display scope, coverage, warnings, display note).
+- Tracker Leaflet fallback gained labeled tooltips and click-to-select, plus
+  a visible stream-disabled status when pause or server filters are on.
+- Country-border copy remains de facto admin context. Reduced motion is
+  unchanged. No ReliefWeb/EONET/FIRMS layers or tracker globe fixtures.
+
+Research-to-change mapping: `docs/globe_layout_notes.md`.
+
 ## Immediate Next Move
 
 With the architecture spike and hardening slice in place, the next move is:

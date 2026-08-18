@@ -62,6 +62,12 @@ class TestRegimeModels(unittest.TestCase):
         self.assertIn("metrics", snapshot)
         self.assertIn("stationary", snapshot)
         self.assertIn("evolution", snapshot)
+        self.assertIn("stay_probability", snapshot)
+        self.assertAlmostEqual(
+            snapshot["stay_probability"],
+            snapshot["state_probs"][snapshot["current_regime"]],
+            places=6,
+        )
 
 
 if __name__ == "__main__":

@@ -34,7 +34,7 @@ class TaxEngine:
     def _load_rules(self) -> Dict[str, Any]:
         if os.path.exists(self.rules_path):
             try:
-                with open(self.rules_path, "r") as f:
+                with open(self.rules_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 if isinstance(data, dict):
                     return data

@@ -1,0 +1,28 @@
+name: Bug
+description: Report a defect with reproduction steps
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Observed behavior and why it is wrong.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Commands, routes, or UI steps. Do not paste secrets or local client data.
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: For exploitable security issues, use a private GitHub Security Advisory instead of this form.

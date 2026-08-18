@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -15,6 +16,7 @@ from web_api.auth import require_api_key
 from web_api.view_model import attach_meta, validate_payload
 
 router = APIRouter()
+LOGGER = logging.getLogger(__name__)
 
 
 def _split_list(raw: Optional[str]) -> Optional[List[str]]:
@@ -151,33 +153,50 @@ def osint_overview_scene(
         operator=operator,
         bbox=bbox_tuple,
     )
-    intel = MarketIntel()
-    scene = build_overview_scene(
-        snapshot,
-        intel,
-        history_fetcher=trackers.get_history,
-        mode=mode,
-        point_limit=point_limit,
-        trail_limit=trail_limit,
-        tracker_filters={
-            key: value
-            for key, value in {
-                "category": category,
-                "country": country,
-                "operator": operator,
-                "bbox": bbox_tuple,
-            }.items()
-            if value not in (None, "")
-        },
-        industry_filter=industry,
-        categories=_split_list(categories),
-        enabled_sources=_split_list(sources),
-    )
+    tracker_filters = {
+        key: value
+        for key, value in {
+            "category": category,
+            "country": country,
+            "operator": operator,
+            "bbox": bbox_tuple,
+        }.items()
+        if value not in (None, "")
+    }
+    fusion_warnings: List[str] = []
+    try:
+        intel = MarketIntel()
+        scene = build_overview_scene(
+            snapshot,
+            intel,
+            history_fetcher=trackers.get_history,
+            mode=mode,
+            point_limit=point_limit,
+            trail_limit=trail_limit,
+            tracker_filters=tracker_filters,
+            industry_filter=industry,
+            categories=_split_list(categories),
+            enabled_sources=_split_list(sources),
+        )
+    except Exception as exc:
+        LOGGER.exception("Overview regional fusion failed; returning tracker scene")
+        fusion_warnings.append(f"Regional signals unavailable: {exc}")
+        scene = build_tracker_scene(
+            snapshot,
+            history_fetcher=trackers.get_history,
+            scene_id="osint-overview",
+            title="World",
+            source="trackers",
+            mode=mode,
+            point_limit=point_limit,
+            trail_limit=trail_limit,
+            filters=tracker_filters,
+        )
     warnings = validate_payload(
         scene,
         required_keys=("scene_id", "camera_defaults", "timeline", "layers", "focus_targets"),
         non_empty_keys=("layers",),
-        warnings=list(scene.get("meta", {}).get("warnings", []) or []),
+        warnings=[*fusion_warnings, *list(scene.get("meta", {}).get("warnings", []) or [])],
     )
     return attach_meta(
         scene,

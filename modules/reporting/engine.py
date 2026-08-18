@@ -585,7 +585,7 @@ class ReportEngine:
             if not regime.get("error"):
                 regime_rows = [
                     ["Current Regime", regime.get("current_regime", "N/A")],
-                    ["Confidence", _format_pct(regime.get("confidence"))],
+                    ["Current-state probability", _format_pct(regime.get("stay_probability", regime.get("confidence")))],
                     ["Expected Next", str((regime.get("expected_next") or {}).get("regime", "N/A"))],
                     ["Stability", _format_pct(regime.get("stability"))],
                     ["Samples", str(regime.get("samples", 0))],

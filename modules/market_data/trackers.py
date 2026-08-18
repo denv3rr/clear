@@ -1305,16 +1305,16 @@ class GlobalTrackers:
                 )
 
         if not sample:
-            if compact:
-                table.add_row("N/A", "N/A", "No live data", "-", "-", "-", "-")
-            else:
-                table.add_row("N/A", "N/A", "No live data", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-")
+            table.caption = "No live data"
 
         if warnings:
             warn_lines = list(dict.fromkeys(warnings))
             warn_lines.append(f"Flights: {len([p for p in points if p.get('kind') == 'flight'])} | Ships: {len([p for p in points if p.get('kind') == 'ship'])}")
-            warn_lines.append("Last update: " + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self._last_refresh)))
+            if self._last_refresh:
+                warn_lines.append("Last update: " + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self._last_refresh)))
             warn_text = Text("\n".join(warn_lines), style="dim")
+        elif not sample:
+            warn_text = Text("No live tracker points in this snapshot.", style="dim")
         else:
             live_lines = [
                 "Live data active.",

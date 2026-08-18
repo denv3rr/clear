@@ -40,7 +40,3 @@ app.add_middleware(
 )
 
 app.include_router(build_router())
-
-@app.options("/{path:path}")
-async def options_handler(path: str):
-    return {"message": "OK"}

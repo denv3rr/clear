@@ -68,6 +68,12 @@ Closed in the current pass:
 - Migrated client/account positive-path API evidence away from fabricated
   `DbClientStore` success stubs and onto the isolated SQLite route tests in
   `tests/test_web_api_clients.py`, now using a per-test temporary database.
+- Restored GitHub Actions CI, CodeQL, and Dependabot YAML (2026-08-17):
+  `.github/workflows/ci.yml`, `.github/workflows/codeql.yml`, and
+  `.github/dependabot.yml`.
+- Targeted 36 Dependabot alerts with the pip/npm pins recorded in
+  `docs/security_verification.md`. This is dependency hygiene plus
+  defensive route tests in `tests/test_security.py`, not a formal pentest.
 
 Still open:
 - Several Python tests still rely on synthetic in-memory payloads or

@@ -1142,13 +1142,25 @@ class SettingsModule:
 
     # --- Panel Builder (Unchanged) ---
     def _build_info_panel(self) -> Panel:
-        try: data = SystemHost.get_info()
-        except: data = {"hostname": "Unknown", "ip": "0.0.0.0", "cpu_usage": "0%", "mem_usage": "0%", "finnhub_status": False}
+        try:
+            data = SystemHost.get_info()
+        except Exception:
+            data = {
+                "hostname": "unavailable",
+                "ip": "unavailable",
+                "cpu_usage": "n/a",
+                "mem_usage": "n/a",
+                "finnhub_status": False,
+            }
 
-        try: cpu_p = float(data['cpu_usage'].strip('%'))
-        except: cpu_p = 0.0
-        try: mem_p = float(data['mem_usage'].split('%')[0])
-        except: mem_p = 0.0
+        try:
+            cpu_p = float(str(data.get("cpu_usage", "")).strip("%"))
+        except (TypeError, ValueError):
+            cpu_p = None
+        try:
+            mem_p = float(str(data.get("mem_usage", "")).split("%")[0])
+        except (TypeError, ValueError, IndexError):
+            mem_p = None
 
         grid = Table.grid(expand=True, padding=(0, 2))
         grid.add_column(ratio=1)
@@ -1175,10 +1187,10 @@ class SettingsModule:
         right_table.add_column(style="bold magenta", width=10)
         right_table.add_column(width=20)
         right_table.add_column(width=8, justify="right")
-        cpu_bar = ChartRenderer.generate_usage_bar(cpu_p, width=15)
-        right_table.add_row("CPU", cpu_bar, f"{cpu_p:.1f}%")
-        mem_bar = ChartRenderer.generate_usage_bar(mem_p, width=15)
-        right_table.add_row("RAM", mem_bar, f"{mem_p:.1f}%")
+        cpu_bar = ChartRenderer.generate_usage_bar(cpu_p or 0.0, width=15)
+        right_table.add_row("CPU", cpu_bar, "n/a" if cpu_p is None else f"{cpu_p:.1f}%")
+        mem_bar = ChartRenderer.generate_usage_bar(mem_p or 0.0, width=15)
+        right_table.add_row("RAM", mem_bar, "n/a" if mem_p is None else f"{mem_p:.1f}%")
         right_table.add_row("PYTHON", "", data.get('python_version', '?'))
 
         grid.add_row(

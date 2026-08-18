@@ -129,6 +129,50 @@ def test_detect_duplicates_with_legacy_holdings(monkeypatch):
         session.close()
 
 
+def test_detect_duplicates_by_identity_not_payload(monkeypatch):
+    session_local = _setup_temp_db(monkeypatch)
+    db_management.create_db_and_tables()
+    session = session_local()
+    try:
+        client = models.Client(client_uid="c-identity", name="Identity Client")
+        session.add(client)
+        session.flush()
+        session.add(
+            models.Account(
+                account_uid="id-a",
+                name="Primary",
+                account_type="Taxable",
+                ownership_type="Individual",
+                custodian="Fidelity",
+                holdings_map={"AAPL": 1.0},
+                lots={"AAPL": [{"qty": 1.0, "basis": 100.0, "timestamp": "2024-01-01T00:00:00"}]},
+                tags=["Core"],
+                client_id=client.id,
+            )
+        )
+        session.add(
+            models.Account(
+                account_uid="id-b",
+                name="Primary",
+                account_type="Taxable",
+                ownership_type="Individual",
+                custodian="Fidelity",
+                holdings_map={"MSFT": 8.0},
+                lots={"MSFT": [{"qty": 8.0, "basis": 20.0, "timestamp": "2024-06-01T00:00:00"}]},
+                tags=["Satellite"],
+                current_value=800.0,
+                client_id=client.id,
+            )
+        )
+        session.commit()
+        store = client_store.DbClientStore(session)
+        result = store.find_duplicate_accounts()
+        assert result["count"] == 1
+        assert result["details"][0]["duplicate_ids"] == ["id-b"]
+    finally:
+        session.close()
+
+
 def test_detect_duplicates_with_lot_variants(monkeypatch):
     session_local = _setup_temp_db(monkeypatch)
     db_management.create_db_and_tables()

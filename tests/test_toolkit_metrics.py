@@ -43,9 +43,9 @@ class ToolkitMetricsTests(unittest.TestCase):
         bench = pd.Series([0.01, 0.02, -0.01, 0.00, 0.02, 0.01, 0.03], index=dates[1:])
         metrics = FinancialToolkit._compute_core_metrics(returns, bench)
         combined = pd.concat([returns, bench], axis=1).dropna()
-        cov = np.cov(combined.iloc[:, 0], combined.iloc[:, 1])[0, 1]
-        mkt_var = np.var(combined.iloc[:, 1])
-        expected_beta = cov / mkt_var if mkt_var != 0 else 1.0
+        cov = np.cov(combined.iloc[:, 0], combined.iloc[:, 1], ddof=1)[0, 1]
+        mkt_var = np.var(combined.iloc[:, 1], ddof=1)
+        expected_beta = cov / mkt_var if mkt_var != 0 else None
         self.assertAlmostEqual(metrics["beta"], expected_beta, places=6)
 
     def test_pattern_payload_includes_perm_entropy_context(self):

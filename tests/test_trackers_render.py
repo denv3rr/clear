@@ -9,8 +9,8 @@ def test_tracker_render_outputs_empty_state_when_empty():
     panel = trackers.render(snapshot=snapshot)
     console = Console(record=True, width=120)
     console.print(panel)
-    output = console.export_text()
-    assert "No live" in output
+    output = " ".join(console.export_text().split())
+    assert "No live data" in output
 
 
 def test_tracker_render_compact_hides_heat_columns():

@@ -240,6 +240,7 @@ class RegimeModels:
             "model": "Markov",
             "horizon": label,
             "current_regime": RegimeModels.STATE_LABELS[current_state],
+            "stay_probability": probs[current_state],
             "confidence": probs[current_state],
             "state_probs": {
                 RegimeModels.STATE_LABELS[i]: probs[i]
