@@ -178,9 +178,9 @@ def osint_overview_scene(
             categories=_split_list(categories),
             enabled_sources=_split_list(sources),
         )
-    except Exception as exc:
+    except Exception:
         LOGGER.exception("Overview regional fusion failed; returning tracker scene")
-        fusion_warnings.append(f"Regional signals unavailable: {exc}")
+        fusion_warnings.append("Regional signals unavailable. Tracker layers are shown instead.")
         scene = build_tracker_scene(
             snapshot,
             history_fetcher=trackers.get_history,

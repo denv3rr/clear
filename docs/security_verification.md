@@ -19,6 +19,14 @@ In scope:
 - Destructive maintenance and duplicate-cleanup confirm gates
 - The 36 GitHub Dependabot alerts targeted by the current pip/npm pins
 
+CodeQL follow-up on PR 14:
+
+- API key persistence remains local-operator session/local storage with an
+  explicit CodeQL suppression. There is no server-side token vault.
+- Route handlers no longer interpolate exception objects into API warnings.
+  Failures are logged server-side and the client sees a generic unavailable
+  message.
+
 Out of scope:
 
 - Offensive scanning, exploit proof-of-concepts, or payload construction

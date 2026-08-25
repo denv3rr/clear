@@ -281,6 +281,88 @@ def test_build_intel_scene_payload_uses_regional_centroids_and_provenance():
         if feature["properties"]["region"] == "Europe"
     )
     assert pulse["properties"]["display_scope"] == "region-centroid-highlight"
+    assert pulse["geometry"]["coordinates"] == [10.0, 50.0]
+    weather_layer = next(layer for layer in scene["layers"] if layer["id"] == "regional-signal-overlays")
+    assert weather_layer["kind"] == "pulse"
+    assert any(feature["properties"]["channel"] == "weather" for feature in weather_layer["features"])
+    assert any(feature["properties"]["channel"] == "news" for feature in weather_layer["features"])
+
+
+def test_conflict_pulse_uses_ukraine_theater_not_germany_centroid():
+    class DummyWeather:
+        def fetch(self, region):
+            return {"error": "offline"}
+
+    class DummyConflict:
+        def fetch(self, region):
+            return {"error": "offline", "cooldown": True}
+
+    class DummyIntel:
+        def __init__(self):
+            self.weather = DummyWeather()
+            self.conflict = DummyConflict()
+
+        def fetch_news_signals(self, ttl_seconds=600, enabled_sources=None):
+            return {
+                "items": [
+                    {
+                        "title": "Kyiv reports overnight strikes across Ukraine",
+                        "source": "Reuters",
+                        "published_ts": 1700000000,
+                        "regions": ["Europe"],
+                        "industries": ["energy"],
+                        "tags": ["conflict"],
+                        "event_tags": ["conflict"],
+                        "impact_channels": ["energy"],
+                        "categories": ["conflict"],
+                        "sentiment": -0.7,
+                        "emotions": {"fear": 2},
+                    },
+                    {
+                        "title": "Myanmar junta clashes continue in Rakhine",
+                        "source": "AP",
+                        "published_ts": 1700000001,
+                        "regions": ["Asia-Pacific"],
+                        "industries": ["shipping"],
+                        "tags": ["conflict"],
+                        "event_tags": ["conflict"],
+                        "impact_channels": ["shipping_logistics"],
+                        "categories": ["conflict"],
+                        "sentiment": -0.5,
+                        "emotions": {"fear": 1},
+                    },
+                ],
+                "cached": True,
+                "stale": False,
+                "skipped": [],
+                "health": {},
+            }
+
+        def filter_news_items(self, items, region_name, industry_filter, tickers=None):
+            return [
+                item
+                for item in items
+                if region_name in (item.get("regions") or [])
+            ]
+
+        def _filter_impacts(self, impacts, industry_filter):
+            return impacts
+
+    scene = build_intel_scene(DummyIntel(), now=1700000400)
+    pulses = next(
+        layer for layer in scene["layers"] if layer["id"] == "regional-conflict-overlays"
+    )["features"]
+    ukraine = next(feature for feature in pulses if feature["properties"].get("theater") == "Ukraine")
+    myanmar = next(feature for feature in pulses if feature["properties"].get("theater") == "Myanmar")
+    assert ukraine["geometry"]["coordinates"] == [31.17, 48.38]
+    assert myanmar["geometry"]["coordinates"] == [96.15, 21.92]
+    assert ukraine["properties"]["headlines"][0]["title"].startswith("Kyiv")
+    europe_centroid_conflict = [
+        feature
+        for feature in pulses
+        if feature["properties"].get("region") == "Europe" and not feature["properties"].get("theater")
+    ]
+    assert europe_centroid_conflict == []
 
 
 def test_build_overview_scene_combines_tracker_and_intel_layers():
@@ -361,8 +443,9 @@ def test_build_overview_scene_combines_tracker_and_intel_layers():
     )
 
     assert scene["scene_id"] == "osint-overview"
-    assert len(scene["layers"]) == 4
+    assert len(scene["layers"]) == 5
     assert scene["meta"]["tracker_point_count"] == 1
     assert scene["meta"]["regional_point_count"] > 0
     assert "regional-conflict-overlays" in scene["meta"]["available_overlays"]
+    assert "regional-signal-overlays" in scene["meta"]["available_overlays"]
     assert {target["domain"] for target in scene["focus_targets"][:2]} == {"intel", "trackers"}

@@ -81,6 +81,15 @@ the globe scene and overlay CSS remains the motion contract.
 - World overview now uses the real tracker snapshot as a fallback when the
   fused regional route fails, and the overlay shows the actual API error
   instead of a generic regional-route sentence.
+- Reopening the globe no longer flashes a stale abort error. The overlay
+  shows "Loading world view..." until the current request finishes.
+- Conflict highlights move to reviewed theater centroids (Ukraine, Myanmar,
+  etc.) when article text matches. Continent centroids are not used as fake
+  battle maps.
+- Weather, news, and emotion lenses now have their own centroid highlights.
+  Clicking a highlight opens the detail drawer with a quick report of real
+  headlines and a geometry-truth note.
+- Flights render as heading-aware cones instead of dots.
 
 ### `GlobeDataDensity.tsx`
 - Rows are a labeled list with `aria-label` values.

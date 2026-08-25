@@ -412,7 +412,34 @@ function getFeatureLensScore(feature: SceneFeature, lens: IntelSceneLens): numbe
   if (lens === "emotion") {
     return getEmotionObservationCount(feature);
   }
+  if (lens === "news") {
+    const news = asRecord(properties.news);
+    return getNumericValue(news?.score) ?? getNumericValue(news?.risk_score);
+  }
   return getNumericValue(asRecord(properties[lens])?.score);
+}
+
+function getPulseChannel(feature: SceneFeature): string {
+  const properties = asRecord(feature.properties);
+  const channel = String(properties?.channel || properties?.category || "").toLowerCase();
+  if (channel === "weather" || channel === "conflict" || channel === "news" || channel === "emotion") {
+    return channel;
+  }
+  if (String(feature.layer || "").includes("conflict")) return "conflict";
+  return "combined";
+}
+
+function pulseMatchesLens(feature: SceneFeature, intelLens: IntelSceneLens): boolean {
+  if (intelLens === "combined") return true;
+  return getPulseChannel(feature) === intelLens;
+}
+
+function pulseAccent(feature: SceneFeature): string {
+  const channel = getPulseChannel(feature);
+  if (channel === "weather") return "#75d7ff";
+  if (channel === "news") return "#ffd166";
+  if (channel === "emotion") return "#c084fc";
+  return "#ff5c6a";
 }
 
 function getConflictPriority(feature: SceneFeature) {
@@ -573,6 +600,24 @@ function getFeatureTooltipCopy(
     return `${lensLabel} ${lensScore !== null ? `${Math.round(lensScore)}/10` : "n/a"} • ${level} • ${String(activeLabel).toUpperCase()}`;
   }
   return `${String(properties?.kind || "signal").toUpperCase()} • ${String(properties?.category || "unknown")}`;
+}
+
+function getSelectedHeadlines(feature: SceneFeature | null): Array<{ title: string; source?: string }> {
+  if (!feature) return [];
+  const properties = asRecord(feature.properties);
+  const brief = asRecord(properties?.brief);
+  const news = asRecord(properties?.news);
+  const raw = (brief?.headlines || news?.headlines || []) as unknown;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => {
+      const row = asRecord(item);
+      const title = String(row?.title || "").trim();
+      if (!title) return null;
+      return { title, source: String(row?.source || "").trim() || undefined };
+    })
+    .filter((item): item is { title: string; source?: string } => Boolean(item))
+    .slice(0, 3);
 }
 
 function getSelectedIntelCopy(feature: SceneFeature | null, intelLens: IntelSceneLens) {
@@ -1018,6 +1063,7 @@ function HotspotPulse({
     : [];
   const properties = asRecord(feature.properties);
   const presentation = asRecord(properties?.presentation);
+  const accent = pulseAccent(feature);
   const intensity = Math.max(
     0.3,
     Math.min(1, getNumericValue(presentation?.pulse_intensity) ?? 0.55)
@@ -1063,11 +1109,11 @@ function HotspotPulse({
     >
       <mesh ref={outerRef}>
         <sphereGeometry args={[0.1 + intensity * 0.04, 18, 18]} />
-        <meshBasicMaterial color="#ff5c6a" transparent opacity={selected ? 0.2 : 0.12} depthWrite={false} />
+        <meshBasicMaterial color={accent} transparent opacity={selected ? 0.22 : 0.13} depthWrite={false} />
       </mesh>
       <mesh ref={innerRef}>
         <sphereGeometry args={[0.065 + intensity * 0.03, 18, 18]} />
-        <meshBasicMaterial color="#ff8b73" transparent opacity={selected ? 0.18 : 0.1} depthWrite={false} />
+        <meshBasicMaterial color={accent} transparent opacity={selected ? 0.2 : 0.12} depthWrite={false} />
       </mesh>
     </group>
   );
@@ -1107,6 +1153,25 @@ function LivePoint({
     }
     return latLonToVector(coords[1], coords[0], GLOBE_RADIUS, 0.045);
   }, [coords]);
+  const kind = String(asRecord(feature.properties)?.kind || "").toLowerCase();
+  const isFlight = kind === "flight";
+  const headingDeg = getNumericValue(asRecord(feature.properties)?.heading_deg);
+  const orientation = useMemo(() => {
+    if (!isFlight || coords.length < 2) {
+      return new THREE.Quaternion();
+    }
+    const up = latLonToVector(coords[1], coords[0], 1, 0).normalize();
+    const east = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), up);
+    if (east.lengthSq() < 1e-6) {
+      east.set(1, 0, 0);
+    } else {
+      east.normalize();
+    }
+    const north = new THREE.Vector3().crossVectors(up, east).normalize();
+    const heading = ((headingDeg ?? 0) * Math.PI) / 180;
+    const forward = north.multiplyScalar(Math.cos(heading)).add(east.multiplyScalar(Math.sin(heading))).normalize();
+    return new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), forward);
+  }, [coords, headingDeg, isFlight]);
   const pulseOffset = useMemo(() => feature.id.length * 0.17, [feature.id]);
 
   useEffect(() => {
@@ -1139,14 +1204,25 @@ function LivePoint({
         <sphereGeometry args={[selected ? 0.05 + intensity * 0.02 : 0.034 + intensity * 0.014, 18, 18]} />
         <meshBasicMaterial color={accentColor} transparent opacity={selected ? 0.28 : 0.15} />
       </mesh>
-      <mesh ref={markerRef}>
-        <sphereGeometry args={[selected ? 0.025 + intensity * 0.012 : 0.02 + intensity * 0.008, 18, 18]} />
-        <meshStandardMaterial
-          color={accentColor}
-          emissive={accentColor}
-          emissiveIntensity={selected ? 1.7 : 1.2}
-        />
-      </mesh>
+      {isFlight ? (
+        <mesh ref={markerRef} quaternion={orientation}>
+          <coneGeometry args={[0.011 + intensity * 0.005, 0.032 + intensity * 0.01, 8]} />
+          <meshStandardMaterial
+            color={accentColor}
+            emissive={accentColor}
+            emissiveIntensity={selected ? 1.8 : 1.25}
+          />
+        </mesh>
+      ) : (
+        <mesh ref={markerRef}>
+          <sphereGeometry args={[selected ? 0.025 + intensity * 0.012 : 0.02 + intensity * 0.008, 18, 18]} />
+          <meshStandardMaterial
+            color={accentColor}
+            emissive={accentColor}
+            emissiveIntensity={selected ? 1.7 : 1.2}
+          />
+        </mesh>
+      )}
       {selected ? (
         <Html distanceFactor={14}>
           <div className="globe-tooltip">
@@ -1268,7 +1344,9 @@ function GlobeScene({
     ? pathLayers.flatMap((layer) => layer.features || [])
     : [];
   const pulseFeatures = showIntelHotspots
-    ? pulseLayers.flatMap((layer) => layer.features || [])
+    ? pulseLayers
+        .flatMap((layer) => layer.features || [])
+        .filter((feature) => pulseMatchesLens(feature, intelLens))
     : [];
   const peakFeatures = useMemo(() => {
     const values = liveFeatures
@@ -1292,8 +1370,7 @@ function GlobeScene({
   const starsCount = reducedMotion ? 450 : Math.round(1200 + activeQuality * 2200);
   const bloomIntensity = reducedMotion ? 0.25 : 0.35 + activeQuality * 0.55;
   const showHotspotOverlays =
-    (sceneId === "intel" || sceneId === "overview") &&
-    (intelLens === "combined" || intelLens === "conflict");
+    (sceneId === "intel" || sceneId === "overview") && showIntelHotspots;
 
   return (
     <Canvas
@@ -1579,7 +1656,9 @@ export function GlobeOverlay() {
   const visibleIntelPointFeatures = sceneState.showIntelRegions ? intelPointFeatures : [];
   const visiblePointFeatures = [...visibleTrackerPointFeatures, ...visibleIntelPointFeatures];
   const visiblePathFeatures = sceneState.showTrackerTrails ? pathFeatures : [];
-  const visiblePulseFeatures = sceneState.showIntelHotspots ? pulseFeatures : [];
+  const visiblePulseFeatures = sceneState.showIntelHotspots
+    ? pulseFeatures.filter((feature) => pulseMatchesLens(feature, sceneState.intelLens))
+    : [];
   const warnings = Array.from(
     new Set([
       ...(geographyError ? [`Geography overlay unavailable: ${geographyError}`] : []),
@@ -1597,7 +1676,12 @@ export function GlobeOverlay() {
       ...((scene?.meta?.warnings || []) as string[])
     ])
   );
-  const sceneUnavailable = !scene && !loading && Boolean(error || fallbackError);
+  const waitingOnFallback = Boolean(
+    hasTrackerFallback && error && !data && !fallbackScene && !fallbackError
+  );
+  const sceneUnavailable =
+    !scene && !loading && !waitingOnFallback && Boolean(error || fallbackError);
+  const scenePending = isOpen && !scene && !sceneUnavailable;
 
   const visibleFocusTargets = useMemo(
     () =>
@@ -2172,12 +2256,23 @@ export function GlobeOverlay() {
             onQualityChange={setQualityFactor}
             onSelect={(id) => {
               setSelectedId(id);
+              setOverlayVisibility("detailsVisible", true);
             }}
             showIntelHotspots={sceneState.showIntelHotspots}
             showIntelRegions={sceneState.showIntelRegions}
             showTrackerPoints={sceneState.showTrackerPoints}
             showTrackerTrails={sceneState.showTrackerTrails}
           />
+        ) : scenePending ? (
+          <div className="globe-overlay__loading">
+            <Orbit size={26} className="animate-spin text-emerald-300" />
+            <p>Loading world view...</p>
+            <p className="globe-overlay__status-copy">
+              {waitingOnFallback
+                ? "Refreshing from the live tracker snapshot."
+                : "Requesting the current scene from the API."}
+            </p>
+          </div>
         ) : sceneUnavailable ? (
           <div className="globe-overlay__loading">
             <AlertTriangle size={26} className="text-amber-300" />
@@ -2276,7 +2371,7 @@ export function GlobeOverlay() {
             {sceneId === "overview" ? (
               <span className="globe-badge">
                 <Route size={12} />
-                {visiblePulseFeatures.length} centroid pulses
+                {visiblePulseFeatures.length} {sceneState.intelLens === "combined" ? "signal" : sceneState.intelLens} highlights
               </span>
             ) : null}
             <span className="globe-badge">
@@ -2365,7 +2460,7 @@ export function GlobeOverlay() {
                     : "globe-toggle"
                 }
               >
-                Centroid Pulses ({pulseFeatures.length})
+                {sceneState.intelLens === "combined" ? "Signal" : formatDisplayLabel(sceneState.intelLens)} Highlights ({visiblePulseFeatures.length})
               </button>
             ) : null}
           </div>
@@ -2771,6 +2866,39 @@ export function GlobeOverlay() {
                 ? `${String(selectedFocus.kind || "signal").toUpperCase()} • ${selectedFocus.category || "unknown"}`
                 : "Choose a focus target to inspect the live layer."}
           </p>
+          {selectedFeature ? (
+            <div className="globe-detail-grid">
+              {String(asRecord(selectedFeature.properties)?.theater || "") ? (
+                <div className="globe-detail-row">
+                  <span className="globe-detail-row__label">Theater</span>
+                  <span className="globe-detail-row__value">
+                    {String(asRecord(selectedFeature.properties)?.theater)}
+                  </span>
+                </div>
+              ) : null}
+              {String(asRecord(selectedFeature.properties)?.channel || "") ? (
+                <div className="globe-detail-row">
+                  <span className="globe-detail-row__label">Highlight</span>
+                  <span className="globe-detail-row__value">
+                    {formatDisplayLabel(asRecord(selectedFeature.properties)?.channel)}
+                  </span>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {getSelectedHeadlines(selectedFeature).length ? (
+            <>
+              <p className="globe-panel__label">Quick report</p>
+              <ul className="globe-target-list">
+                {getSelectedHeadlines(selectedFeature).map((item) => (
+                  <li key={item.title} className="globe-target">
+                    <span>{item.title}</span>
+                    <span className="globe-target__meta">{item.source || "Source not listed"}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
           {selectedProvenanceRows.length ? (
             <>
               <p className="globe-panel__label">Provenance</p>
