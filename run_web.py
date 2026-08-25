@@ -1,6 +1,7 @@
 import argparse
 import atexit
 import importlib.util
+import logging
 import os
 import shutil
 import signal
@@ -10,12 +11,16 @@ import sys
 import time
 import webbrowser
 
+LOGGER = logging.getLogger("clear.run_web")
+
 try:
     from dotenv import load_dotenv
 
     load_dotenv()
-except Exception:
-    pass
+except ImportError:
+    LOGGER.warning("python-dotenv is not installed; skipping .env load")
+except OSError:
+    LOGGER.exception("Failed to load .env")
 
 from utils.launcher import (
     RUNTIME_DIR,

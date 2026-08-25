@@ -2,6 +2,22 @@
 
 These standards keep CLI, API, and web UI modular and future-proof.
 
+## Product boundary
+
+Clear is a local-first portfolio, analytics, and OSINT platform with a
+rules-based assistant surface. It is not a general multi-agent reasoning
+framework, model-training system, or autonomous dispatcher.
+
+Governed agent work is seeded by:
+
+- [docs/agent_git_standards.md](agent_git_standards.md)
+- assistant constraints in [docs/us_gov_standards.md](us_gov_standards.md)
+  and [docs/ai_assistant.md](ai_assistant.md)
+- independent inspection in [docs/inspection_verification.md](inspection_verification.md)
+
+The ignored `agents/` directory is local helper state. It is not a product
+runtime and must not be committed.
+
 ## Core Principles
 - Single source of truth for business logic and view-models.
 - Web UI and CLI render the same view-model payloads.

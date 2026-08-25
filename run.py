@@ -249,8 +249,8 @@ def _validate_clients_json() -> None:
             with open(clients_path, "w", encoding="utf-8") as wf:
                 json.dump(payload, wf, indent=4)
             print(">> INFO: Normalized legacy lot timestamps to ISO-8601.")
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f">> WARNING: Unable to normalize legacy lot timestamps ({exc}).")
     errors = _validate_clients_payload(payload)
     if errors:
         print(">> WARNING: data/clients.json schema issues detected:")

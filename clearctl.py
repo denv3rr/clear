@@ -4,6 +4,7 @@ import argparse
 import atexit
 import importlib.util
 import json
+import logging
 import os
 import shutil
 import signal
@@ -39,12 +40,16 @@ from utils.launcher import (
     write_pid,
 )
 
+LOGGER = logging.getLogger("clear.clearctl")
+
 try:
     from dotenv import load_dotenv
 
     load_dotenv()
-except Exception:
-    pass
+except ImportError:
+    LOGGER.warning("python-dotenv is not installed; skipping .env load")
+except OSError:
+    LOGGER.exception("Failed to load .env")
 
 API_PID = RUNTIME_DIR / "api.pid"
 WEB_PID = RUNTIME_DIR / "web.pid"

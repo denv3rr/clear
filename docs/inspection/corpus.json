@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "title": "Clear inspection corpus",
+  "description": "Research-grade documentation that independent inspectors must load before verifying a plan, diff, generated code, or reasoning trace. This is the training set for inspection, not a product runtime.",
+  "files": [
+    "docs/us_gov_standards.md",
+    "docs/agent_git_standards.md",
+    "docs/standards_remediation_plan.md",
+    "docs/inspection_verification.md",
+    "docs/architecture.md",
+    "docs/data_integrity.md",
+    "docs/methods.md",
+    "docs/ai_assistant.md",
+    "docs/assistant_usage.md",
+    "docs/security_verification.md",
+    "docs/feed_registry.md",
+    "docs/geospatial_source_audit.md",
+    "docs/visual_modernization_plan.md",
+    "docs/osint_operational_workflow_plan.md",
+    "docs/osint_globe_phase_2_plan.md",
+    "docs/osint.md",
+    "README.md"
+  ]
+}

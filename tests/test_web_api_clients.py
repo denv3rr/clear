@@ -1,13 +1,11 @@
-import re
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 from core.database import Base
 from core import models
+from tests.harness import cleanup_sqlite_files, isolated_sqlite_path, make_isolated_engine
 from web_api.app import app
 from web_api.routes.clients import get_db
 
@@ -15,37 +13,10 @@ from web_api.routes.clients import get_db
 TEST_RUNTIME_DIR = Path(__file__).resolve().parents[1] / "test_runtime" / "web_api_clients"
 
 
-def _isolated_db_path(request, filename: str) -> Path:
-    TEST_RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
-    case_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", request.node.nodeid)
-    case_dir = TEST_RUNTIME_DIR / case_name
-    case_dir.mkdir(parents=True, exist_ok=True)
-    db_path = case_dir / filename
-    for suffix in ("", "-journal", "-shm", "-wal"):
-        candidate = Path(f"{db_path}{suffix}")
-        if candidate.exists():
-            candidate.unlink()
-    return db_path
-
-
-def _cleanup_sqlite_files(db_path: Path) -> None:
-    for suffix in ("", "-journal", "-shm", "-wal"):
-        candidate = Path(f"{db_path}{suffix}")
-        if candidate.exists():
-            candidate.unlink()
-    try:
-        db_path.parent.rmdir()
-    except OSError:
-        pass
-
-
 @pytest.fixture()
 def session(request):
-    db_path = _isolated_db_path(request, "clients.db")
-    engine = create_engine(
-        f"sqlite:///{db_path}", connect_args={"check_same_thread": False}
-    )
-    testing_session_local = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    db_path = isolated_sqlite_path(request, "clients.db", runtime_dir=TEST_RUNTIME_DIR)
+    engine, testing_session_local = make_isolated_engine(db_path)
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     db = testing_session_local()
@@ -55,7 +26,7 @@ def session(request):
         db.close()
         Base.metadata.drop_all(bind=engine)
         engine.dispose()
-        _cleanup_sqlite_files(db_path)
+        cleanup_sqlite_files(db_path)
 
 @pytest.fixture()
 def client(session, monkeypatch):
