@@ -96,10 +96,13 @@ class Finding:
     path: str
     line: int
     detail: str
+    occurrence: int = 1
 
     @property
     def finding_id(self) -> str:
-        payload = f"{self.rule}|{self.path}|{self.line}|{self.detail.strip()}"
+        # Line numbers are recorded for humans but omitted from the id so
+        # inserting code above an existing handler is not a new finding.
+        payload = f"{self.rule}|{self.path}|{self.detail.strip()}|{self.occurrence}"
         digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
         return f"{self.rule}:{self.path}:{digest}"
 
@@ -278,7 +281,21 @@ def collect_findings() -> list[Finding]:
                 )
             )
     findings.sort(key=lambda item: (item.rule, item.path, item.line, item.detail))
-    return findings
+    numbered: list[Finding] = []
+    seen: dict[tuple[str, str, str], int] = {}
+    for item in findings:
+        key = (item.rule, item.path, item.detail.strip())
+        seen[key] = seen.get(key, 0) + 1
+        numbered.append(
+            Finding(
+                rule=item.rule,
+                path=item.path,
+                line=item.line,
+                detail=item.detail,
+                occurrence=seen[key],
+            )
+        )
+    return numbered
 
 
 def findings_payload(findings: list[Finding]) -> dict[str, object]:
