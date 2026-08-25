@@ -1,16 +1,16 @@
-rich==14.2.0
-python-dotenv==1.2.2
-finnhub-python==2.4.26
-yfinance==1.0
+rich==15.0.0
+python-dotenv==1.2.3
+finnhub-python==2.4.29
+yfinance==1.6.0
 pandas==2.3.3
 numpy==2.4.0
 cryptography==50.0.0
-requests==2.33.0
-psutil==7.2.1
+requests==2.34.2
+psutil==7.2.2
 PySide6; python_version < "3.14"
 PySide6-WebEngine; python_version < "3.14"
-pytest==9.0.3
-fastapi==0.128.0
-uvicorn==0.40.0
+pytest==9.1.1
+fastapi==0.141.1
+uvicorn==0.52.4
 httpx==0.28.1
-SQLAlchemy==2.0.45
+SQLAlchemy==2.0.52
