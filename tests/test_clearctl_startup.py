@@ -43,6 +43,7 @@ def test_terminate_port_processes_auto_yes(monkeypatch) -> None:
 
     monkeypatch.setattr(clearctl, "find_pids_by_port", fake_find_pids)
     monkeypatch.setattr(clearctl, "filter_matching_pids", lambda pids, _tokens: pids)
+    monkeypatch.setattr(clearctl, "process_alive", lambda _pid: True)
     monkeypatch.setattr(clearctl, "terminate_pid", fake_terminate)
     monkeypatch.setattr(clearctl, "wait_for_port_release", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(clearctl, "port_in_use", lambda *_args, **_kwargs: False)
