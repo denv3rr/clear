@@ -1,15 +1,14 @@
 import os
-import re
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
 
 import core.database as database
 import core.db_management as db_management
 from core import models
+from tests.harness import cleanup_sqlite_files, isolated_sqlite_path, make_isolated_engine
 from web_api import diagnostics
 from web_api.app import app
 from web_api.routes import maintenance as maintenance_routes
@@ -18,38 +17,9 @@ from web_api.routes import maintenance as maintenance_routes
 TEST_RUNTIME_DIR = Path(__file__).resolve().parents[1] / "test_runtime" / "web_api_maintenance"
 
 
-def _isolated_db_path(request, filename: str) -> Path:
-    TEST_RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
-    case_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", request.node.nodeid)
-    case_dir = TEST_RUNTIME_DIR / case_name
-    case_dir.mkdir(parents=True, exist_ok=True)
-    db_path = case_dir / filename
-    for suffix in ("", "-journal", "-shm", "-wal"):
-        candidate = Path(f"{db_path}{suffix}")
-        if candidate.exists():
-            candidate.unlink()
-    return db_path
-
-
-def _cleanup_sqlite_files(db_path: Path) -> None:
-    for suffix in ("", "-journal", "-shm", "-wal"):
-        candidate = Path(f"{db_path}{suffix}")
-        if candidate.exists():
-            candidate.unlink()
-    try:
-        db_path.parent.rmdir()
-    except OSError:
-        pass
-
-
 def _setup_temp_db(request, monkeypatch):
-    db_path = _isolated_db_path(request, "maintenance.db")
-    engine = create_engine(
-        f"sqlite:///{db_path}", connect_args={"check_same_thread": False}
-    )
-    session_local = sessionmaker(
-        autocommit=False, autoflush=False, bind=engine
-    )
+    db_path = isolated_sqlite_path(request, "maintenance.db", runtime_dir=TEST_RUNTIME_DIR)
+    engine, session_local = make_isolated_engine(db_path)
     monkeypatch.setattr(database, "engine", engine)
     monkeypatch.setattr(database, "SessionLocal", session_local)
     monkeypatch.setattr(db_management, "engine", engine)
@@ -67,7 +37,7 @@ def client(request, monkeypatch):
         yield TestClient(app, headers={"X-API-Key": "test_key"}), session_local
     finally:
         engine.dispose()
-        _cleanup_sqlite_files(db_path)
+        cleanup_sqlite_files(db_path)
 
 
 def test_cleanup_orphans(client):

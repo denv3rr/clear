@@ -40,6 +40,10 @@ jobs:
           python -m pip install -r requirements-ci.txt
       - name: Run pytest
         run: python -m pytest
+      - name: Guardrail scan
+        run: python scripts/check_guardrails.py --strict
+      - name: Inspection corpus
+        run: python scripts/inspect_repo.py corpus
 
   web:
     runs-on: ubuntu-latest

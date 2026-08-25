@@ -1,0 +1,1441 @@
+{
+  "version": 1,
+  "count": 205,
+  "findings": [
+    {
+      "id": "bare_except:interfaces/settings.py:2b932f2ec7b9",
+      "rule": "bare_except",
+      "path": "interfaces/settings.py",
+      "line": 1019,
+      "detail": "except:"
+    },
+    {
+      "id": "bare_except:interfaces/settings.py:03bc8982e357",
+      "rule": "bare_except",
+      "path": "interfaces/settings.py",
+      "line": 1042,
+      "detail": "except:"
+    },
+    {
+      "id": "bare_except:interfaces/settings.py:6b084e94a0b0",
+      "rule": "bare_except",
+      "path": "interfaces/settings.py",
+      "line": 1051,
+      "detail": "except:"
+    },
+    {
+      "id": "logged_broad_except:clearctl.py:8d7c6d45cfd4",
+      "rule": "logged_broad_except",
+      "path": "clearctl.py",
+      "line": 65,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:clearctl.py:1fdb3ce2e7f8",
+      "rule": "logged_broad_except",
+      "path": "clearctl.py",
+      "line": 120,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:clearctl.py:410d699ffac7",
+      "rule": "logged_broad_except",
+      "path": "clearctl.py",
+      "line": 192,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:clearctl.py:1c5195ec3193",
+      "rule": "logged_broad_except",
+      "path": "clearctl.py",
+      "line": 231,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:clearctl.py:ba1ce80d1762",
+      "rule": "logged_broad_except",
+      "path": "clearctl.py",
+      "line": 247,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:clearctl.py:7412d803c1e5",
+      "rule": "logged_broad_except",
+      "path": "clearctl.py",
+      "line": 261,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:core/db_management.py:fcc10919d32a",
+      "rule": "logged_broad_except",
+      "path": "core/db_management.py",
+      "line": 73,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:interfaces/gui_tracker.py:28168e16dfc7",
+      "rule": "logged_broad_except",
+      "path": "interfaces/gui_tracker.py",
+      "line": 249,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:interfaces/gui_tracker.py:80a3c1e030a7",
+      "rule": "logged_broad_except",
+      "path": "interfaces/gui_tracker.py",
+      "line": 321,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:interfaces/menus.py:2e622e523e92",
+      "rule": "logged_broad_except",
+      "path": "interfaces/menus.py",
+      "line": 101,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:interfaces/settings.py:12731b5a729b",
+      "rule": "logged_broad_except",
+      "path": "interfaces/settings.py",
+      "line": 132,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:interfaces/settings.py:e4fd60ae3374",
+      "rule": "logged_broad_except",
+      "path": "interfaces/settings.py",
+      "line": 140,
+      "detail": "except Exception as e:"
+    },
+    {
+      "id": "logged_broad_except:interfaces/settings.py:9c8eaa41b3e4",
+      "rule": "logged_broad_except",
+      "path": "interfaces/settings.py",
+      "line": 215,
+      "detail": "except Exception as e:"
+    },
+    {
+      "id": "logged_broad_except:interfaces/settings.py:f05f22bd4663",
+      "rule": "logged_broad_except",
+      "path": "interfaces/settings.py",
+      "line": 1125,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:interfaces/settings.py:6de09dddbdda",
+      "rule": "logged_broad_except",
+      "path": "interfaces/settings.py",
+      "line": 1147,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:interfaces/settings.py:ddcc143f2d81",
+      "rule": "logged_broad_except",
+      "path": "interfaces/settings.py",
+      "line": 1331,
+      "detail": "except Exception as exc:"
+    },
+    {
+      "id": "logged_broad_except:interfaces/shell.py:b2d1a605d233",
+      "rule": "logged_broad_except",
+      "path": "interfaces/shell.py",
+      "line": 32,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:interfaces/shell.py:0a6bc3681a55",
+      "rule": "logged_broad_except",
+      "path": "interfaces/shell.py",
+      "line": 103,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:interfaces/shell.py:0684efd74d74",
+      "rule": "logged_broad_except",
+      "path": "interfaces/shell.py",
+      "line": 230,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:interfaces/shell.py:4873f7a5139c",
+      "rule": "logged_broad_except",
+      "path": "interfaces/shell.py",
+      "line": 337,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/client_model.py:231dae8f452f",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/client_model.py",
+      "line": 93,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/data.py:0b3b93807442",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/data.py",
+      "line": 43,
+      "detail": "except Exception as exc:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/data.py:ffb6a4fde513",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/data.py",
+      "line": 136,
+      "detail": "except Exception as ex:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/data_handler.py:883454f13a50",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/data_handler.py",
+      "line": 33,
+      "detail": "except Exception as e:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/data_handler.py:8ba30db02b30",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/data_handler.py",
+      "line": 44,
+      "detail": "except Exception as e:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/data_handler.py:d16775f27828",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/data_handler.py",
+      "line": 55,
+      "detail": "except Exception as e:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/holdings.py:6424351ef0c2",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/holdings.py",
+      "line": 78,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/holdings.py:102fbdeb02bb",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/holdings.py",
+      "line": 134,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/manager.py:c1644fe0f8a4",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/manager.py",
+      "line": 785,
+      "detail": "except Exception as exc:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/manager.py:dfa68d1ae4c0",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/manager.py",
+      "line": 952,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/manager.py:221b02a470db",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/manager.py",
+      "line": 1076,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/regime.py:aee49a69bd37",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/regime.py",
+      "line": 289,
+      "detail": "except Exception as exc:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/regime.py:7386a35f7819",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/regime.py",
+      "line": 321,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/regime_views.py:8c76e81837e8",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/regime_views.py",
+      "line": 317,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/tax.py:9cc3d782c90a",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/tax.py",
+      "line": 41,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/tax.py:468dd97641aa",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/tax.py",
+      "line": 117,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/toolkit.py:0e60937f837a",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/toolkit.py",
+      "line": 99,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/toolkit.py:4ca01b6c2a74",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/toolkit.py",
+      "line": 119,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/toolkit.py:73292a034044",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/toolkit.py",
+      "line": 127,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/toolkit.py:7076a24978bb",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/toolkit.py",
+      "line": 131,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/toolkit.py:1a9de56aee1c",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/toolkit.py",
+      "line": 164,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/toolkit.py:8ab467a9e32a",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/toolkit.py",
+      "line": 186,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/toolkit.py:46ee444cba71",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/toolkit.py",
+      "line": 190,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/toolkit.py:823e5edf314a",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/toolkit.py",
+      "line": 261,
+      "detail": "except Exception as exc:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/toolkit.py:e15953ebf882",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/toolkit.py",
+      "line": 420,
+      "detail": "except Exception as ex:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/valuation.py:0728303af247",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/valuation.py",
+      "line": 51,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/valuation.py:553d7cad94a6",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/valuation.py",
+      "line": 164,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/valuation.py:6cfd19bba3be",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/valuation.py",
+      "line": 209,
+      "detail": "except Exception as ex:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/valuation.py:8f5a39883d08",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/valuation.py",
+      "line": 268,
+      "detail": "except Exception as ex:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/valuation.py:1e755c0c99a1",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/valuation.py",
+      "line": 281,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/valuation.py:80f31c0e52d7",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/valuation.py",
+      "line": 338,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/valuation.py:26d6d482e26b",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/valuation.py",
+      "line": 346,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/valuation.py:84057977618e",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/valuation.py",
+      "line": 354,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/valuation.py:4b202ac33177",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/valuation.py",
+      "line": 416,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/valuation.py:95cf7b9fbb0e",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/valuation.py",
+      "line": 475,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/valuation.py:3234628baeac",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/valuation.py",
+      "line": 537,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/valuation.py:5eb0d296c2e0",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/valuation.py",
+      "line": 557,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_mgr/valuation.py:75ecf96c1743",
+      "rule": "logged_broad_except",
+      "path": "modules/client_mgr/valuation.py",
+      "line": 572,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_store.py:4eaa00e7635f",
+      "rule": "logged_broad_except",
+      "path": "modules/client_store.py",
+      "line": 188,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/client_store.py:5c4fed672577",
+      "rule": "logged_broad_except",
+      "path": "modules/client_store.py",
+      "line": 821,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/collectors.py:6398a2efe956",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/collectors.py",
+      "line": 42,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/collectors.py:53d79bd6c584",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/collectors.py",
+      "line": 129,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/collectors.py:266b035b06f9",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/collectors.py",
+      "line": 135,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/collectors.py:fdb0eaf80163",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/collectors.py",
+      "line": 162,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/collectors.py:8a9d5ce123f9",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/collectors.py",
+      "line": 211,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/collectors.py:ff22dd3b3a28",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/collectors.py",
+      "line": 291,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/collectors.py:7e2e50f77d28",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/collectors.py",
+      "line": 901,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/collectors.py:109ef1eeb06b",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/collectors.py",
+      "line": 913,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/feed.py:aebc81258a13",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/feed.py",
+      "line": 15,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/feed.py:415754b2edcc",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/feed.py",
+      "line": 35,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/feed.py:498be8f29054",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/feed.py",
+      "line": 40,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/feed.py:f9b7248a4168",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/feed.py",
+      "line": 86,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/feed.py:c7a19fec312b",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/feed.py",
+      "line": 189,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/feed.py:4b1a72903d3c",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/feed.py",
+      "line": 593,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/feed.py:9524bbf60a35",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/feed.py",
+      "line": 886,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/feed.py:bb755ff8d89b",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/feed.py",
+      "line": 1002,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/feed.py:4edfe72e0816",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/feed.py",
+      "line": 1020,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/feed.py:6578f6ffebf7",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/feed.py",
+      "line": 1121,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/feed.py:ab619461ecbd",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/feed.py",
+      "line": 1142,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/feed.py:5606a265fc51",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/feed.py",
+      "line": 1226,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/finnhub_client.py:fc11177692b3",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/finnhub_client.py",
+      "line": 42,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/flight_registry.py:44c862adf837",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/flight_registry.py",
+      "line": 40,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/flight_registry.py:8a0e0ab8e765",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/flight_registry.py",
+      "line": 61,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/intel.py:a75b6e940b96",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/intel.py",
+      "line": 500,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/intel.py:334e2e9b161f",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/intel.py",
+      "line": 517,
+      "detail": "except Exception as exc:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/intel.py:787d37e394a8",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/intel.py",
+      "line": 537,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/intel.py:a0c545a80f3e",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/intel.py",
+      "line": 560,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/intel.py:909f31dc5ade",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/intel.py",
+      "line": 568,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/intel.py:f02f649a0263",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/intel.py",
+      "line": 731,
+      "detail": "except Exception as exc:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/intel.py:b897df89072e",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/intel.py",
+      "line": 834,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/intel.py:9d2737b2b2bc",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/intel.py",
+      "line": 837,
+      "detail": "except Exception as exc:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/registry.py:d9b76d4067c3",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/registry.py",
+      "line": 22,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/scene_payloads.py:f987987fbce0",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/scene_payloads.py",
+      "line": 164,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/scene_payloads.py:58a001e79c0b",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/scene_payloads.py",
+      "line": 185,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/scene_payloads.py:c1c100572dbd",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/scene_payloads.py",
+      "line": 300,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/scene_payloads.py:19ec10ee6266",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/scene_payloads.py",
+      "line": 306,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/scene_payloads.py:8272a6e7adbd",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/scene_payloads.py",
+      "line": 374,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/scene_payloads.py:aa71ccb32eed",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/scene_payloads.py",
+      "line": 1029,
+      "detail": "except Exception as exc:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/scene_payloads.py:1e66a90681c5",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/scene_payloads.py",
+      "line": 1046,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/trackers.py:8cc5b16d29ee",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/trackers.py",
+      "line": 130,
+      "detail": "except Exception as exc:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/trackers.py:06294846f1d6",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/trackers.py",
+      "line": 144,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/trackers.py:8782ee085c38",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/trackers.py",
+      "line": 178,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/trackers.py:48816fb02adf",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/trackers.py",
+      "line": 239,
+      "detail": "except Exception as exc:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/trackers.py:d417bfe143d9",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/trackers.py",
+      "line": 252,
+      "detail": "except Exception as exc:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/trackers.py:fc87a100a655",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/trackers.py",
+      "line": 291,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/trackers.py:3add3c159916",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/trackers.py",
+      "line": 381,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/trackers.py:03c0731ff02d",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/trackers.py",
+      "line": 426,
+      "detail": "except Exception as exc:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/trackers.py:33a311ead3e2",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/trackers.py",
+      "line": 487,
+      "detail": "except Exception as exc:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/trackers.py:f55143013b01",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/trackers.py",
+      "line": 508,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/trackers.py:d671baa8c5ae",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/trackers.py",
+      "line": 553,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/trackers.py:11f8d490d5a9",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/trackers.py",
+      "line": 557,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/trackers.py:2f73f5c4a80e",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/trackers.py",
+      "line": 984,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/trackers.py:48c5038ab2c2",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/trackers.py",
+      "line": 1014,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/trackers.py:0b570c9143fc",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/trackers.py",
+      "line": 1046,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/trackers.py:ff63f4b19793",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/trackers.py",
+      "line": 1177,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/trackers.py:8b0812b9be2f",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/trackers.py",
+      "line": 1274,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/yfinance_client.py:a7fec264028d",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/yfinance_client.py",
+      "line": 410,
+      "detail": "except Exception as e:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/yfinance_client.py:a4503cb45d88",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/yfinance_client.py",
+      "line": 514,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/market_data/yfinance_client.py:1db7f401e95c",
+      "rule": "logged_broad_except",
+      "path": "modules/market_data/yfinance_client.py",
+      "line": 532,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/reporting/engine.py:9403a26c78db",
+      "rule": "logged_broad_except",
+      "path": "modules/reporting/engine.py",
+      "line": 106,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/reporting/engine.py:8856ffacf946",
+      "rule": "logged_broad_except",
+      "path": "modules/reporting/engine.py",
+      "line": 122,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/reporting/engine.py:dae4c648cfe1",
+      "rule": "logged_broad_except",
+      "path": "modules/reporting/engine.py",
+      "line": 139,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/reporting/engine.py:7efca9fb38e1",
+      "rule": "logged_broad_except",
+      "path": "modules/reporting/engine.py",
+      "line": 147,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/reporting/engine.py:c61b725845dc",
+      "rule": "logged_broad_except",
+      "path": "modules/reporting/engine.py",
+      "line": 170,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/reporting/engine.py:10c2aa6ca227",
+      "rule": "logged_broad_except",
+      "path": "modules/reporting/engine.py",
+      "line": 192,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/reporting/engine.py:b1c5fd60138c",
+      "rule": "logged_broad_except",
+      "path": "modules/reporting/engine.py",
+      "line": 755,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/reporting/engine.py:d3caebf61c51",
+      "rule": "logged_broad_except",
+      "path": "modules/reporting/engine.py",
+      "line": 764,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/reporting/engine.py:0c570b658940",
+      "rule": "logged_broad_except",
+      "path": "modules/reporting/engine.py",
+      "line": 788,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/reporting/engine.py:2e41438dd676",
+      "rule": "logged_broad_except",
+      "path": "modules/reporting/engine.py",
+      "line": 827,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/reporting/engine.py:00baa39a8144",
+      "rule": "logged_broad_except",
+      "path": "modules/reporting/engine.py",
+      "line": 924,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/reporting/engine.py:85831a300483",
+      "rule": "logged_broad_except",
+      "path": "modules/reporting/engine.py",
+      "line": 947,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/view_models.py:92b58338f008",
+      "rule": "logged_broad_except",
+      "path": "modules/view_models.py",
+      "line": 122,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/view_models.py:6d3d35a3ed47",
+      "rule": "logged_broad_except",
+      "path": "modules/view_models.py",
+      "line": 126,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/view_models.py:74f0ac916a43",
+      "rule": "logged_broad_except",
+      "path": "modules/view_models.py",
+      "line": 215,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:modules/view_models.py:639fe0fcf0ca",
+      "rule": "logged_broad_except",
+      "path": "modules/view_models.py",
+      "line": 244,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:run.py:a54dee387b7c",
+      "rule": "logged_broad_except",
+      "path": "run.py",
+      "line": 126,
+      "detail": "except Exception as exc:"
+    },
+    {
+      "id": "logged_broad_except:run.py:f18d5a775c8d",
+      "rule": "logged_broad_except",
+      "path": "run.py",
+      "line": 229,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:run.py:444bd7a43582",
+      "rule": "logged_broad_except",
+      "path": "run.py",
+      "line": 242,
+      "detail": "except Exception as exc:"
+    },
+    {
+      "id": "logged_broad_except:run.py:3420ae737b0c",
+      "rule": "logged_broad_except",
+      "path": "run.py",
+      "line": 252,
+      "detail": "except Exception as exc:"
+    },
+    {
+      "id": "logged_broad_except:run.py:3129f5032abd",
+      "rule": "logged_broad_except",
+      "path": "run.py",
+      "line": 283,
+      "detail": "except Exception as e:"
+    },
+    {
+      "id": "logged_broad_except:run_web.py:5e7253b81466",
+      "rule": "logged_broad_except",
+      "path": "run_web.py",
+      "line": 58,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:run_web.py:f8e03e7f8652",
+      "rule": "logged_broad_except",
+      "path": "run_web.py",
+      "line": 152,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/charts.py:d2d2355190ca",
+      "rule": "logged_broad_except",
+      "path": "utils/charts.py",
+      "line": 49,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/charts.py:4575c43de369",
+      "rule": "logged_broad_except",
+      "path": "utils/charts.py",
+      "line": 69,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/charts.py:6b69ae2b0bad",
+      "rule": "logged_broad_except",
+      "path": "utils/charts.py",
+      "line": 99,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/input.py:b7b62cfb7f2f",
+      "rule": "logged_broad_except",
+      "path": "utils/input.py",
+      "line": 191,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/launcher.py:3981d9d84753",
+      "rule": "logged_broad_except",
+      "path": "utils/launcher.py",
+      "line": 50,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/launcher.py:c775aec93aa7",
+      "rule": "logged_broad_except",
+      "path": "utils/launcher.py",
+      "line": 62,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/launcher.py:740f90060046",
+      "rule": "logged_broad_except",
+      "path": "utils/launcher.py",
+      "line": 86,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/launcher.py:32ac28b9870a",
+      "rule": "logged_broad_except",
+      "path": "utils/launcher.py",
+      "line": 111,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/launcher.py:b832b72117f3",
+      "rule": "logged_broad_except",
+      "path": "utils/launcher.py",
+      "line": 127,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/launcher.py:e4552f0b9815",
+      "rule": "logged_broad_except",
+      "path": "utils/launcher.py",
+      "line": 145,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/launcher.py:5b591add5326",
+      "rule": "logged_broad_except",
+      "path": "utils/launcher.py",
+      "line": 167,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/launcher.py:5be5d811e1ab",
+      "rule": "logged_broad_except",
+      "path": "utils/launcher.py",
+      "line": 204,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/launcher.py:4dc5b6d80e2a",
+      "rule": "logged_broad_except",
+      "path": "utils/launcher.py",
+      "line": 214,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/launcher.py:43c74c3b88c0",
+      "rule": "logged_broad_except",
+      "path": "utils/launcher.py",
+      "line": 220,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/launcher.py:a33515d30303",
+      "rule": "logged_broad_except",
+      "path": "utils/launcher.py",
+      "line": 257,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/launcher.py:56b7c6a4e710",
+      "rule": "logged_broad_except",
+      "path": "utils/launcher.py",
+      "line": 273,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/report_synth.py:3da55d85ee8a",
+      "rule": "logged_broad_except",
+      "path": "utils/report_synth.py",
+      "line": 220,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/report_synth.py:60c37e01deba",
+      "rule": "logged_broad_except",
+      "path": "utils/report_synth.py",
+      "line": 230,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/report_synth.py:bcfa26357829",
+      "rule": "logged_broad_except",
+      "path": "utils/report_synth.py",
+      "line": 354,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/report_synth.py:5e29c23da661",
+      "rule": "logged_broad_except",
+      "path": "utils/report_synth.py",
+      "line": 373,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/report_synth.py:0c06261a5ada",
+      "rule": "logged_broad_except",
+      "path": "utils/report_synth.py",
+      "line": 385,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/scroll_text.py:f66ade69d206",
+      "rule": "logged_broad_except",
+      "path": "utils/scroll_text.py",
+      "line": 111,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/system.py:2b9ab7da1c07",
+      "rule": "logged_broad_except",
+      "path": "utils/system.py",
+      "line": 61,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/system.py:3a97b3629fef",
+      "rule": "logged_broad_except",
+      "path": "utils/system.py",
+      "line": 83,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/system.py:32423fa991a5",
+      "rule": "logged_broad_except",
+      "path": "utils/system.py",
+      "line": 143,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/system.py:e711e1504230",
+      "rule": "logged_broad_except",
+      "path": "utils/system.py",
+      "line": 154,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:utils/world_clocks.py:89a1ff1cbd2c",
+      "rule": "logged_broad_except",
+      "path": "utils/world_clocks.py",
+      "line": 43,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:web_api/app.py:864f7417b65d",
+      "rule": "logged_broad_except",
+      "path": "web_api/app.py",
+      "line": 19,
+      "detail": "except Exception as exc:"
+    },
+    {
+      "id": "logged_broad_except:web_api/diagnostics.py:6bd3f631241c",
+      "rule": "logged_broad_except",
+      "path": "web_api/diagnostics.py",
+      "line": 191,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:web_api/diagnostics.py:39fe34ea6f37",
+      "rule": "logged_broad_except",
+      "path": "web_api/diagnostics.py",
+      "line": 209,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "logged_broad_except:web_api/routes/maintenance.py:c5eee38a2148",
+      "rule": "logged_broad_except",
+      "path": "web_api/routes/maintenance.py",
+      "line": 45,
+      "detail": "except Exception as exc:"
+    },
+    {
+      "id": "logged_broad_except:web_api/routes/scene.py:f1b7920cce26",
+      "rule": "logged_broad_except",
+      "path": "web_api/routes/scene.py",
+      "line": 181,
+      "detail": "except Exception as exc:"
+    },
+    {
+      "id": "logged_broad_except:web_api/routes/settings.py:4144aaea3c37",
+      "rule": "logged_broad_except",
+      "path": "web_api/routes/settings.py",
+      "line": 24,
+      "detail": "except Exception as exc:"
+    },
+    {
+      "id": "silent_except:clearctl.py:6368a17fc395",
+      "rule": "silent_except",
+      "path": "clearctl.py",
+      "line": 329,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:modules/client_mgr/client_model.py:8abd10b72d59",
+      "rule": "silent_except",
+      "path": "modules/client_mgr/client_model.py",
+      "line": 78,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:modules/client_mgr/holdings.py:3c2aa1f5664e",
+      "rule": "silent_except",
+      "path": "modules/client_mgr/holdings.py",
+      "line": 33,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:modules/client_mgr/holdings.py:9c9c09750de0",
+      "rule": "silent_except",
+      "path": "modules/client_mgr/holdings.py",
+      "line": 39,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:modules/client_mgr/holdings.py:52dd835494ef",
+      "rule": "silent_except",
+      "path": "modules/client_mgr/holdings.py",
+      "line": 57,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:modules/client_mgr/manager.py:3eea82b5e542",
+      "rule": "silent_except",
+      "path": "modules/client_mgr/manager.py",
+      "line": 757,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:modules/client_mgr/manager.py:67dfc16ce5fd",
+      "rule": "silent_except",
+      "path": "modules/client_mgr/manager.py",
+      "line": 1290,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:modules/client_mgr/valuation.py:f6e6ac5251bd",
+      "rule": "silent_except",
+      "path": "modules/client_mgr/valuation.py",
+      "line": 108,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:modules/client_mgr/valuation.py:291e0ae6bcfc",
+      "rule": "silent_except",
+      "path": "modules/client_mgr/valuation.py",
+      "line": 129,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:modules/client_mgr/valuation.py:7fad32662362",
+      "rule": "silent_except",
+      "path": "modules/client_mgr/valuation.py",
+      "line": 436,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:modules/client_mgr/valuation.py:4a9d6710660f",
+      "rule": "silent_except",
+      "path": "modules/client_mgr/valuation.py",
+      "line": 495,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:modules/market_data/feed.py:0dafa1e6016b",
+      "rule": "silent_except",
+      "path": "modules/market_data/feed.py",
+      "line": 1702,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:modules/market_data/feed.py:bc0cf30c7d41",
+      "rule": "silent_except",
+      "path": "modules/market_data/feed.py",
+      "line": 1784,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:modules/market_data/scene_payloads.py:873736708ae8",
+      "rule": "silent_except",
+      "path": "modules/market_data/scene_payloads.py",
+      "line": 196,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:modules/market_data/scene_payloads.py:d6765f963c97",
+      "rule": "silent_except",
+      "path": "modules/market_data/scene_payloads.py",
+      "line": 211,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:modules/market_data/scene_payloads.py:9e5133d47865",
+      "rule": "silent_except",
+      "path": "modules/market_data/scene_payloads.py",
+      "line": 218,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:modules/market_data/scene_payloads.py:689394295fb6",
+      "rule": "silent_except",
+      "path": "modules/market_data/scene_payloads.py",
+      "line": 314,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:modules/market_data/scene_payloads.py:aaf30481bb4f",
+      "rule": "silent_except",
+      "path": "modules/market_data/scene_payloads.py",
+      "line": 319,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:modules/market_data/scene_payloads.py:d717530f44e2",
+      "rule": "silent_except",
+      "path": "modules/market_data/scene_payloads.py",
+      "line": 353,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:modules/market_data/yfinance_client.py:a2601cbb7399",
+      "rule": "silent_except",
+      "path": "modules/market_data/yfinance_client.py",
+      "line": 385,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:modules/reporting/engine.py:ad381e8731ff",
+      "rule": "silent_except",
+      "path": "modules/reporting/engine.py",
+      "line": 913,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:modules/view_models.py:6cfeaf32463a",
+      "rule": "silent_except",
+      "path": "modules/view_models.py",
+      "line": 19,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:modules/view_models.py:514bce41ac67",
+      "rule": "silent_except",
+      "path": "modules/view_models.py",
+      "line": 29,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:modules/view_models.py:036efbda9954",
+      "rule": "silent_except",
+      "path": "modules/view_models.py",
+      "line": 156,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:run_web.py:d5cab58dd143",
+      "rule": "silent_except",
+      "path": "run_web.py",
+      "line": 343,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:utils/launcher.py:430dd2a76ec6",
+      "rule": "silent_except",
+      "path": "utils/launcher.py",
+      "line": 158,
+      "detail": "except Exception:"
+    },
+    {
+      "id": "silent_except:utils/report_synth.py:a7251d3c2436",
+      "rule": "silent_except",
+      "path": "utils/report_synth.py",
+      "line": 152,
+      "detail": "except Exception:"
+    }
+  ]
+}

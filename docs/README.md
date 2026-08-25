@@ -4,6 +4,9 @@
 - `docs/ai_assistant.md` — AI assistant plan and current status.
 - `docs/assistant_usage.md` — assistant usage across API, web, and CLI.
 - `docs/agent_git_standards.md` — mandatory branch, commit, merge, push, and sensitive-file rules for agents.
+- `docs/inspection_verification.md` — independent inspection roles, documentation corpus, and guardrail scanner.
+- `docs/inspection/roles.md` — specialist checklists used by `scripts/inspect_repo.py`.
+- `docs/architecture.md` — architecture standards, layout conventions, and product boundary.
 - `docs/api_contracts.md` — core API contract expectations.
 - `docs/data_integrity.md` — data integrity expectations and safety rules.
 - `docs/diagnostics.md` — diagnostics sources, registry health, and consistency checks.

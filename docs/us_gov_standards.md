@@ -148,6 +148,13 @@ These source documents drive the repo rules below:
   excluded.
 - Do not rewrite shared history or discard user work unless explicitly directed.
 
+## Static enforcement
+
+Independent inspectors and the whole-repo guardrail scanner are defined in
+[docs/inspection_verification.md](inspection_verification.md). They verify
+these rules; they do not replace them. Known remaining violations are
+ratcheted in `tests/guardrail_baseline.json`.
+
 ## Change Gate
 
 Before closing any substantial update, confirm all of the following:

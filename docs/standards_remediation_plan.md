@@ -74,23 +74,36 @@ Closed in the current pass:
 - Targeted 36 Dependabot alerts with the pip/npm pins recorded in
   `docs/security_verification.md`. This is dependency hygiene plus
   defensive route tests in `tests/test_security.py`, not a formal pentest.
+- Added independent inspection: corpus-bound specialist verifiers in
+  `docs/inspection_verification.md` / `scripts/inspect_repo.py`, and a whole-repo
+  guardrail scanner in `scripts/check_guardrails.py` ratcheted by
+  `tests/guardrail_baseline.json`. This is documentation-corpus inspection
+  plus static analysis, not a trained multi-agent product.
+- Shared isolated SQLite/API harness landed at `tests/harness.py` and is used
+  by client and maintenance positive-path API tests. Operator runtime
+  databases are out of bounds.
+- Report synthesis tests no longer pass invented `confidence` strings.
+- Startup `.env` load failures are typed (`ImportError`) or logged (`OSError`)
+  instead of `except Exception: pass` in `clearctl.py` and `run_web.py`.
 
 Still open:
-- Several Python tests still rely on synthetic in-memory payloads or
-  monkeypatched positive-path data instead of live local data or captured real
-  fixtures with provenance.
-- Positive-path browser mutation tests still need an isolated real-data harness
-  so we can verify destructive flows without touching local operator data.
+- Several Python tests still rely on in-memory payloads or monkeypatched
+  route internals instead of live local data or captured real fixtures with
+  provenance. `tests/test_web_api.py` functions named `*_stubbed` remain
+  contract-shape / negative-path evidence only.
+- Positive-path browser mutation tests still need an isolated real-data
+  Playwright harness so we can verify destructive flows without touching
+  local operator data.
 - Tracker globe positive-path visuals still need a reviewed capture path before
   fail-safe-only browser baselines should be replaced there.
 - The tracker capture path now exists but correctly fails closed in environments
   that only return empty/degraded tracker scenes; a reviewed non-empty tracker
   source is still required before a loaded-state tracker fixture can be
   committed.
-- Widespread `except Exception` and bare `pass` usage still needs a structured
-  fail-safe audit across `modules/`, `web_api/`, and startup code.
-- Some report synthesis tests still use invented `confidence` strings in
-  fixture payloads even though runtime behavior is moving away from them.
+- Widespread `except Exception` and silent `pass` usage still needs the
+  Phase 2 fail-safe audit across `modules/`, `web_api/`, and remaining startup
+  code. The current inventory is `tests/guardrail_baseline.json`; new hits
+  fail CI.
 - The next implementation phase is now defined in
   `docs/osint_globe_phase_2_plan.md` and remains blocked until Phase 1 and
   Phase 2 in this document are explicitly advanced with evidence.
@@ -155,6 +168,12 @@ Exit criteria:
 - Globe/browser fixture coverage is expanded beyond intel as reviewed capture
   paths become available.
 
+Current partial closure:
+- `tests/harness.py` is the shared ephemeral SQLite/API harness for isolated
+  positive-path Python tests.
+- Independent inspection and the guardrail scanner exist; they inventory
+  remaining debt and ratchet new violations, they do not close this phase.
+
 ## Phase 2: Fail-Safe And Silent-Failure Audit
 
 Objective: remove quiet failure behavior that can hide corruption or weaken
@@ -174,6 +193,12 @@ Exit criteria:
 - Silent failures are documented exceptions, not defaults.
 - Startup-critical paths fail closed when integrity checks fail.
 - Degraded states are explicit in UI/API payloads.
+
+Current partial closure:
+- `scripts/check_guardrails.py` classifies broad/silent exception sites.
+- `tests/guardrail_baseline.json` is the living exception-handling audit
+  inventory. Completing this phase still requires classifying and correcting
+  each remaining site.
 
 ## Phase 3: Analytics And Report Output Remediation
 

@@ -2,9 +2,14 @@
 
 Clear is a local-first portfolio, analytics, and OSINT platform with shared
 CLI, API, and web surfaces. It combines client/account data, deterministic
-financial calculations, global tracker feeds, news/intel summaries, and a
-standards-gated globe foundation. The globe is a real immersive viewer, not a
-finished operational surface.
+financial calculations, global tracker feeds, news/intel summaries, a
+rules-based assistant, and a standards-gated globe foundation. The globe is a
+real immersive viewer, not a finished operational surface.
+
+Clear is not a general multi-agent reasoning framework. Agent git rules and
+assistant constraints are the seed of governed helper work; independent
+inspection is documented in
+[docs/inspection_verification.md](docs/inspection_verification.md).
 
 ## Quick Start
 
@@ -142,6 +147,7 @@ lives in the Python test suite rather than in the README.
 | --- | --- |
 | [docs/README.md](docs/README.md) | Full docs index |
 | [docs/agent_git_standards.md](docs/agent_git_standards.md) | Branch, commit, merge, push, and sensitive-file rules for agents |
+| [docs/inspection_verification.md](docs/inspection_verification.md) | Independent corpus-bound inspectors and whole-repo guardrail scan |
 | [docs/us_gov_standards.md](docs/us_gov_standards.md) | Mandatory standards baseline |
 | [docs/standards_remediation_plan.md](docs/standards_remediation_plan.md) | Active standards gate and phase plan |
 | [docs/visual_modernization_plan.md](docs/visual_modernization_plan.md) | Globe-first UX roadmap |

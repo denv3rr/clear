@@ -56,4 +56,8 @@
 4) Add CLI command that mirrors API payloads (done).
 5) Add tests for schema validation and deterministic output constraints.
 
-For the agent-based architecture, consult `AGENTS.md` when available locally.
+Clear is not a general multi-agent reasoning framework. Assistant behavior
+stays a deterministic insight layer over existing analytics, news, and client
+data. Local `AGENTS.md` / `agents/` helpers, when present, are ignored git
+state. Independent verification of plans and code uses
+[docs/inspection_verification.md](inspection_verification.md).
