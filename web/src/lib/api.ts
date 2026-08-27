@@ -10,6 +10,7 @@ const API_BASE =
 const ENV_API_KEY = import.meta.env.VITE_API_KEY;
 const LOCAL_KEY = "clear_api_key";
 const SESSION_KEY = "clear_api_key_session";
+let inMemoryApiKey: string | null = null;
 
 type ApiKeyScope = "session" | "local" | "env" | "none";
 
@@ -51,25 +52,12 @@ async function parseJson<T>(response: Response): Promise<T> {
 }
 
 export function getApiKey(): string | null {
-  try {
-    return (
-      sessionStorage.getItem(SESSION_KEY) ||
-      localStorage.getItem(LOCAL_KEY) ||
-      ENV_API_KEY ||
-      null
-    );
-  } catch {
-    return ENV_API_KEY || null;
-  }
+  if (inMemoryApiKey) return inMemoryApiKey;
+  return ENV_API_KEY || null;
 }
 
 export function getApiKeyScope(): ApiKeyScope {
-  try {
-    if (sessionStorage.getItem(SESSION_KEY)) return "session";
-    if (localStorage.getItem(LOCAL_KEY)) return "local";
-  } catch {
-    return ENV_API_KEY ? "env" : "none";
-  }
+  if (inMemoryApiKey) return "session";
   return ENV_API_KEY ? "env" : "none";
 }
 
@@ -77,22 +65,17 @@ export function setApiKey(
   value: string,
   options: { persist?: boolean } = {}
 ): void {
+  inMemoryApiKey = value;
   try {
     localStorage.removeItem(LOCAL_KEY);
     sessionStorage.removeItem(SESSION_KEY);
-    if (options.persist) {
-      // codeql[js/clear-text-storage-of-sensitive-data]: Operator-chosen local API key for this browser only; no remote secret store exists.
-      localStorage.setItem(LOCAL_KEY, value);
-    } else {
-      // codeql[js/clear-text-storage-of-sensitive-data]: Session-scoped local operator key; cleared when the tab closes.
-      sessionStorage.setItem(SESSION_KEY, value);
-    }
   } catch {
     return;
   }
 }
 
 export function clearApiKey(): void {
+  inMemoryApiKey = null;
   try {
     localStorage.removeItem(LOCAL_KEY);
     sessionStorage.removeItem(SESSION_KEY);
