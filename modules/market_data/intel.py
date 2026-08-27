@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 import time
@@ -17,6 +18,8 @@ from modules.market_data.collectors import (
     HOTSPOT_EVENT_TAGS,
     NEWS_CATEGORIES,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -728,8 +731,9 @@ class WeatherIntel:
             if resp.status_code != 200:
                 return {"error": f"Open-Meteo HTTP {resp.status_code}"}
             payload = resp.json()
-        except Exception as exc:
-            return {"error": f"Open-Meteo fetch failed: {exc}"}
+        except Exception:
+            logger.exception("Open-Meteo fetch failed")
+            return {"error": "Open-Meteo data is temporarily unavailable"}
 
         current = payload.get("current", {}) or {}
         temp = current.get("temperature_2m")
