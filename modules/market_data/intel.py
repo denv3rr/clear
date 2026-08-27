@@ -728,8 +728,8 @@ class WeatherIntel:
             if resp.status_code != 200:
                 return {"error": f"Open-Meteo HTTP {resp.status_code}"}
             payload = resp.json()
-        except Exception as exc:
-            return {"error": f"Open-Meteo fetch failed: {exc}"}
+        except Exception:
+            return {"error": "Open-Meteo fetch failed"}
 
         current = payload.get("current", {}) or {}
         temp = current.get("temperature_2m")
