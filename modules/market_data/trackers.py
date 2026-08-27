@@ -236,8 +236,8 @@ class TrackerProviders:
                 if not rows:
                     warnings.append(f"Flight feed empty: {data_path}")
                 rows_by_source.append((rows, data_path))
-            except Exception as exc:
-                warnings.append(f"Flight feed file failed: {data_path}: {exc}")
+            except Exception:
+                warnings.append(f"Flight feed file failed: {data_path}")
         for url in urls:
             try:
                 resp = requests.get(url, timeout=8)
@@ -249,8 +249,8 @@ class TrackerProviders:
                 if not rows:
                     warnings.append(f"Flight feed empty: {url}")
                 rows_by_source.append((rows, url))
-            except Exception as exc:
-                warnings.append(f"Flight feed fetch failed: {url}: {exc}")
+            except Exception:
+                warnings.append(f"Flight feed fetch failed: {url}")
 
         if use_opensky:
             opensky_rows, opensky_warnings = TrackerProviders._fetch_opensky_rows()
@@ -484,8 +484,8 @@ class TrackerProviders:
                     return [], warnings
                 payload = resp.json()
                 rows = payload if isinstance(payload, list) else payload.get("data", [])
-        except Exception as exc:
-            warnings.append(f"Shipping fetch failed: {exc}")
+        except Exception:
+            warnings.append("Shipping fetch failed.")
             return [], warnings
 
         points: List[TrackerPoint] = []
