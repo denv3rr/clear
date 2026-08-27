@@ -258,8 +258,9 @@ class FinancialToolkit(ToolkitPayloadsMixin, ToolkitRunMixin, ToolkitMenuMixin):
                         group_by="column",
                         auto_adjust=True,
                     )
-        except Exception as exc:
-            return None, None, f"Market data error: {exc}"
+        except Exception:
+            logging.exception("Market data download failed")
+            return None, None, "Market data unavailable"
 
         if df is None or df.empty:
             return None, None, "Market data empty"
