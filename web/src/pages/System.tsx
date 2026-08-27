@@ -271,12 +271,12 @@ export default function System() {
     setApiKeyOpen(true);
   };
 
-  const onSaveApiKey = () => {
+  const onSaveApiKey = async () => {
     const trimmed = apiKeyInput.trim();
     if (!trimmed) {
       return;
     }
-    setApiKeyLocal(trimmed, { persist: apiKeyPersist });
+    await setApiKeyLocal(trimmed, { persist: apiKeyPersist });
     setApiKeyOpen(false);
     setApiKeyInput("");
   };

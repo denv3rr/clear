@@ -10,6 +10,53 @@ const API_BASE =
 const ENV_API_KEY = import.meta.env.VITE_API_KEY;
 const LOCAL_KEY = "clear_api_key";
 const SESSION_KEY = "clear_api_key_session";
+const ENCRYPTED_PREFIX = "enc:v1:";
+
+let sessionCryptoKeyPromise: Promise<CryptoKey> | null = null;
+
+function getSessionCryptoKey(): Promise<CryptoKey> {
+  if (!sessionCryptoKeyPromise) {
+    sessionCryptoKeyPromise = crypto.subtle.generateKey(
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt", "decrypt"]
+    );
+  }
+  return sessionCryptoKeyPromise;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function encryptApiKey(value: string): Promise<string> {
+  const key = await getSessionCryptoKey();
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const plaintext = new TextEncoder().encode(value);
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plaintext);
+  return `${ENCRYPTED_PREFIX}${bytesToBase64(iv)}:${bytesToBase64(new Uint8Array(ciphertext))}`;
+}
+
+async function decryptApiKey(payload: string): Promise<string | null> {
+  if (!payload.startsWith(ENCRYPTED_PREFIX)) return payload;
+  const encoded = payload.slice(ENCRYPTED_PREFIX.length);
+  const [ivB64, dataB64] = encoded.split(":");
+  if (!ivB64 || !dataB64) return null;
+  const iv = base64ToBytes(ivB64);
+  const data = base64ToBytes(dataB64);
+  const key = await getSessionCryptoKey();
+  const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, data);
+  return new TextDecoder().decode(plaintext);
+}
 
 type ApiKeyScope = "session" | "local" | "env" | "none";
 
@@ -50,14 +97,27 @@ async function parseJson<T>(response: Response): Promise<T> {
   }
 }
 
-export function getApiKey(): string | null {
+export async function getApiKey(): Promise<string | null> {
   try {
-    return (
-      sessionStorage.getItem(SESSION_KEY) ||
-      localStorage.getItem(LOCAL_KEY) ||
-      ENV_API_KEY ||
-      null
-    );
+    const sessionValue = sessionStorage.getItem(SESSION_KEY);
+    if (sessionValue) {
+      try {
+        return await decryptApiKey(sessionValue);
+      } catch {
+        sessionStorage.removeItem(SESSION_KEY);
+      }
+    }
+
+    const localValue = localStorage.getItem(LOCAL_KEY);
+    if (localValue) {
+      try {
+        return await decryptApiKey(localValue);
+      } catch {
+        localStorage.removeItem(LOCAL_KEY);
+      }
+    }
+
+    return ENV_API_KEY || null;
   } catch {
     return ENV_API_KEY || null;
   }
@@ -73,19 +133,18 @@ export function getApiKeyScope(): ApiKeyScope {
   return ENV_API_KEY ? "env" : "none";
 }
 
-export function setApiKey(
+export async function setApiKey(
   value: string,
   options: { persist?: boolean } = {}
-): void {
+): Promise<void> {
   try {
     localStorage.removeItem(LOCAL_KEY);
     sessionStorage.removeItem(SESSION_KEY);
+    const encrypted = await encryptApiKey(value);
     if (options.persist) {
-      // codeql[js/clear-text-storage-of-sensitive-data]: Operator-chosen local API key for this browser only; no remote secret store exists.
-      localStorage.setItem(LOCAL_KEY, value);
+      localStorage.setItem(LOCAL_KEY, encrypted);
     } else {
-      // codeql[js/clear-text-storage-of-sensitive-data]: Session-scoped local operator key; cleared when the tab closes.
-      sessionStorage.setItem(SESSION_KEY, value);
+      sessionStorage.setItem(SESSION_KEY, encrypted);
     }
   } catch {
     return;
