@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 import math
 import time
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
+
+LOGGER = logging.getLogger(__name__)
 
 from modules.market_data.collectors import CONFLICT_CATEGORIES
 from modules.market_data.intel import (
@@ -1237,8 +1240,9 @@ def build_tracker_scene(
             tracker_id = str(point.get("id"))
             try:
                 history_payload = history_fetcher(tracker_id)
-            except Exception as exc:
-                warnings.append(f"Tracker history fetch failed for {tracker_id}: {exc}")
+            except Exception:
+                LOGGER.exception("Tracker history fetch failed for tracker_id=%s", tracker_id)
+                warnings.append(f"Tracker history fetch failed for {tracker_id}")
                 continue
             history = history_payload.get("history", []) if isinstance(history_payload, Mapping) else []
             if not isinstance(history, list) or len(history) < 2:
