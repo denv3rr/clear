@@ -67,14 +67,6 @@
       "occurrence": 5
     },
     {
-      "id": "logged_broad_except:clearctl.py:f81fe9c1ff57",
-      "rule": "logged_broad_except",
-      "path": "clearctl.py",
-      "line": 261,
-      "detail": "except Exception:",
-      "occurrence": 6
-    },
-    {
       "id": "logged_broad_except:core/db_management.py:ab474796e5c3",
       "rule": "logged_broad_except",
       "path": "core/db_management.py",
