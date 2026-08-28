@@ -71,6 +71,7 @@ test.describe("globe fail-safe visual regression", () => {
     await page.addInitScript((sceneState) => {
       window.localStorage.setItem("clear_scene_state", JSON.stringify(sceneState));
     }, {
+      version: 2,
       cameraPreset: "focus",
       intelCategories: ["conflict"],
       intelIndustry: "all",
@@ -123,5 +124,63 @@ test.describe("globe fail-safe visual regression", () => {
         scale: "css"
       }
     );
+  });
+
+  test("legacy hidden scene state migrates to visible signals", async ({ page }) => {
+    const fixture = loadCapturedIntelGlobeFixture();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.addInitScript(() => {
+      window.localStorage.setItem("clear_scene_state", JSON.stringify({
+        cameraPreset: "free",
+        intelCategories: ["stale-filter"],
+        intelIndustry: "all",
+        intelLens: "combined",
+        intelSources: ["stale-source"],
+        trackerCategory: "all",
+        trackerCountry: "",
+        trackerMode: "combined",
+        trackerOperator: "",
+        detailsVisible: false,
+        showIntelHotspots: false,
+        showIntelRegions: false,
+        showTrackerPoints: false,
+        showTrackerTrails: false,
+      }));
+    });
+    await page.route("**/api/osint/scene/overview**", async (route) => {
+      await route.abort();
+    });
+    await page.route("**/api/osint/scene/intel**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(fixture.scene_payload),
+      });
+    });
+    await page.route("**/api/intel/meta**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(fixture.intel_meta_payload),
+      });
+    });
+    await page.goto("/osint?tab=intel");
+    await page.getByTestId("osint-open-globe").click();
+    await page.getByTestId("globe-scene-intel").click();
+    await expect(page.getByTestId("globe-overlay")).toContainText("6 regional signals");
+    await expect(page.getByTestId("globe-show-available-layers")).toHaveCount(0);
+    await page.getByTestId("globe-controls-toggle").click();
+    await expect(page.getByTestId("globe-layer-regions")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("globe-layer-hotspots")).toHaveAttribute("aria-pressed", "true");
+    const storedState = await page.evaluate(() =>
+      JSON.parse(window.localStorage.getItem("clear_scene_state") || "{}")
+    );
+    expect(storedState).toMatchObject({
+      version: 2,
+      intelCategories: [],
+      intelSources: [],
+      showIntelHotspots: true,
+      showIntelRegions: true,
+    });
   });
 });

@@ -10,6 +10,7 @@ import {
 import type { ReactNode } from "react";
 
 const SCENE_STATE_KEY = "clear_scene_state";
+const SCENE_STATE_VERSION = 2;
 
 export type SceneId = "trackers" | "intel" | "overview";
 export type TrackerSceneMode = "combined" | "flights" | "ships";
@@ -169,7 +170,8 @@ function readStoredSceneState(): SceneRuntimeState {
   try {
     const raw = window.localStorage.getItem(SCENE_STATE_KEY);
     if (!raw) return DEFAULT_SCENE_STATE;
-    const parsed = JSON.parse(raw) as Partial<SceneRuntimeState>;
+    const parsed = JSON.parse(raw) as Partial<SceneRuntimeState> & { version?: number };
+    const currentVersion = parsed.version === SCENE_STATE_VERSION;
     return {
       trackerMode:
         parsed.trackerMode === "flights" ||
@@ -192,41 +194,45 @@ function readStoredSceneState(): SceneRuntimeState {
           ? parsed.cameraPreset
           : DEFAULT_SCENE_STATE.cameraPreset,
       detailsVisible: normalizeBoolean(
-        parsed.detailsVisible,
+        currentVersion ? parsed.detailsVisible : undefined,
         DEFAULT_SCENE_STATE.detailsVisible,
       ),
       trackerCategory:
-        typeof parsed.trackerCategory === "string" && parsed.trackerCategory.trim()
+        currentVersion && typeof parsed.trackerCategory === "string" && parsed.trackerCategory.trim()
           ? parsed.trackerCategory.trim()
           : DEFAULT_SCENE_STATE.trackerCategory,
       trackerCountry:
-        typeof parsed.trackerCountry === "string"
+        currentVersion && typeof parsed.trackerCountry === "string"
           ? parsed.trackerCountry.trim()
           : DEFAULT_SCENE_STATE.trackerCountry,
       trackerOperator:
-        typeof parsed.trackerOperator === "string"
+        currentVersion && typeof parsed.trackerOperator === "string"
           ? parsed.trackerOperator.trim()
           : DEFAULT_SCENE_STATE.trackerOperator,
       intelIndustry:
-        typeof parsed.intelIndustry === "string" && parsed.intelIndustry.trim()
+        currentVersion && typeof parsed.intelIndustry === "string" && parsed.intelIndustry.trim()
           ? parsed.intelIndustry.trim()
           : DEFAULT_SCENE_STATE.intelIndustry,
-      intelCategories: normalizeStringArray(parsed.intelCategories),
-      intelSources: normalizeStringArray(parsed.intelSources),
+      intelCategories: currentVersion
+        ? normalizeStringArray(parsed.intelCategories)
+        : DEFAULT_SCENE_STATE.intelCategories,
+      intelSources: currentVersion
+        ? normalizeStringArray(parsed.intelSources)
+        : DEFAULT_SCENE_STATE.intelSources,
       showIntelHotspots: normalizeBoolean(
-        parsed.showIntelHotspots,
+        currentVersion ? parsed.showIntelHotspots : undefined,
         DEFAULT_SCENE_STATE.showIntelHotspots,
       ),
       showIntelRegions: normalizeBoolean(
-        parsed.showIntelRegions,
+        currentVersion ? parsed.showIntelRegions : undefined,
         DEFAULT_SCENE_STATE.showIntelRegions,
       ),
       showTrackerPoints: normalizeBoolean(
-        parsed.showTrackerPoints,
+        currentVersion ? parsed.showTrackerPoints : undefined,
         DEFAULT_SCENE_STATE.showTrackerPoints,
       ),
       showTrackerTrails: normalizeBoolean(
-        parsed.showTrackerTrails,
+        currentVersion ? parsed.showTrackerTrails : undefined,
         DEFAULT_SCENE_STATE.showTrackerTrails,
       ),
     };
@@ -245,7 +251,10 @@ export function SceneProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      window.localStorage.setItem(SCENE_STATE_KEY, JSON.stringify(sceneState));
+      window.localStorage.setItem(
+        SCENE_STATE_KEY,
+        JSON.stringify({ ...sceneState, version: SCENE_STATE_VERSION }),
+      );
     } catch {
       // Ignore storage failures and keep runtime-only state.
     }

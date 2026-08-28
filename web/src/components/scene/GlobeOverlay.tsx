@@ -15,6 +15,8 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
+  Eye,
+  FilterX,
   List,
   Orbit,
   RadioTower,
@@ -2192,6 +2194,23 @@ export function GlobeOverlay() {
     (sceneHasIntel && sceneState.intelIndustry !== "all" ? 1 : 0) +
     (sceneHasIntel ? sceneState.intelCategories.length : 0) +
     (sceneHasIntel ? sceneState.intelSources.length : 0);
+  const availableSceneItemCount =
+    (sceneHasTrackers ? trackerPointFeatures.length + pathFeatures.length : 0) +
+    (sceneHasIntel ? intelPointFeatures.length + pulseFeatures.length : 0);
+  const hasHiddenAvailableData = Boolean(
+    (sceneHasTrackers && trackerPointFeatures.length && !sceneState.showTrackerPoints) ||
+    (sceneHasTrackers && pathFeatures.length && !sceneState.showTrackerTrails) ||
+    (sceneHasIntel && intelPointFeatures.length && !sceneState.showIntelRegions) ||
+    (sceneHasIntel && pulseFeatures.length && !sceneState.showIntelHotspots)
+  );
+  const noDataMatchesSavedFilters = availableSceneItemCount === 0 && activeFilterCount > 0;
+  const commandSummary = noDataMatchesSavedFilters
+    ? `No data matches ${activeFilterCount} saved ${activeFilterCount === 1 ? "filter" : "filters"}`
+    : sceneId === "overview"
+      ? `${trackerPointFeatures.length} trackers / ${intelPointFeatures.length} regions${hasHiddenAvailableData ? " available" : ""}`
+      : sceneId === "intel"
+        ? `${intelPointFeatures.length} regional signals${hasHiddenAvailableData ? " available" : ""}`
+        : `${trackerPointFeatures.length} live trackers${hasHiddenAvailableData ? " available" : ""}`;
   const selectedFeatureIsIntel = Boolean(
     selectedFeature && (sceneId === "intel" || (sceneId === "overview" && isIntelFeature(selectedFeature)))
   );
@@ -2355,17 +2374,38 @@ export function GlobeOverlay() {
           <div className="globe-command-summary">
             <span className="globe-badge">
               <RadioTower size={12} />
-              {sceneId === "overview"
-                ? `${visibleTrackerPointFeatures.length} trackers / ${visibleIntelPointFeatures.length} regions`
-                : sceneId === "intel"
-                  ? `${visibleIntelPointFeatures.length || 0} regional signals`
-                  : `${visibleTrackerPointFeatures.length || 0} live trackers`}
+              {commandSummary}
             </span>
             <span className="globe-panel__copy globe-panel__copy--subtle">
               Select an object on the globe to inspect it.
             </span>
           </div>
           <div className="globe-command-actions">
+            {hasHiddenAvailableData ? (
+              <button
+                type="button"
+                data-testid="globe-show-available-layers"
+                className="globe-action-button globe-action-button--active"
+                onClick={() => resetOverlayVisibility()}
+              >
+                <Eye size={14} />
+                Show available layers
+              </button>
+            ) : null}
+            {noDataMatchesSavedFilters ? (
+              <button
+                type="button"
+                data-testid="globe-clear-saved-filters"
+                className="globe-action-button globe-action-button--active"
+                onClick={() => {
+                  if (sceneHasTrackers) clearTrackerFilters();
+                  if (sceneHasIntel) clearIntelFilters();
+                }}
+              >
+                <FilterX size={14} />
+                Clear saved filters
+              </button>
+            ) : null}
             <button
               type="button"
               data-testid="globe-controls-toggle"
