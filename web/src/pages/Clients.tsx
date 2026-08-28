@@ -6,6 +6,7 @@ import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { KpiCard } from "../components/ui/KpiCard";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { Surface3D } from "../components/ui/Surface3D";
+import { VisualizationGuide } from "../components/ui/VisualizationGuide";
 import { Modal } from "../components/ui/Modal";
 import { apiGet, apiPatch, apiPost, useApi } from "../lib/api";
 
@@ -68,6 +69,7 @@ type RiskPayload = {
 type RegimePayload = {
   error?: string;
   error_detail?: string;
+  samples?: number;
   transition_matrix?: number[][];
   state_probs?: Record<string, number>;
   evolution?: { series?: Record<string, number>[] };
@@ -143,17 +145,72 @@ type AccountWriteResponse = {
 
 const intervals = ["1W", "1M", "3M", "6M", "1Y"];
 
-const metricLabels: Record<string, string> = {
-  mean_annual: "Annual Return",
-  vol_annual: "Volatility",
-  sharpe: "Sharpe",
-  sortino: "Sortino",
-  beta: "Beta",
-  alpha_annual: "Alpha",
-  r_squared: "R-Squared",
-  max_drawdown: "Max Drawdown",
-  var_95: "VaR 95%",
-  cvar_95: "CVaR 95%"
+const metricDefinitions: Record<string, {
+  label: string;
+  technical: string;
+  description: string;
+  unit: "percent" | "ratio";
+}> = {
+  mean_annual: {
+    label: "Expected Annual Return",
+    technical: "Annualized mean return (μ)",
+    description: "The average return projected to one year from the available observations.",
+    unit: "percent",
+  },
+  vol_annual: {
+    label: "Portfolio Risk",
+    technical: "Annualized volatility (σ)",
+    description: "How widely returns tend to fluctuate around their average.",
+    unit: "percent",
+  },
+  sharpe: {
+    label: "Risk-Adjusted Return",
+    technical: "Sharpe ratio",
+    description: "Excess return earned per unit of total volatility.",
+    unit: "ratio",
+  },
+  sortino: {
+    label: "Downside Risk-Adjusted Return",
+    technical: "Sortino ratio",
+    description: "Excess return earned per unit of downside volatility.",
+    unit: "ratio",
+  },
+  beta: {
+    label: "Market Sensitivity",
+    technical: "Beta (β)",
+    description: "How strongly the portfolio has moved relative to its benchmark.",
+    unit: "ratio",
+  },
+  alpha_annual: {
+    label: "Benchmark-Adjusted Return",
+    technical: "Annualized alpha (α)",
+    description: "Annualized return not explained by the portfolio's measured benchmark sensitivity.",
+    unit: "percent",
+  },
+  r_squared: {
+    label: "Benchmark Fit",
+    technical: "R-squared (R²)",
+    description: "The share of observed return variation explained by the benchmark relationship.",
+    unit: "percent",
+  },
+  max_drawdown: {
+    label: "Largest Peak-to-Trough Decline",
+    technical: "Maximum drawdown",
+    description: "The largest observed decline from a prior portfolio peak.",
+    unit: "percent",
+  },
+  var_95: {
+    label: "One-Period Loss Threshold",
+    technical: "Value at Risk (VaR), 95%",
+    description: "The historical one-period return threshold exceeded by the worst 5% of observations.",
+    unit: "percent",
+  },
+  cvar_95: {
+    label: "Average Severe Loss",
+    technical: "Conditional VaR (CVaR), 95%",
+    description: "The average return among observations beyond the 95% Value at Risk threshold.",
+    unit: "percent",
+  },
 };
 
 export default function Clients() {
@@ -175,14 +232,15 @@ export default function Clients() {
   const [patterns, setPatterns] = useState<PatternPayload | null>(null);        
   const [patternsError, setPatternsError] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(true);
-  const [profileOpen, setProfileOpen] = useState(true);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [riskOpen, setRiskOpen] = useState(true);
-  const [distributionOpen, setDistributionOpen] = useState(true);
-  const [patternOpen, setPatternOpen] = useState(true);
+  const [distributionOpen, setDistributionOpen] = useState(false);
+  const [regimeOpen, setRegimeOpen] = useState(false);
+  const [patternOpen, setPatternOpen] = useState(false);
   const [holdingsOpen, setHoldingsOpen] = useState(true);
-  const [lotsOpen, setLotsOpen] = useState(true);
-  const [diagnosticsOpen, setDiagnosticsOpen] = useState(true);
-  const [manualOpen, setManualOpen] = useState(true);
+  const [lotsOpen, setLotsOpen] = useState(false);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
   const [dashboardEpoch, setDashboardEpoch] = useState(0);
   const [lotForm, setLotForm] = useState({
     ticker: "",
@@ -384,18 +442,30 @@ export default function Clients() {
   const activeTotals = dashboard?.totals;
   const activeHoldings = dashboard?.holdings || [];
   const riskMetrics = dashboard?.risk?.metrics || {};
-  const riskMetricRows = Object.keys(metricLabels)
+  const riskMetricRows = Object.keys(metricDefinitions)
     .map((key) => {
       if (!(key in riskMetrics)) return null;
       const value = Number(riskMetrics[key]);
       if (!Number.isFinite(value)) return null;
       return {
         key,
-        label: metricLabels[key],
-        value
+        ...metricDefinitions[key],
+        value,
+        displayValue:
+          metricDefinitions[key].unit === "percent"
+            ? `${(value * 100).toFixed(2)}%`
+            : value.toFixed(3)
       };
     })
-    .filter(Boolean) as { key: string; label: string; value: number }[];
+    .filter(Boolean) as Array<{
+      key: string;
+      label: string;
+      technical: string;
+      description: string;
+      unit: "percent" | "ratio";
+      value: number;
+      displayValue: string;
+    }>;
   const authHint = "Check CLEAR_WEB_API_KEY + localStorage clear_api_key.";
   const errorMessages = [
     indexError
@@ -1211,14 +1281,15 @@ export default function Clients() {
               <div className="rounded-2xl border border-slate-700 bg-slate-950/50 p-6 text-sm text-slate-100">
                 <p className="text-slate-100 font-medium">Select a client to load analytics.</p>
                 <p className="mt-2 text-slate-300">
-                  Choose a profile on the left to open portfolio, risk, and diagnostics views.
+                  Choose a profile from the client list to review its portfolio value, risk, holdings,
+                  and advanced analysis.
                 </p>
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-              <div className="rounded-xl border border-slate-700 p-4">
-                <p className="text-xs text-slate-300">Interval</p>
+            <div className="portfolio-context-bar">
+              <div className="portfolio-context-group">
+                <p className="portfolio-context-label">History window</p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {intervals.map((opt) => (
                     <button
@@ -1236,9 +1307,9 @@ export default function Clients() {
                   ))}
                 </div>
               </div>
-              <div className="rounded-xl border border-slate-700 p-4">
-                <label htmlFor="account-scope" className="text-xs text-slate-300">
-                  Scope
+              <div className="portfolio-context-group">
+                <label htmlFor="account-scope" className="portfolio-context-label">
+                  Portfolio scope
                 </label>
                 <select
                   id="account-scope"
@@ -1254,23 +1325,9 @@ export default function Clients() {
                     </option>
                   ))}
                 </select>
-                {selectedAccount !== "portfolio" ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAccountEditOpen(true);
-                      setAccountFormOpen(false);
-                      setFormMode(null);
-                      setFormError(null);
-                    }}
-                    className="mt-3 rounded-full border border-slate-700 px-3 py-1 text-[11px] text-slate-100 hover:text-green-500"
-                  >
-                    Edit Account
-                  </button>
-                ) : null}
               </div>
-              <div className="rounded-xl border border-slate-700 p-4 text-xs text-slate-300">
-                <p className="text-slate-100">Status</p>
+              <div className="portfolio-context-group text-xs text-slate-300">
+                <p className="portfolio-context-label">Data status</p>
                 {dashboard?.warnings?.length ? (
                   <div className="mt-2 space-y-1 text-amber-300">
                     {dashboard.warnings.map((warn) => (
@@ -1280,6 +1337,9 @@ export default function Clients() {
                 ) : (
                   <p className="mt-2">Realtime valuations active.</p>
                 )}
+              </div>
+              <details className="portfolio-manage">
+                <summary>Manage client and accounts</summary>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -1304,6 +1364,20 @@ export default function Clients() {
                   >
                     Add Account
                   </button>
+                  {selectedAccount !== "portfolio" ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAccountEditOpen(true);
+                        setAccountFormOpen(false);
+                        setFormMode(null);
+                        setFormError(null);
+                      }}
+                      className="rounded-full border border-slate-700 px-3 py-1 text-[11px] text-slate-100 hover:text-green-500"
+                    >
+                      Edit Account
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => setSelectedId(null)}
@@ -1312,7 +1386,7 @@ export default function Clients() {
                     Back to overview
                   </button>
                 </div>
-              </div>
+              </details>
             </div>
           )}
 
@@ -1394,14 +1468,29 @@ export default function Clients() {
 
               <Collapsible
                 title="Portfolio History"
-                meta={dashboard?.interval || "Loading"}
+                meta={dashboard?.interval ? `${dashboard.interval} history` : "Loading"}
                 open={historyOpen}
                 onToggle={() => setHistoryOpen((prev) => !prev)}
               >
             {dashboard?.history?.length ? (
-              <AreaSparkline data={dashboard.history} height={220} />
+              <AreaSparkline
+                data={dashboard.history}
+                height={240}
+                title="Portfolio value over time"
+                description="Use this trend to see how the selected client or account value changed during the chosen history window."
+                yLabel="Portfolio Value"
+                valueFormatter={(value) =>
+                  value.toLocaleString(undefined, {
+                    style: "currency",
+                    currency: detail?.reporting_currency || "USD",
+                    maximumFractionDigits: 0,
+                  })
+                }
+              />
             ) : (
-              <p className="text-xs text-slate-400">No history series available.</p>
+              <p className="text-xs text-slate-400">
+                Historical values are not available yet. Add holdings with price history or choose a longer history window.
+              </p>
             )}
               </Collapsible>
 
@@ -1412,14 +1501,28 @@ export default function Clients() {
                   open={riskOpen}
                   onToggle={() => setRiskOpen((prev) => !prev)}
                 >
+              <VisualizationGuide
+                summary="These measures describe return, variability, downside exposure, and benchmark behavior for the selected scope."
+                details={[
+                  "Percentages are shown in their natural financial units; ratio metrics are unitless.",
+                  "Higher risk-adjusted-return ratios are generally preferable, but they should be read with the available sample window and warnings.",
+                  "Value at Risk and Conditional Value at Risk summarize historical one-period outcomes; they are not guarantees of maximum loss.",
+                  ...riskMetricRows.map(
+                    (metric) => `${metric.label} (${metric.technical}): ${metric.description}`
+                  ),
+                ]}
+              />
               {dashboard?.risk?.error ? (
                 <p className="text-xs text-amber-300">{dashboard.risk.error}</p>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-slate-100">
                   {riskMetricRows.map((metric) => (
-                    <div key={metric.key} className="flex items-center justify-between border-b border-slate-800/60 py-2">
-                      <span className="text-slate-300">{metric.label}</span>
-                      <span className="text-slate-100">{metric.value.toFixed(3)}</span>
+                    <div key={metric.key} className="risk-metric-row">
+                      <span>
+                        <strong>{metric.label}</strong>
+                        <small>{metric.technical}</small>
+                      </span>
+                      <span className="text-slate-100">{metric.displayValue}</span>
                     </div>
                   ))}
                 </div>
@@ -1434,15 +1537,47 @@ export default function Clients() {
               {dashboard?.risk?.distribution?.length ? (
                 <DistributionBars data={dashboard.risk.distribution} height={200} />
               ) : (
-                <p className="text-xs text-slate-400">No return distribution available.</p>
-              )}
+              <p className="text-xs text-slate-400">
+                A return distribution needs enough historical observations. Choose a longer history window or add price history.
+              </p>
+            )}
                 </Collapsible>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              <Collapsible
+                title="Market Regime Analysis"
+                meta="Advanced"
+                open={regimeOpen}
+                onToggle={() => setRegimeOpen((prev) => !prev)}
+                mountWhenOpen
+              >
+              <VisualizationGuide
+                summary="This analysis groups observed returns into market states and estimates how often the series moved from one state to another."
+                details={[
+                  "The model is descriptive: it summarizes transitions in the selected history and does not guarantee the next state.",
+                  "A high surface point means that transition occurred with higher estimated probability.",
+                  "Use this view to understand state persistence and transition behavior, not as a standalone trade signal.",
+                ]}
+              />
+              <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-5">
                 <Surface3D
-                  title="Transition Surface"
+                  title="Market State Transition Probability"
                   z={dashboard?.regime?.transition_matrix || []}
+                  x={Object.keys(dashboard?.regime?.state_probs || {})}
+                  y={Object.keys(dashboard?.regime?.state_probs || {})}
+                  axis={{
+                    x_label: "Next Market State",
+                    y_label: "Current Market State",
+                    z_label: "Transition Probability",
+                    z_unit: "0 to 1",
+                  }}
+                  description="Shows the estimated probability of moving from each current market state to each next state."
+                  howToRead={[
+                    "Move across X to compare possible next states.",
+                    "Move across Y to choose the current state.",
+                    "Higher Z values mean the transition occurred more often in the selected history.",
+                  ]}
+                  emptyMessage="Market-state transitions need more historical observations. Choose a longer window or add price history."
                 />
                 <div className="space-y-4">
                   <div className="glass-panel rounded-2xl p-5">
@@ -1494,6 +1629,7 @@ export default function Clients() {
                   </div>
                 </div>
               </div>
+              </Collapsible>
 
               <Collapsible
                 title="Pattern Analysis"
@@ -1505,27 +1641,47 @@ export default function Clients() {
               <p className="text-xs text-amber-300">{patterns.error}</p>
             ) : (
               <div className="space-y-4">
+                <VisualizationGuide
+                  summary="Pattern analysis describes complexity, persistence, repeating shapes, and frequency structure in the selected return history."
+                  details={[
+                    "Entropy measures irregularity; it is not a quality score.",
+                    "Hurst describes observed persistence or mean-reversion tendencies; it is not a forecast.",
+                    "Frequency power shows recurring cycles in the sampled history and should be read with the selected interval.",
+                  ]}
+                />
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 text-xs text-slate-100">
-                  <KpiCard label="Entropy" value={patterns?.entropy !== undefined ? patterns.entropy.toFixed(3) : "—"} tone="text-green-300" />
-                  <KpiCard label="Perm Entropy" value={patterns?.perm_entropy !== undefined ? patterns.perm_entropy.toFixed(3) : "—"} tone="text-slate-100" />
-                  <KpiCard label="Hurst" value={patterns?.hurst !== undefined ? patterns.hurst.toFixed(3) : "—"} tone="text-slate-100" />
+                  <KpiCard label="Return Irregularity (Entropy)" value={patterns?.entropy !== undefined ? patterns.entropy.toFixed(3) : "—"} tone="text-green-300" />
+                  <KpiCard label="Sequence Irregularity (Permutation Entropy)" value={patterns?.perm_entropy !== undefined ? patterns.perm_entropy.toFixed(3) : "—"} tone="text-slate-100" />
+                  <KpiCard label="Persistence Tendency (Hurst)" value={patterns?.hurst !== undefined ? patterns.hurst.toFixed(3) : "—"} tone="text-slate-100" />
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                   <Surface3D
-                    title="Waveform Surface"
+                    title="Return History Surface"
                     z={patterns?.wave_surface?.z || []}
                     x={patterns?.wave_surface?.x}
                     y={patterns?.wave_surface?.y}
                     axis={patterns?.wave_surface?.axis}
                     height={300}
+                    description="Arranges the return history into consecutive rows so repeating shapes and abrupt changes are easier to inspect."
+                    howToRead={[
+                      "X is the observation position within each row.",
+                      "Y moves through consecutive windows of the selected history.",
+                      "Z is the observed return value; high and low points show larger positive and negative moves.",
+                    ]}
                   />
                   <Surface3D
-                    title="FFT Waterfall"
+                    title="Recurring Cycle Strength"
                     z={patterns?.fft_surface?.z || []}
                     x={patterns?.fft_surface?.x}
                     y={patterns?.fft_surface?.y}
                     axis={patterns?.fft_surface?.axis}
                     height={300}
+                    description="Shows how the strength of recurring return cycles changes through the selected history."
+                    howToRead={[
+                      "X is cycle frequency: farther right represents faster repetition.",
+                      "Y moves through consecutive windows of the selected history.",
+                      "Z is log power: higher points indicate a stronger recurring component at that frequency.",
+                    ]}
                   />
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 text-xs text-slate-100">

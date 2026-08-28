@@ -66,12 +66,18 @@ test("tracker globe entry opens the overview globe with layer controls", async (
   const overlay = page.getByTestId("globe-overlay");
   await expect(overlay).toBeVisible();
   await expect(overlay.getByRole("heading", { name: "World" })).toBeVisible();
+  await expect(page.getByTestId("globe-bottom-inspector")).toContainText(
+    "Select an object to inspect it"
+  );
+  await expect(page.getByText("Scene Status")).toHaveCount(0);
+  await page.getByTestId("globe-controls-toggle").click();
   await expect(page.getByText("Scene Status")).toBeVisible();
   await expect(page.getByTestId("globe-layer-trackers")).toBeVisible();
   await expect(page.getByTestId("globe-layer-regions")).toBeVisible();
   await page.getByTestId("globe-layer-regions").click();
   await expect(page.getByTestId("globe-layer-regions")).toBeVisible();
   await page.getByTestId("globe-layer-regions").click();
+  await page.getByTestId("globe-browse-toggle").click();
   await expect(page.getByText("Operational Focus")).toBeVisible();
   await expectAnyVisible([
     page.getByTestId("globe-preset-free"),
@@ -85,11 +91,11 @@ test("tracker globe entry opens the overview globe with layer controls", async (
     page.getByRole("button", { name: "Refresh Scene" }),
     page.getByRole("button", { name: "Retry Scene" })
   ]);
-  await expect(page.getByLabel("Hide details")).toBeVisible();
-  await page.getByLabel("Hide details").click();
-  await expect(page.getByLabel("Show details")).toBeVisible();
-  await page.getByLabel("Show details").click();
-  await expect(page.getByLabel("Hide details")).toBeVisible();
+  await expect(page.getByLabel("Collapse context panel")).toBeVisible();
+  await page.getByLabel("Collapse context panel").click();
+  await expect(page.getByLabel("Expand context panel")).toBeVisible();
+  await page.getByLabel("Expand context panel").click();
+  await expect(page.getByLabel("Collapse context panel")).toBeVisible();
   await page.getByLabel("Close world view").click();
   await expect(overlay).toHaveCount(0);
 });
@@ -98,6 +104,8 @@ test("intel globe overlay opens with regional scene controls", async ({ page }) 
   await page.goto("/osint?tab=intel");
   await page.getByTestId("osint-open-globe").click();
   await expect(page.getByTestId("globe-overlay")).toBeVisible();
+  await page.getByTestId("globe-controls-toggle").click();
+  await page.getByTestId("globe-browse-toggle").click();
   await expectAnyVisible([
     page.getByText("Operational Focus", { exact: true }),
     page.getByRole("button", { name: "Retry Scene" })

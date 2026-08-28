@@ -8,6 +8,7 @@
     "capture:tracker:fixture": "python ../scripts/capture_globe_fixture.py --scene tracker --output tests/fixtures/tracker-globe.fixture.json",
     "dev": "vite",
     "build": "vite build",
+    "typecheck": "tsc --noEmit",
     "build:check": "node scripts/check-bundle.mjs",
     "bundle:check": "node scripts/check-bundle.mjs",
     "preview": "vite preview",

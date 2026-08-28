@@ -23,4 +23,5 @@
 - `docs/standards_remediation_plan.md` — active standards-enforcement plan that gates future visual and UI phases.
 - `docs/security_verification.md` — defensive security methodology, NIST mapping, and the 36 Dependabot remediations. Not a formal pentest.
 - `docs/us_gov_standards.md` — mandatory U.S. government standards baseline for data, safety, security, accessibility, and performance.
+- `docs/ui_simplification_plan.md` — active interaction hierarchy, progressive disclosure, technical-visualization comprehension, and UI-density regression guidance.
 - `docs/visual_modernization_plan.md` — globe-first UX, scene architecture, and visual modernization roadmap.

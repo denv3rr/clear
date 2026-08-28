@@ -48,7 +48,7 @@ export default function Reports() {
   const [report, setReport] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [reportError, setReportError] = useState<string | null>(null);
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const { data: clientDetail, error: detailError } = useApi<ClientDetail>(
     selectedId ? `/api/clients/${encodeURIComponent(selectedId)}` : "",
@@ -117,7 +117,9 @@ export default function Reports() {
               </button>
             ))
           ) : (
-            <p className="text-xs text-slate-400">No client profiles loaded.</p>
+            <p className="text-xs text-slate-400">
+              Add a client in Clients before generating a report.
+            </p>
           )}
         </div>
         <div className="lg:col-span-2 space-y-4">

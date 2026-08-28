@@ -23,6 +23,7 @@ export function useTrackerStream<T>(options: StreamOptions = {}) {
 
   useEffect(() => {
     let cancelled = false;
+    let connectionGeneration = 0;
     const clearRetry = () => {
       if (retryRef.current !== null) {
         window.clearTimeout(retryRef.current);
@@ -42,17 +43,20 @@ export function useTrackerStream<T>(options: StreamOptions = {}) {
       const delay = Math.min(10000, 1500 + attemptRef.current * 1000);
       retryRef.current = window.setTimeout(() => {
         if (cancelled || paused || !enabled) return;
-        connect();
+        void connect();
       }, delay);
     };
-    const connect = () => {
+    const connect = async () => {
+      const generation = connectionGeneration + 1;
+      connectionGeneration = generation;
       clearRetry();
       closeSocket();
       setError(null);
       const params = new URLSearchParams();
       params.set("mode", mode);
       params.set("interval", String(interval));
-      const apiKey = getApiKey();
+      const apiKey = await getApiKey();
+      if (cancelled || generation !== connectionGeneration) return;
       const baseUrl = new URL(API_BASE);
       const wsProtocol = baseUrl.protocol === "https:" ? "wss:" : "ws:";
       const wsUrl = `${wsProtocol}//${baseUrl.host}/ws/trackers?${params.toString()}`;
@@ -104,7 +108,7 @@ export function useTrackerStream<T>(options: StreamOptions = {}) {
         closeSocket();
       };
     }
-    connect();
+    void connect();
     return () => {
       cancelled = true;
       clearRetry();

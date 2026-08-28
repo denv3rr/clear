@@ -11,7 +11,16 @@ import {
 } from "@react-three/drei";
 import type { Mesh } from "three";
 import * as THREE from "three";
-import { X, Orbit, RadioTower, Route, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  List,
+  Orbit,
+  RadioTower,
+  SlidersHorizontal,
+  X,
+} from "lucide-react";
 import { apiGet, useApi } from "../../lib/api";
 import {
   buildGlobeContextCanvas,
@@ -210,13 +219,6 @@ function formatTimestamp(ts?: number | null) {
   }).format(new Date(ts * 1000));
 }
 
-function getQualityLabel(qualityFactor: number, reducedMotion: boolean) {
-  if (reducedMotion) return "Reduced motion";
-  if (qualityFactor < 0.58) return "Adaptive low";
-  if (qualityFactor < 0.78) return "Adaptive balanced";
-  return "Adaptive high";
-}
-
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
@@ -315,7 +317,7 @@ function formatDuration(value: unknown) {
 
 function sumRecordValues(record: Record<string, unknown> | null) {
   if (!record) return 0;
-  return Object.values(record).reduce((total, value) => {
+  return Object.values(record).reduce<number>((total, value) => {
     const numeric = getNumericValue(value);
     return total + (numeric ?? 0);
   }, 0);
@@ -616,7 +618,7 @@ function getSelectedHeadlines(feature: SceneFeature | null): Array<{ title: stri
       if (!title) return null;
       return { title, source: String(row?.source || "").trim() || undefined };
     })
-    .filter((item): item is { title: string; source?: string } => Boolean(item))
+    .filter((item): item is { title: string; source: string | undefined } => item !== null)
     .slice(0, 3);
 }
 
@@ -1526,6 +1528,8 @@ export function GlobeOverlay() {
   const [qualityFactor, setQualityFactor] = useState(reducedMotion ? 0.5 : 0.82);
   const [warningsOpen, setWarningsOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [controlsOpen, setControlsOpen] = useState(false);
+  const [browseOpen, setBrowseOpen] = useState(false);
   const [trackerOperatorDraft, setTrackerOperatorDraft] = useState(sceneState.trackerOperator);
   const sceneId = activeScene?.id || "overview";
   const hasTrackerFallback = activeScene?.fallbackStrategy === "trackerSnapshot";
@@ -1591,6 +1595,8 @@ export function GlobeOverlay() {
     setSelectedId(null);
     setWarningsOpen(false);
     setFiltersOpen(false);
+    setControlsOpen(false);
+    setBrowseOpen(false);
   }, [activeScene?.id]);
 
   useEffect(() => {
@@ -1646,7 +1652,6 @@ export function GlobeOverlay() {
   const pointLayers = scene?.layers.filter((layer) => layer.kind === "point") || [];
   const pathLayers = scene?.layers.filter((layer) => layer.kind === "path") || [];
   const pulseLayers = scene?.layers.filter((layer) => layer.kind === "pulse") || [];
-  const pathLayer = pathLayers[0];
   const pointFeatures = pointLayers.flatMap((layer) => layer.features || []);
   const pathFeatures = pathLayers.flatMap((layer) => layer.features || []);
   const pulseFeatures = pulseLayers.flatMap((layer) => layer.features || []);
@@ -1698,10 +1703,9 @@ export function GlobeOverlay() {
       setSelectedId(null);
       return;
     }
-    if (selectedId && visibleFocusTargets.some((target) => target.id === selectedId)) {
-      return;
+    if (selectedId && !visibleFocusTargets.some((target) => target.id === selectedId)) {
+      setSelectedId(null);
     }
-    setSelectedId(visibleFocusTargets[0]?.id || null);
   }, [selectedId, visibleFocusTargets]);
 
   const geographyTexture = useMemo(() => {
@@ -1721,16 +1725,16 @@ export function GlobeOverlay() {
 
   const selectedFocus = useMemo(
     () =>
-      visibleFocusTargets.find((target) => target.id === selectedId) ||
-      visibleFocusTargets[0] ||
-      null,
+      selectedId
+        ? visibleFocusTargets.find((target) => target.id === selectedId) || null
+        : null,
     [selectedId, visibleFocusTargets]
   );
   const selectedFeature = useMemo(
     () =>
-      visiblePointFeatures.find((feature) => feature.id === selectedId) ||
-      visiblePointFeatures[0] ||
-      null,
+      selectedId
+        ? visiblePointFeatures.find((feature) => feature.id === selectedId) || null
+        : null,
     [selectedId, visiblePointFeatures]
   );
   const selectedTrail = useMemo(
@@ -1907,7 +1911,7 @@ export function GlobeOverlay() {
     if (!selectedFeature || !(sceneId === "intel" || (sceneId === "overview" && isIntelFeature(selectedFeature)))) {
       return [];
     }
-    return getTopEntries(asRecord(asRecord(selectedFeature.properties)?.emotion)?.counts || null, 5).map(
+    return getTopEntries(asRecord(asRecord(asRecord(selectedFeature.properties)?.emotion)?.counts), 5).map(
       ([emotion, count]) => ({
         emotion,
         count: Math.round(Number(count) || 0)
@@ -2348,47 +2352,54 @@ export function GlobeOverlay() {
               </button>
             ))}
           </div>
-          <div className="globe-badges">
+          <div className="globe-command-summary">
             <span className="globe-badge">
               <RadioTower size={12} />
               {sceneId === "overview"
-                ? `${visibleTrackerPointFeatures.length} trackers + ${visibleIntelPointFeatures.length} regions`
+                ? `${visibleTrackerPointFeatures.length} trackers / ${visibleIntelPointFeatures.length} regions`
                 : sceneId === "intel"
-                  ? `${visibleIntelPointFeatures.length || 0} regional nodes`
-                  : `${visibleTrackerPointFeatures.length || 0} live points`}
+                  ? `${visibleIntelPointFeatures.length || 0} regional signals`
+                  : `${visibleTrackerPointFeatures.length || 0} live trackers`}
             </span>
-            {sceneHasIntel ? (
-              <span className="globe-badge">
-                <AlertTriangle size={12} />
-                {intelHighRiskCount} elevated regions
-              </span>
-            ) : (
-              <span className="globe-badge">
-                <Route size={12} />
-                {visiblePathFeatures.length || pathLayer?.features.length || 0} trails
-              </span>
-            )}
-            {sceneId === "overview" ? (
-              <span className="globe-badge">
-                <Route size={12} />
-                {visiblePulseFeatures.length} {sceneState.intelLens === "combined" ? "signal" : sceneState.intelLens} highlights
-              </span>
-            ) : null}
-            <span className="globe-badge">
-              {sceneId === "trackers"
-                ? scene?.timeline?.mode || sceneState.trackerMode
-                : getLensLabel(sceneState.intelLens)}
+            <span className="globe-panel__copy globe-panel__copy--subtle">
+              Select an object on the globe to inspect it.
             </span>
-            <span className="globe-badge">{getQualityLabel(qualityFactor, reducedMotion)}</span>
           </div>
-          {densityItems.length ? (
-            <GlobeDataDensity
-              title="Visible Signal Density"
-              items={densityItems}
-            />
-          ) : null}
+          <div className="globe-command-actions">
+            <button
+              type="button"
+              data-testid="globe-controls-toggle"
+              className={controlsOpen ? "globe-action-button globe-action-button--active" : "globe-action-button"}
+              aria-expanded={controlsOpen}
+              aria-controls="globe-controls-panel"
+              onClick={() => setControlsOpen((current) => !current)}
+            >
+              <SlidersHorizontal size={14} />
+              {controlsOpen ? "Hide controls" : "Layers and view"}
+              {activeFilterCount ? <span>{activeFilterCount}</span> : null}
+            </button>
+            <button
+              type="button"
+              data-testid="globe-browse-toggle"
+              className={browseOpen ? "globe-action-button globe-action-button--active" : "globe-action-button"}
+              aria-expanded={browseOpen}
+              aria-controls="globe-browse-panel"
+              onClick={() => {
+                const next = !browseOpen;
+                setBrowseOpen(next);
+                if (next) {
+                  setOverlayVisibility("detailsVisible", true);
+                }
+              }}
+            >
+              <List size={14} />
+              Browse items
+            </button>
+          </div>
         </div>
 
+        {controlsOpen ? (
+          <div id="globe-controls-panel" className="globe-controls-stack">
         <div className="globe-panel globe-panel--compact">
           <div className="globe-panel__header">
             <div>
@@ -2516,6 +2527,12 @@ export function GlobeOverlay() {
                 ))}
               </div>
             </>
+          ) : null}
+          {densityItems.length ? (
+            <GlobeDataDensity
+              title="Visible data"
+              items={densityItems}
+            />
           ) : null}
           <p className="globe-panel__label">Camera Preset</p>
           <div className="globe-toggle-group">
@@ -2784,19 +2801,25 @@ export function GlobeOverlay() {
             </div>
           ) : null}
         </div>
+          </div>
+        ) : null}
       </div>
 
       <div
         className={
           sceneState.detailsVisible
-            ? "globe-hud globe-hud--right max-h-screen overflow-y-auto"
-            : "globe-hud globe-hud--right globe-hud--right-collapsed"
+            ? "globe-inspector globe-inspector--open"
+            : "globe-inspector"
         }
+        data-testid="globe-bottom-inspector"
       >
-        <div className="globe-panel globe-panel--compact">
-          <div className="globe-panel__header">
+        <div className="globe-panel globe-panel--compact globe-inspector__handle">
+          <div className="globe-panel__header globe-inspector__handle-row">
             <div>
-              <p className="globe-panel__label">Detail Panel</p>
+              <p className="globe-panel__label">Context</p>
+              <p className="globe-panel__metric">
+                {selectedFocus?.label || "Select an object to inspect it"}
+              </p>
             </div>
             <button
               type="button"
@@ -2804,15 +2827,16 @@ export function GlobeOverlay() {
                 setOverlayVisibility("detailsVisible", !sceneState.detailsVisible)
               }
               className="globe-icon-button"
-              aria-label={sceneState.detailsVisible ? "Hide details" : "Show details"}
+              aria-label={sceneState.detailsVisible ? "Collapse context panel" : "Expand context panel"}
             >
-              {sceneState.detailsVisible ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+              {sceneState.detailsVisible ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
             </button>
           </div>
         </div>
 
         {sceneState.detailsVisible ? (
-          <>
+          <div className="globe-inspector__content">
+        {browseOpen ? (
         <div className="globe-panel">
           <div className="globe-panel__header">
             <div>
@@ -2825,7 +2849,7 @@ export function GlobeOverlay() {
               </p>
             </div>
           </div>
-          <div className="globe-target-list">
+          <div id="globe-browse-panel" className="globe-target-list">
             {visibleFocusTargets.map((target) => (
               <button
                 key={target.id}
@@ -2847,8 +2871,9 @@ export function GlobeOverlay() {
             ))}
           </div>
         </div>
+        ) : null}
 
-        <div className="globe-panel globe-panel--compact" data-testid="globe-inspector">
+        <div className="globe-panel globe-panel--compact globe-inspector__selection" data-testid="globe-inspector">
           <p className="globe-panel__label">
             {sceneId === "overview"
               ? "Selected Focus"
@@ -2864,7 +2889,7 @@ export function GlobeOverlay() {
               ? getSelectedIntelCopy(selectedFeature, sceneState.intelLens)
               : selectedFocus
                 ? `${String(selectedFocus.kind || "signal").toUpperCase()} • ${selectedFocus.category || "unknown"}`
-                : "Choose a focus target to inspect the live layer."}
+                : "Select an object on the globe, or use Browse items for a keyboard-accessible list."}
           </p>
           {selectedFeature ? (
             <div className="globe-detail-grid">
@@ -2994,6 +3019,9 @@ export function GlobeOverlay() {
           </div>
         </div>
 
+        <details className="globe-inspector__advanced">
+          <summary>More context, legend, and client scope</summary>
+          <div className="globe-inspector__advanced-grid">
         <div className="globe-panel globe-panel--compact">
           <p className="globe-panel__label">Visible Aggregate</p>
           <div className="globe-detail-grid">
@@ -3055,7 +3083,9 @@ export function GlobeOverlay() {
             </div>
           </div>
         ) : null}
-          </>
+          </div>
+        </details>
+          </div>
         ) : null}
       </div>
     </div>

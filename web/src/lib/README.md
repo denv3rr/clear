@@ -13,3 +13,6 @@ Shared frontend utilities, API client, and data helpers.
 
 ## Usage notes
 - Route all API calls through `api.ts` for consistent headers and errors.
+- API-key reads and writes are asynchronous because browser-stored values are
+  encrypted. Await `getApiKey()` before creating HTTP headers or WebSocket
+  subprotocols; never coerce its promise into a credential value.

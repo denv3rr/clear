@@ -41,7 +41,7 @@ export default function News() {
   const [limit, setLimit] = useState(25);
   const [sources, setSources] = useState<string[]>([]);
   const [forceToken, setForceToken] = useState(0);
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const query = useMemo(() => {
     const params = new URLSearchParams();
@@ -250,7 +250,7 @@ export default function News() {
         </div>
 
         {items.length === 0 ? (
-          <p>No news items available.</p>
+          <p>No articles match the current scope. Open Filters to broaden the search, or refresh the feed.</p>
         ) : (
           items.map((item) => (
             <div key={`${item.title}-${item.source}`} className="border-b border-slate-800/60 pb-4">

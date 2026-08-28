@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
+  Label,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -12,6 +13,7 @@ import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { KpiCard } from "../components/ui/KpiCard";
 import { Reveal } from "../components/ui/Reveal";
 import { SectionHeader } from "../components/ui/SectionHeader";
+import { VisualizationGuide } from "../components/ui/VisualizationGuide";
 import { useApi } from "../lib/api";
 import { useSceneController } from "../lib/scene";
 
@@ -50,9 +52,9 @@ type ClientIndex = {
 };
 
 export default function Dashboard() {
-  const [riskOpen, setRiskOpen] = useState(true);
+  const [riskOpen, setRiskOpen] = useState(false);
   const [osintOpen, setOsintOpen] = useState(true);
-  const [clientsOpen, setClientsOpen] = useState(true);
+  const [clientsOpen, setClientsOpen] = useState(false);
   const [worldAutoOpened, setWorldAutoOpened] = useState(false);
   const { isOpen: sceneOpen, openScene } = useSceneController();
   const {
@@ -135,7 +137,7 @@ export default function Dashboard() {
 
   const intelAuthError =
     Boolean(intelError) &&
-    (intelError.includes("401") || intelError.includes("403"));
+    (intelError?.includes("401") || intelError?.includes("403"));
   const errorMessages = [
     intelError && !intelAuthError
       ? `World summary failed: ${intelError}`
@@ -235,10 +237,18 @@ export default function Dashboard() {
             open={riskOpen}
             onToggle={() => setRiskOpen((prev) => !prev)}
           >
+            <VisualizationGuide
+              summary="This chart shows how the source-backed global signal score changed across the available observation windows."
+              details={[
+                "Moving right advances through the available observation windows.",
+                "Moving up represents a higher combined signal score on the documented 0 to 10 scale.",
+                "Open Signals for source coverage, warnings, and the underlying regional context.",
+              ]}
+            />
             <div className="h-52">
               {hasRiskSeries ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={riskSeries}>
+                  <AreaChart data={riskSeries} margin={{ top: 8, right: 12, bottom: 26, left: 10 }}>
                     <defs>
                       <linearGradient id="riskGlow" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="var(--green-500)" stopOpacity={0.7} />
@@ -249,12 +259,25 @@ export default function Dashboard() {
                       dataKey="day"
                       stroke="var(--slate-700)"
                       tick={{ fill: "var(--slate-100)", fontSize: 12 }}
-                    />
+                    >
+                      <Label value="Observation Window" position="insideBottom" offset={-16} fill="var(--slate-200)" />
+                    </XAxis>
                     <YAxis
                       stroke="var(--slate-700)"
                       tick={{ fill: "var(--slate-100)", fontSize: 12 }}
-                    />
+                      domain={[0, 10]}
+                    >
+                      <Label
+                        value="Signal Score (0-10)"
+                        angle={-90}
+                        position="insideLeft"
+                        style={{ textAnchor: "middle" }}
+                        fill="var(--slate-200)"
+                      />
+                    </YAxis>
                     <Tooltip
+                      formatter={(value) => [Number(value).toFixed(2), "Global signal score"]}
+                      labelFormatter={(label) => `Observation window: ${label}`}
                       contentStyle={{
                         background: "var(--slate-900)",
                         border: "1px solid var(--slate-700)",
@@ -266,7 +289,7 @@ export default function Dashboard() {
                 </ResponsiveContainer>
               ) : (
                 <div className="flex h-full items-center justify-center text-xs text-slate-400">
-                  No risk series available.
+                  Risk history is not available yet. Open Signals for source status and coverage details.
                 </div>
               )}
             </div>

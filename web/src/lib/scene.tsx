@@ -72,7 +72,7 @@ type SceneContextValue = {
 
 const DEFAULT_SCENE_STATE: SceneRuntimeState = {
   cameraPreset: "free",
-  detailsVisible: true,
+  detailsVisible: false,
   intelCategories: [],
   intelIndustry: "all",
   intelLens: "combined",

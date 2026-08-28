@@ -754,6 +754,44 @@ What landed:
 
 Research-to-change mapping: `docs/globe_layout_notes.md`.
 
+### Phase 5.1 Progressive Disclosure And Comprehension Note
+
+The August 27, 2026 interaction pass simplifies the existing surface without
+adding data sources, layers, geometry, or analytical formulas.
+
+What changed:
+
+- the World overlay now starts with one compact scene command surface instead
+  of simultaneous left and right panel stacks
+- layer visibility, scene lens, tracker scope, camera presets, filters, signal
+  density, status, warnings, and quality remain available through one explicit
+  Layers and view disclosure
+- selecting a globe object opens a centered contextual under-panel; Browse
+  items preserves a keyboard-operable non-canvas selection path
+- aggregates, legend, provenance-adjacent context, and client scope remain
+  available below the selected-object summary instead of occupying permanent
+  right-side chrome
+- client portfolio history and core risk remain in the initial workflow while
+  regime, pattern, distribution, lots, diagnostics, and manual-asset sections
+  default closed
+- shared 2D and 3D chart primitives now support readable titles, axis labels,
+  units, hover labels, concise explanations, and How to read this disclosures
+- finance notation remains available after plain-language labels; no
+  calculation or payload semantics changed
+- filters across Signals, News, and Reports and secondary Tracker panels now
+  default closed so the primary content appears first
+
+The governing placement and regression rules live in
+`docs/ui_simplification_plan.md`.
+
+What this does not claim:
+
+- no new source coverage or incident geometry
+- no change to risk, regime, pattern, sentiment, or signal calculations
+- no full accessibility certification from visual inspection alone
+- no new positive-path globe fixture where the standards plan still requires a
+  reviewed capture
+
 ## Immediate Next Move
 
 With the architecture spike and hardening slice in place, the next move is:
