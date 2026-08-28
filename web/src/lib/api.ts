@@ -11,16 +11,74 @@ const ENV_API_KEY = import.meta.env.VITE_API_KEY;
 const LOCAL_KEY = "clear_api_key";
 const SESSION_KEY = "clear_api_key_session";
 const ENCRYPTED_PREFIX = "enc:v1:";
+const CRYPTO_DB_NAME = "clear_browser_keys";
+const CRYPTO_DB_STORE = "keys";
+const CRYPTO_KEY_ID = "api-key-encryption-v1";
 
 let sessionCryptoKeyPromise: Promise<CryptoKey> | null = null;
 
-function getSessionCryptoKey(): Promise<CryptoKey> {
+function openCryptoKeyDatabase(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === "undefined") {
+      reject(new Error("Encrypted browser storage is unavailable."));
+      return;
+    }
+    const request = indexedDB.open(CRYPTO_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(CRYPTO_DB_STORE)) {
+        request.result.createObjectStore(CRYPTO_DB_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("Could not open encrypted browser storage."));
+  });
+}
+
+async function readStoredCryptoKey(): Promise<CryptoKey | null> {
+  const database = await openCryptoKeyDatabase();
+  try {
+    return await new Promise((resolve, reject) => {
+      const transaction = database.transaction(CRYPTO_DB_STORE, "readonly");
+      const request = transaction.objectStore(CRYPTO_DB_STORE).get(CRYPTO_KEY_ID);
+      request.onsuccess = () => resolve((request.result as CryptoKey | undefined) || null);
+      request.onerror = () => reject(request.error || new Error("Could not read encrypted browser storage."));
+    });
+  } finally {
+    database.close();
+  }
+}
+
+async function writeStoredCryptoKey(key: CryptoKey): Promise<void> {
+  const database = await openCryptoKeyDatabase();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction(CRYPTO_DB_STORE, "readwrite");
+      transaction.objectStore(CRYPTO_DB_STORE).put(key, CRYPTO_KEY_ID);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error || new Error("Could not save encrypted browser storage."));
+      transaction.onabort = () => reject(transaction.error || new Error("Encrypted browser storage was cancelled."));
+    });
+  } finally {
+    database.close();
+  }
+}
+
+function getStorageCryptoKey(): Promise<CryptoKey> {
   if (!sessionCryptoKeyPromise) {
-    sessionCryptoKeyPromise = crypto.subtle.generateKey(
-      { name: "AES-GCM", length: 256 },
-      false,
-      ["encrypt", "decrypt"]
-    );
+    sessionCryptoKeyPromise = (async () => {
+      const stored = await readStoredCryptoKey();
+      if (stored) return stored;
+      const generated = await crypto.subtle.generateKey(
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["encrypt", "decrypt"]
+      );
+      await writeStoredCryptoKey(generated);
+      return generated;
+    })().catch((error) => {
+      sessionCryptoKeyPromise = null;
+      throw error;
+    });
   }
   return sessionCryptoKeyPromise;
 }
@@ -31,15 +89,15 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-function base64ToBytes(base64: string): Uint8Array {
+function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
   const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
+  const bytes = new Uint8Array(new ArrayBuffer(binary.length));
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
   return bytes;
 }
 
 async function encryptApiKey(value: string): Promise<string> {
-  const key = await getSessionCryptoKey();
+  const key = await getStorageCryptoKey();
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const plaintext = new TextEncoder().encode(value);
   const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plaintext);
@@ -47,13 +105,15 @@ async function encryptApiKey(value: string): Promise<string> {
 }
 
 async function decryptApiKey(payload: string): Promise<string | null> {
-  if (!payload.startsWith(ENCRYPTED_PREFIX)) return payload;
+  if (!payload.startsWith(ENCRYPTED_PREFIX)) {
+    throw new Error("Unsupported API key storage format.");
+  }
   const encoded = payload.slice(ENCRYPTED_PREFIX.length);
   const [ivB64, dataB64] = encoded.split(":");
   if (!ivB64 || !dataB64) return null;
   const iv = base64ToBytes(ivB64);
   const data = base64ToBytes(dataB64);
-  const key = await getSessionCryptoKey();
+  const key = await getStorageCryptoKey();
   const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, data);
   return new TextDecoder().decode(plaintext);
 }
@@ -102,7 +162,8 @@ export async function getApiKey(): Promise<string | null> {
     const sessionValue = sessionStorage.getItem(SESSION_KEY);
     if (sessionValue) {
       try {
-        return await decryptApiKey(sessionValue);
+        const decrypted = await decryptApiKey(sessionValue);
+        if (decrypted) return decrypted;
       } catch {
         sessionStorage.removeItem(SESSION_KEY);
       }
@@ -111,7 +172,8 @@ export async function getApiKey(): Promise<string | null> {
     const localValue = localStorage.getItem(LOCAL_KEY);
     if (localValue) {
       try {
-        return await decryptApiKey(localValue);
+        const decrypted = await decryptApiKey(localValue);
+        if (decrypted) return decrypted;
       } catch {
         localStorage.removeItem(LOCAL_KEY);
       }
@@ -199,7 +261,7 @@ export async function apiGet<T>(path: string, ttl = 0, signal?: AbortSignal): Pr
     }
   }
   const headers: Record<string, string> = {};
-  const apiKey = getApiKey();
+  const apiKey = await getApiKey();
   if (apiKey) {
     headers["X-API-Key"] = apiKey;
   }
@@ -230,7 +292,7 @@ type WriteMethod = "POST" | "PATCH" | "PUT" | "DELETE";
 
 async function apiWrite<T>(path: string, method: WriteMethod, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  const apiKey = getApiKey();
+  const apiKey = await getApiKey();
   if (apiKey) {
     headers["X-API-Key"] = apiKey;
   }

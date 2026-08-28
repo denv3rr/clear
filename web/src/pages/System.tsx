@@ -9,7 +9,6 @@ import {
   clearApiKey,
   getApiKeyScope,
   getAuthHint,
-  getApiKey,
   setApiKey as setApiKeyLocal,
   useApi
 } from "../lib/api";
@@ -382,7 +381,7 @@ export default function System() {
           <p className="text-slate-100 font-medium">API Key</p>
           <div className="mt-3 space-y-2">
             <p className="text-xs text-slate-300">
-              Current key: {getApiKey() ? "********" : "Not set"}
+              Current key: {getApiKeyScope() !== "none" ? "********" : "Not set"}
             </p>
           </div>
         </div>

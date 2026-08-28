@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { LayerGroup as LeafletLayerGroup, Map as LeafletMap } from "leaflet";
 import { loadMapLibre, mapLibreWorkerUrl } from "../lib/maplibre";
 import type { MapLibre } from "../lib/maplibre";
 import { loadLeaflet, type LeafletLib } from "../lib/leaflet";
@@ -267,7 +266,7 @@ export function TrackersPanel() {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<TrackerDetail | null>(null);
-  const [analysisOpen, setAnalysisOpen] = useState(true);
+  const [analysisOpen, setAnalysisOpen] = useState(false);
   const [analysis, setAnalysis] = useState<TrackerAnalysis | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
@@ -303,9 +302,9 @@ export function TrackersPanel() {
   const [mapStatus, setMapStatus] = useState("Initializing map...");
   const [mapDiagnostics, setMapDiagnostics] = useState<string[]>([]);
   const [leaflet, setLeaflet] = useState<LeafletLib | null>(null);
-  const leafletMap = useRef<LeafletMap | null>(null);
-  const leafletLayer = useRef<LeafletLayerGroup | null>(null);
-  const leafletHistoryLayer = useRef<LeafletLayerGroup | null>(null);
+  const leafletMap = useRef<ReturnType<LeafletLib["map"]> | null>(null);
+  const leafletLayer = useRef<ReturnType<LeafletLib["layerGroup"]> | null>(null);
+  const leafletHistoryLayer = useRef<ReturnType<LeafletLib["layerGroup"]> | null>(null);
   const [leafletStatus, setLeafletStatus] = useState("Initializing map...");
   const [mapFallback, setMapFallback] = useState(false);
   const initialMapState = useMemo<MapStateBoot>(() => {
@@ -354,9 +353,9 @@ export function TrackersPanel() {
   );
   const programmaticMoveRef = useRef(false);
   const mapFollowRef = useRef(mapFollow);
-  const [riskOpen, setRiskOpen] = useState(true);
+  const [riskOpen, setRiskOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(true);
-  const [feedOpen, setFeedOpen] = useState(true);
+  const [feedOpen, setFeedOpen] = useState(false);
   const accentColor = "#48f1a6";
   const preferLeaflet = false;
 
@@ -893,7 +892,7 @@ export function TrackersPanel() {
           center: [mapViewRef.current.center[1], mapViewRef.current.center[0]],
           zoom: mapViewRef.current.zoom,
           attributionControl: false,
-          transformRequest: (url, resourceType) => {
+          transformRequest: (url: string, resourceType: string) => {
             if (resourceType === "Style" && !styleRequested.current) {
               styleRequested.current = true;
               setMapStatus("Requesting style...");
@@ -961,10 +960,12 @@ export function TrackersPanel() {
         map.on("mouseleave", "tracker-points-layer", () => {
           map.getCanvas().style.cursor = "";
         });
-        map.on("click", "tracker-points-layer", (event) => {
+        map.on("click", "tracker-points-layer", (event: {
+          features?: Array<{ properties?: { id?: unknown } }>;
+        }) => {
           const feature = event.features?.[0];
-          const id = feature?.properties?.id as string | undefined;
-          if (id) {
+          const id = feature?.properties?.id;
+          if (typeof id === "string" && id) {
             setSelectedId(id);
             setFeedOpen(true);
           }
@@ -1014,7 +1015,7 @@ export function TrackersPanel() {
         window.setTimeout(() => map.resize(), 200);
         initLayers();
       });
-      map.on("error", (event) => {
+      map.on("error", (event: { error?: { message?: string } }) => {
         const message = event?.error?.message;
         const detail = message || "Map data unavailable.";
         setMapError(detail);

@@ -5,6 +5,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Label,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -101,10 +102,10 @@ export default function Intel() {
   const [industry, setIndustry] = useState("all");
   const [categories, setCategories] = useState<string[]>([]);
   const [sources, setSources] = useState<string[]>([]);
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [fusionOpen, setFusionOpen] = useState(true);
-  const [weatherOpen, setWeatherOpen] = useState(true);
-  const [conflictOpen, setConflictOpen] = useState(true);
+  const [weatherOpen, setWeatherOpen] = useState(false);
+  const [conflictOpen, setConflictOpen] = useState(false);
 
   const categoriesParam = categories.length ? `&categories=${encodeURIComponent(categories.join(","))}` : "";
   const sourcesParam = sources.length ? `&sources=${encodeURIComponent(sources.join(","))}` : "";
@@ -368,10 +369,13 @@ export default function Intel() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div className="rounded-xl border border-slate-700 p-4">
                 <p className="text-xs font-semibold text-slate-200 mb-2">Global Signal Trend</p>
+                <p className="mb-3 text-[11px] leading-4 text-slate-400">
+                  Shows how the combined source-backed signal score changes over the available observation windows.
+                </p>
                 {showTrendData ? (
                   <div className="h-40 w-full">
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={data?.risk_series}>
+                      <AreaChart data={data?.risk_series} margin={{ top: 4, right: 8, bottom: 26, left: 8 }}>
                         <defs>
                           <linearGradient id="riskFill" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="5%" stopColor="var(--green-500)" stopOpacity={0.6} />
@@ -379,9 +383,21 @@ export default function Intel() {
                           </linearGradient>
                         </defs>
                         <CartesianGrid stroke="var(--slate-700)" strokeDasharray="3 3" />
-                        <XAxis dataKey="label" tick={{ fill: "var(--slate-100)", fontSize: 10 }} />
-                        <YAxis tick={{ fill: "var(--slate-100)", fontSize: 10 }} domain={[0, 10]} />
+                        <XAxis dataKey="label" tick={{ fill: "var(--slate-100)", fontSize: 10 }}>
+                          <Label value="Observation Window" position="insideBottom" offset={-16} fill="var(--slate-200)" />
+                        </XAxis>
+                        <YAxis tick={{ fill: "var(--slate-100)", fontSize: 10 }} domain={[0, 10]}>
+                          <Label
+                            value="Signal Score (0-10)"
+                            angle={-90}
+                            position="insideLeft"
+                            style={{ textAnchor: "middle" }}
+                            fill="var(--slate-200)"
+                          />
+                        </YAxis>
                         <Tooltip
+                          formatter={(value) => [Number(value).toFixed(2), "Global signal score"]}
+                          labelFormatter={(label) => `Observation window: ${label}`}
                           contentStyle={{
                             background: "var(--slate-900)",
                             borderRadius: 8,
@@ -405,14 +421,29 @@ export default function Intel() {
 
               <div className="rounded-xl border border-slate-700 p-4">
                 <p className="text-xs font-semibold text-slate-200 mb-2">Emotion Trend</p>
+                <p className="mb-3 text-[11px] leading-4 text-slate-400">
+                  Shows counts of classified article emotions by observation window. Counts are not sentiment probabilities.
+                </p>
                 {showTrendData && emotionSeries.length > 0 ? (
                   <div className="h-40 w-full">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={emotionSeries}>
+                      <BarChart data={emotionSeries} margin={{ top: 4, right: 8, bottom: 26, left: 8 }}>
                         <CartesianGrid stroke="var(--slate-700)" strokeDasharray="3 3" />
-                        <XAxis dataKey="label" tick={{ fill: "var(--slate-100)", fontSize: 10 }} />
-                        <YAxis tick={{ fill: "var(--slate-100)", fontSize: 10 }} />
+                        <XAxis dataKey="label" tick={{ fill: "var(--slate-100)", fontSize: 10 }}>
+                          <Label value="Observation Window" position="insideBottom" offset={-16} fill="var(--slate-200)" />
+                        </XAxis>
+                        <YAxis tick={{ fill: "var(--slate-100)", fontSize: 10 }}>
+                          <Label
+                            value="Classified Articles"
+                            angle={-90}
+                            position="insideLeft"
+                            style={{ textAnchor: "middle" }}
+                            fill="var(--slate-200)"
+                          />
+                        </YAxis>
                         <Tooltip
+                          formatter={(value, name) => [Number(value).toLocaleString(), formatLabel(String(name))]}
+                          labelFormatter={(label) => `Observation window: ${label}`}
                           contentStyle={{
                             background: "var(--slate-900)",
                             borderRadius: 8,

@@ -16,8 +16,8 @@ export function Sidebar({ items }: SidebarProps) {
   const { data: diagnostics } = useApi<{
     trackers?: { count?: number; warning_count?: number; warnings?: string[] };
     system?: { hostname?: string; platform?: string };
-  }>("/api/tools/diagnostics", 60000);
-  const { data: health } = useApi<{ status?: string }>("/api/health", 30000);
+  }>("/api/tools/diagnostics", { interval: 60000 });
+  const { data: health } = useApi<{ status?: string }>("/api/health", { interval: 30000 });
   const trackerWarnings = diagnostics?.trackers?.warnings || [];
   const trackerCount = diagnostics?.trackers?.count ?? 0;
   const warningCount = diagnostics?.trackers?.warning_count ?? 0;

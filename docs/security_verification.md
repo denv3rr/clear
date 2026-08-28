@@ -19,10 +19,17 @@ In scope:
 - Destructive maintenance and duplicate-cleanup confirm gates
 - The 36 GitHub Dependabot alerts targeted by the current pip/npm pins
 
-CodeQL follow-up on PR 14:
+CodeQL follow-up on PRs 14 and 31:
 
-- API key persistence remains local-operator session/local storage with an
-  explicit CodeQL suppression. There is no server-side token vault.
+- Browser API-key values are encrypted before session/local storage. A
+  non-extractable AES-GCM key is stored through IndexedDB so an operator's
+  selected persistence scope survives navigation and reloads; legacy
+  clear-text browser values are discarded and must be re-entered. There is no
+  server-side token vault, and this is storage-at-rest hardening rather than a
+  defense against already-authorized same-origin script execution.
+- HTTP requests and the WebSocket subprotocol await key recovery before they
+  connect. This corrects the merged PR 31 regression where the asynchronous
+  decrypt operation could be coerced into an invalid header or protocol value.
 - Route handlers no longer interpolate exception objects into API warnings.
   Failures are logged server-side and the client sees a generic unavailable
   message.
@@ -52,6 +59,8 @@ The automated suite is:
 
 ```pwsh
 python -m pytest tests/test_security.py
+cd web
+npm run typecheck
 ```
 
 That file covers:
