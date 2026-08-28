@@ -3,10 +3,26 @@
 This document summarizes launcher behavior to keep startup/stop flows reliable and non-interactive.
 
 ## Commands
-- `python clearctl.py start` starts API + UI in the foreground by default.
-- `python clearctl.py stop` stops background services and verifies port release.
-- `python clearctl.py web` starts the web stack (API + UI).
-- `python clearctl.py cli` launches the CLI.
+- `clear` is the preferred interactive command after the one-time PowerShell
+  setup documented in the root README. With no arguments it starts API + UI in
+  the foreground and opens the browser.
+- `.\clear` is the no-setup PowerShell form from the repository directory.
+- `clear stop` stops background services and verifies port release.
+- `clear cli` launches the CLI.
+- `python clearctl.py start` remains the explicit automation/CI form.
+
+Running `clearctl.py` without a subcommand is equivalent to `start`. Start mode
+automatically installs approved hashed/locked dependencies only when they are
+missing. Startup flags can be passed without repeating the subcommand, such as
+`clear --detach --no-open`; `--no-install` makes missing dependencies a hard
+stop instead. Normal starts reuse the existing environment, and Vite compiles
+changed frontend modules incrementally. No manual production build is required
+for local use.
+
+PowerShell reserves `clear` as a built-in terminal-clearing alias. The explicit
+`.\clear.ps1 install-command` setup replaces that alias in the current-user
+profile with the Clear launcher. `Clear-Host` and `cls` remain available, and
+the setup can be rerun safely to refresh the checkout path.
 
 ## Startup Guarantees
 - Startup performs API health checks and fails fast if the API cannot come up.
@@ -19,5 +35,5 @@ This document summarizes launcher behavior to keep startup/stop flows reliable a
 - Shutdown handlers keep running on Ctrl+C to prevent orphan processes.
 
 ## Diagnostics
-- `python clearctl.py status` reports health and running processes.
-- `python clearctl.py doctor` validates deps, ports, and health checks.
+- `clear status` reports health and running processes.
+- `clear doctor` validates deps, ports, and health checks.

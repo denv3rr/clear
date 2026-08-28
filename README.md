@@ -19,6 +19,7 @@ inspection is documented in
 
 ```pwsh
 git clone git@github.com:denv3rr/clear.git --depth 1
+cd clear
 ```
 
 ### Configure `.env`
@@ -35,12 +36,44 @@ Copy `.env.example` to `.env`. The most common variables are below.
 | `CLEAR_INCLUDE_COMMERCIAL` | Include commercial flights when set to `1`. |
 | `CLEAR_INCLUDE_PRIVATE` | Include private flights when set to `1`. |
 
-### Run
+### Start with one command
+
+Clear's launcher installs missing approved dependencies only when needed, starts
+the API and web UI, waits for health checks, and opens the application. Vite
+compiles the frontend incrementally, so normal starts do not require a manual
+`npm run build` or rebuild the application from scratch.
+
+From the repository directory:
 
 ```pwsh
-python clearctl.py start
-python clearctl.py stop
+.\clear
 ```
+
+On Command Prompt, use `clear`. On macOS or Linux, use `./clear.sh`.
+
+PowerShell already reserves the bare word `clear` for clearing the terminal. To
+make `clear` launch this application instead, run this one-time setup from the
+repository directory:
+
+```pwsh
+.\clear.ps1 install-command
+```
+
+Open a new PowerShell session, then the normal workflow is:
+
+```pwsh
+clear
+clear status
+clear stop
+```
+
+The setup keeps `Clear-Host` and `cls` available for clearing the terminal. It
+stores the absolute repository path in the current-user PowerShell profile, so
+rerun the setup command if the checkout is moved.
+
+Optional startup flags can follow the command directly—for example,
+`clear --detach --no-open`. Use `clear --no-install` when you want startup to
+fail instead of installing a missing hashed/locked dependency.
 
 ## What It Does
 
@@ -72,16 +105,20 @@ Notes:
 ## Common Commands
 
 ```pwsh
-python clearctl.py start
-python clearctl.py status
-python clearctl.py stop
+clear
+clear status
+clear stop
 ```
 
 ```pwsh
-python clearctl.py web
-python clearctl.py cli
-python clearctl.py doctor
+clear cli
+clear doctor
+clear logs
 ```
+
+Without the optional PowerShell command setup, use the same arguments with
+`.\clear`, for example `.\clear doctor`. The underlying
+`python clearctl.py start` command remains available for automation and CI.
 
 ## Testing
 
