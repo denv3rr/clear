@@ -186,6 +186,9 @@ def _ensure_node_modules(web_dir: Path, npm_path: str, auto_yes: bool) -> bool:
         print(">> Web dependencies not installed (node_modules missing).")
     else:
         print(">> Web dependencies out of date:", ", ".join(missing))
+    if not auto_yes:
+        print(">> Automatic dependency installation is disabled. Run again without --no-install.")
+        return False
     try:
         subprocess.check_call([npm_path, "ci"], cwd=str(web_dir))
         return True
@@ -542,14 +545,20 @@ def _add_start_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--ui-port", type=int, default=DEFAULT_UI_PORT)
     parser.add_argument("--no-web", action="store_true")
     parser.add_argument("--no-open", action="store_true")
-    parser.set_defaults(foreground=True)
+    parser.set_defaults(foreground=True, yes=True)
     parser.add_argument("--foreground", action="store_true", dest="foreground", help="Run in foreground (default).")
     parser.add_argument("--detach", action="store_false", dest="foreground", help="Run API/UI in the background.")
     parser.add_argument("--reload", action="store_true", help="Reload the API on code changes.")
-    parser.add_argument("--yes", action="store_true", help="Auto-install deps when missing.")
+    parser.add_argument("--yes", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--no-install",
+        action="store_false",
+        dest="yes",
+        help="Do not install approved dependencies when they are missing.",
+    )
 
 
-def _parse_args() -> argparse.Namespace:
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Clear multi-platform launcher.")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -576,7 +585,12 @@ def _parse_args() -> argparse.Namespace:
     doctor.add_argument("--web-tests", action="store_true", help="Also validate Playwright browsers.")
     doctor.add_argument("--yes", action="store_true")
 
-    return parser.parse_args()
+    effective_argv = list(sys.argv[1:] if argv is None else argv)
+    if not effective_argv:
+        effective_argv = ["start"]
+    elif effective_argv[0].startswith("-") and effective_argv[0] not in {"-h", "--help"}:
+        effective_argv.insert(0, "start")
+    return parser.parse_args(effective_argv)
 
 
 def main() -> int:
