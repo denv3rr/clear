@@ -1,21 +1,43 @@
 # Clear
+![GitHub Created At](https://img.shields.io/github/created-at/denv3rr/clear) ![GitHub repo size](https://img.shields.io/github/repo-size/denv3rr/clear)
 
-Clear is a local-first portfolio, analytics, and OSINT platform with shared
+A local-first portfolio, analytics, and basic OSINT platform with shared
 CLI, API, and web surfaces. It combines client/account data, deterministic
-financial calculations, global tracker feeds, news/intel summaries, a
-rules-based assistant, and a standards-gated globe foundation. The globe is a
-real immersive viewer, not a finished operational surface.
+financial calculations, tracker feeds, news/intel summaries, a
+rules-based assistant (add your own model connections and guardrails). **The globe dash
+is a *test* immersive viewer, not a finished operational surface. It's still pretty buggy.**
 
-Clear is not a general multi-agent reasoning framework. Agent git rules and
+## Agents
+This is not a general multi-agent reasoning framework. Agent git rules and
 assistant constraints are the seed of governed helper work; independent
 inspection is documented in
 [docs/inspection_verification.md](docs/inspection_verification.md).
 
-## Quick Start
+## Configuration and Quick Start
+
+### Clone
 
 ```pwsh
 git clone git@github.com:denv3rr/clear.git --depth 1
-cd clear
+```
+
+### Configure `.env`
+
+Copy `.env.example` to `.env`. The most common variables are below.
+
+| Variable | Purpose |
+| --- | --- |
+| `CLEAR_WEB_API_KEY` | Enables API key auth for the web/API stack. |
+| `FINNHUB_API_KEY` | Optional market symbol and quote lookups. |
+| `OPENSKY_CLIENT_ID` | OpenSky OAuth client id for flight feeds. |
+| `OPENSKY_CLIENT_SECRET` | OpenSky OAuth client secret for flight feeds. |
+| `SHIPPING_DATA_URL` | Optional vessel/shipping feed endpoint. |
+| `CLEAR_INCLUDE_COMMERCIAL` | Include commercial flights when set to `1`. |
+| `CLEAR_INCLUDE_PRIVATE` | Include private flights when set to `1`. |
+
+### Run
+
+```pwsh
 python clearctl.py start
 python clearctl.py stop
 ```
@@ -31,18 +53,6 @@ python clearctl.py stop
 - Builds toward a globe-first presentation layer, but only behind the active
   standards gate.
 
-## Standards And Current Status
-
-Clear now treats standards compliance as a delivery gate, not a cleanup task.
-
-- [docs/us_gov_standards.md](docs/us_gov_standards.md): mandatory repo baseline
-  for data integrity, fail-safe behavior, accessibility, and performance.
-- [docs/standards_remediation_plan.md](docs/standards_remediation_plan.md):
-  active remediation phases that must stay green before the next major visual
-  expansion.
-- [docs/visual_modernization_plan.md](docs/visual_modernization_plan.md):
-  globe-first product direction, explicitly gated by the remediation plan.
-
 ## Stack
 
 - Core runtime: Python, FastAPI, SQLAlchemy, Pandas, NumPy, Rich
@@ -50,20 +60,6 @@ Clear now treats standards compliance as a delivery gate, not a cleanup task.
 - Visualization: Three.js, React Three Fiber, MapLibre, Leaflet fallback,
   Plotly, Recharts
 - Testing: pytest, Playwright
-
-## Configuration
-
-Copy `.env.example` to `.env`. The most common variables are below.
-
-| Variable | Purpose |
-| --- | --- |
-| `CLEAR_WEB_API_KEY` | Enables API key auth for the web/API stack. |
-| `FINNHUB_API_KEY` | Optional market symbol and quote lookups. |
-| `OPENSKY_CLIENT_ID` | OpenSky OAuth client id for flight feeds. |
-| `OPENSKY_CLIENT_SECRET` | OpenSky OAuth client secret for flight feeds. |
-| `SHIPPING_DATA_URL` | Optional vessel/shipping feed endpoint. |
-| `CLEAR_INCLUDE_COMMERCIAL` | Include commercial flights when set to `1`. |
-| `CLEAR_INCLUDE_PRIVATE` | Include private flights when set to `1`. |
 
 Notes:
 
