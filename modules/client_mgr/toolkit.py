@@ -259,7 +259,7 @@ class FinancialToolkit(ToolkitPayloadsMixin, ToolkitRunMixin, ToolkitMenuMixin):
                         auto_adjust=True,
                     )
         except Exception as exc:
-            return None, None, f"Market data error: {exc}"
+            return None, None, "Market data unavailable."
 
         if df is None or df.empty:
             return None, None, "Market data empty"

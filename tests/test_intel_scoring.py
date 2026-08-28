@@ -4,6 +4,8 @@ from unittest import mock
 from modules.market_data.intel import (
     REGION_CONFLICT_QUERY_TERMS,
     MarketIntel,
+    REGIONS,
+    WeatherIntel,
     _aggregate_news_metrics,
     _impact_for_conflict,
     _impact_for_weather,
@@ -16,6 +18,16 @@ from modules.market_data.intel import (
 
 
 class TestIntelScoring(unittest.TestCase):
+    def test_weather_fetch_failure_does_not_expose_exception_detail(self):
+        with mock.patch(
+            "modules.market_data.intel.requests.get",
+            side_effect=RuntimeError("PRIVATE_WEATHER_SENTINEL"),
+        ):
+            payload = WeatherIntel().fetch(REGIONS[0])
+
+        self.assertEqual(payload["error"], "Open-Meteo fetch failed.")
+        self.assertNotIn("PRIVATE_WEATHER_SENTINEL", payload["error"])
+
     def test_risk_level_buckets(self):
         self.assertEqual(_risk_level(0), "Low")
         self.assertEqual(_risk_level(3), "Moderate")

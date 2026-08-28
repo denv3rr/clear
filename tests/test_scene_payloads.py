@@ -94,6 +94,38 @@ def test_build_tracker_scene_payload_composes_live_points_and_trails():
     assert "source warning" in scene["meta"]["warnings"]
 
 
+def test_build_tracker_scene_history_failure_does_not_expose_exception_detail():
+    snapshot = {
+        "mode": "flights",
+        "warnings": [],
+        "points": [
+            {
+                "id": "flt-private",
+                "kind": "flight",
+                "category": "commercial",
+                "label": "TEST1",
+                "lat": 40.0,
+                "lon": -73.0,
+                "updated_ts": 1700000100,
+            }
+        ],
+    }
+
+    def failing_history(_tracker_id):
+        raise RuntimeError("PRIVATE_HISTORY_SENTINEL")
+
+    scene = build_tracker_scene(
+        snapshot,
+        history_fetcher=failing_history,
+        now=1700000400,
+        trail_limit=1,
+    )
+
+    warnings = scene["meta"]["warnings"]
+    assert "Tracker history fetch failed for flt-private." in warnings
+    assert all("PRIVATE_HISTORY_SENTINEL" not in warning for warning in warnings)
+
+
 def test_build_intel_scene_payload_uses_regional_centroids_and_provenance():
     class DummyWeather:
         def fetch(self, region):
