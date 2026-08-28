@@ -784,6 +784,12 @@ What changed:
 The governing placement and regression rules live in
 `docs/ui_simplification_plan.md`.
 
+Legacy scene-state recovery is part of this interaction contract. The
+progressive-disclosure layout versions stored scene preferences, resets stale
+pre-pass filters and hidden layers once, reports available rather than merely
+visible scene counts, and exposes Show available layers / Clear saved filters
+actions when persisted state would otherwise make a populated scene look empty.
+
 What this does not claim:
 
 - no new source coverage or incident geometry

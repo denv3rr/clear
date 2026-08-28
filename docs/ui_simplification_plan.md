@@ -110,6 +110,9 @@ the only explanation.
 - Do not add unexplained icon-only controls.
 - Do not make advanced/admin functions top-level navigation unless they are a
   primary workflow.
+- Persisted filters or hidden-layer choices must not make available scene data
+  look absent. Version stored UI state when defaults or disclosure patterns
+  change, and expose contextual recovery actions beside an empty summary.
 
 ## Verification Evidence
 
