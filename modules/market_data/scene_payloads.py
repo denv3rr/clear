@@ -1238,7 +1238,7 @@ def build_tracker_scene(
             try:
                 history_payload = history_fetcher(tracker_id)
             except Exception as exc:
-                warnings.append(f"Tracker history fetch failed for {tracker_id}: {exc}")
+                warnings.append(f"Tracker history fetch failed for {tracker_id}.")
                 continue
             history = history_payload.get("history", []) if isinstance(history_payload, Mapping) else []
             if not isinstance(history, list) or len(history) < 2:

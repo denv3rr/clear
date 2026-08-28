@@ -11,6 +11,24 @@ from modules.client_mgr.client_model import Client
 
 
 class ToolkitMetricsTests(unittest.TestCase):
+    def test_market_data_failure_does_not_expose_exception_detail(self):
+        toolkit = FinancialToolkit(Client())
+        with mock.patch(
+            "modules.client_mgr.toolkit.yf.download",
+            side_effect=RuntimeError("PRIVATE_MARKET_SENTINEL"),
+        ):
+            portfolio, benchmark, error = toolkit._get_portfolio_and_benchmark_returns(
+                {"AAPL": 1.0},
+                "^GSPC",
+                "1mo",
+                "1d",
+            )
+
+        self.assertIsNone(portfolio)
+        self.assertIsNone(benchmark)
+        self.assertEqual(error, "Market data unavailable.")
+        self.assertNotIn("PRIVATE_MARKET_SENTINEL", error)
+
     def test_annualization_factor_from_index_daily(self):
         dates = pd.date_range(datetime(2025, 1, 1), periods=6, freq="D")
         returns = pd.Series([0.01, -0.005, 0.002, 0.0, 0.003], index=dates[1:])
